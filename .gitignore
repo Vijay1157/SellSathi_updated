@@ -1,3 +1,21 @@
-serviceAccountKey.json
-.env
+# Node modules
 node_modules/
+back/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# Firebase secret key
+serviceAccountKey.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
