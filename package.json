@@ -1,0 +1,15 @@
+{
+  "name": "sellsathi",
+  "version": "1.0.0",
+  "description": "Root package for frontend and backend",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:front\" \"npm run dev:back\"",
+    "dev:front": "npm --prefix front run dev",
+    "dev:back": "npm --prefix back run dev",
+    "build": "npm --prefix front run build",
+    "start": "npm --prefix back run start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.1"
+  }
+}
