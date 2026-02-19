@@ -4,17 +4,22 @@ import { db, auth } from '../config/firebase';
 
 export const addToCart = async (product) => {
     try {
-        const user = auth.currentUser;
+        let user = auth.currentUser;
+        let userId = user?.uid;
 
-        if (!user) {
-            // If not logged in, maybe dispatch an event or return error
-            // User requested "backend" functionality, which implies logged in state.
-            // We can return a specific code to prompt login.
+        if (!userId) {
+            const localUser = JSON.parse(localStorage.getItem('user') || 'null');
+            if (localUser && localUser.uid) {
+                userId = localUser.uid;
+            }
+        }
+
+        if (!userId) {
             console.log("User not logged in");
             return { success: false, message: "Please login to add items to cart" };
         }
 
-        const cartItemRef = doc(db, "users", user.uid, "cart", product.id);
+        const cartItemRef = doc(db, "users", userId, "cart", product.id);
         const cartItemSnap = await getDoc(cartItemRef);
 
         if (cartItemSnap.exists()) {
@@ -71,15 +76,24 @@ export const addToCart = async (product) => {
 
 
 export const listenToCart = (callback) => {
-    const user = auth.currentUser;
-    if (!user) {
+    let user = auth.currentUser;
+    let userId = user?.uid;
+
+    if (!userId) {
+        const localUser = JSON.parse(localStorage.getItem('user') || 'null');
+        if (localUser && localUser.uid) {
+            userId = localUser.uid;
+        }
+    }
+
+    if (!userId) {
         // Fallback to local storage if not logged in
         const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
         callback(localCart);
         return () => { };
     }
 
-    const q = collection(db, "users", user.uid, "cart");
+    const q = collection(db, "users", userId, "cart");
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const items = [];
         querySnapshot.forEach((doc) => {
@@ -99,8 +113,17 @@ export const listenToCart = (callback) => {
 };
 
 export const removeFromCart = async (productId) => {
-    const user = auth.currentUser;
-    if (!user) {
+    let user = auth.currentUser;
+    let userId = user?.uid;
+
+    if (!userId) {
+        const localUser = JSON.parse(localStorage.getItem('user') || 'null');
+        if (localUser && localUser.uid) {
+            userId = localUser.uid;
+        }
+    }
+
+    if (!userId) {
         // Remove from local storage
         const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
         const updatedCart = localCart.filter(item => item.productId !== productId);
@@ -109,7 +132,7 @@ export const removeFromCart = async (productId) => {
     }
 
     try {
-        await deleteDoc(doc(db, "users", user.uid, "cart", productId));
+        await deleteDoc(doc(db, "users", userId, "cart", productId));
         return { success: true };
     } catch (error) {
         console.error("Error removing from cart:", error);

@@ -114,75 +114,14 @@ export default function Home() {
         <div className="animate-fade-in">
             {/* Header/Banner Section could go here if needed, but per request keeping it focused on Marketplace UI */}
 
-            <div className="container" style={{ padding: '2rem 1.5rem', display: 'flex', gap: '3rem', flexDirection: 'column', md: 'row' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '3rem' }}>
+            <div className="container" style={{ padding: '2rem 1rem', display: 'flex', gap: '2rem', flexDirection: 'column', md: 'row' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem' }}>
 
                     {/* Sidebar Filters */}
                     <aside style={{ height: 'fit-content', position: 'sticky', top: '100px' }}>
-                        <div className="glass-card" style={{ padding: '2rem' }}>
-                            <div className="flex items-center gap-2" style={{ marginBottom: '2rem' }}>
-                                <Filter size={20} className="text-muted" />
-                                <h3>Filters</h3>
-                            </div>
-
-                            {/* Categories */}
-                            <div style={{ marginBottom: '2.5rem' }}>
-                                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>CATEGORIES</h4>
-                                <div className="flex flex-col gap-2">
-                                    {categories.map(category => (
-                                        <button
-                                            key={category}
-                                            onClick={() => setSelectedCategory(category)}
-                                            style={{
-                                                textAlign: 'left',
-                                                padding: '0.75rem 1rem',
-                                                borderRadius: 'var(--radius-md)',
-                                                background: selectedCategory === category ? 'var(--primary)' : 'transparent',
-                                                color: selectedCategory === category ? 'white' : 'var(--text-muted)',
-                                                fontWeight: selectedCategory === category ? '600' : '400',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                transition: 'all 0.2s',
-                                                fontSize: '0.95rem'
-                                            }}
-                                            onMouseEnter={(e) => selectedCategory !== category && (e.currentTarget.style.background = 'hsla(230, 85%, 60%, 0.1)')}
-                                            onMouseLeave={(e) => selectedCategory !== category && (e.currentTarget.style.background = 'transparent')}
-                                        >
-                                            {category}
-                                            {selectedCategory === category && <Check size={14} />}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Price Slider */}
-                            <div style={{ marginBottom: '2.5rem' }}>
-                                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>PRICE</h4>
-                                <div style={{ padding: '0 0.5rem' }}>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="5000"
-                                        step="100"
-                                        value={sliderValue}
-                                        onChange={(e) => setSliderValue(Number(e.target.value))}
-                                        onMouseUp={() => setPriceRange(sliderValue)}
-                                        onTouchEnd={() => setPriceRange(sliderValue)}
-                                        style={{
-                                            background: `linear-gradient(to right, var(--primary) ${(sliderValue / 5000) * 100}%, var(--border) ${(sliderValue / 5000) * 100}%)`
-                                        }}
-                                        className="price-slider"
-                                    />
-                                    <div className="flex justify-between text-muted" style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-                                        <span>Min</span>
-                                        <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Up to ₹{sliderValue}</span>
-                                    </div>
-                                </div>
-                            </div>
-
+                        <div className="glass-card" style={{ padding: '1.5rem' }}>
                             {/* Sort By */}
-                            <div>
+                            <div style={{ marginBottom: '2.5rem' }}>
                                 <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>SORT BY</h4>
                                 <div className="flex flex-col gap-2">
                                     {/* Featured Toggle Button */}
@@ -248,6 +187,69 @@ export default function Home() {
                                     )}
                                 </div>
                             </div>
+
+                            <div className="flex items-center gap-2" style={{ marginBottom: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+                                <Filter size={20} className="text-muted" />
+                                <h3>Filters</h3>
+                            </div>
+
+                            {/* Categories */}
+                            <div style={{ marginBottom: '2.5rem' }}>
+                                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>CATEGORIES</h4>
+                                <div className="flex flex-col gap-2">
+                                    {categories.map(category => (
+                                        <button
+                                            key={category}
+                                            onClick={() => setSelectedCategory(category)}
+                                            style={{
+                                                textAlign: 'left',
+                                                padding: '0.75rem 1rem',
+                                                borderRadius: 'var(--radius-md)',
+                                                background: selectedCategory === category ? 'var(--primary)' : 'transparent',
+                                                color: selectedCategory === category ? 'white' : 'var(--text-muted)',
+                                                fontWeight: selectedCategory === category ? '600' : '400',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                transition: 'all 0.2s',
+                                                fontSize: '0.95rem'
+                                            }}
+                                            onMouseEnter={(e) => selectedCategory !== category && (e.currentTarget.style.background = 'hsla(230, 85%, 60%, 0.1)')}
+                                            onMouseLeave={(e) => selectedCategory !== category && (e.currentTarget.style.background = 'transparent')}
+                                        >
+                                            {category}
+                                            {selectedCategory === category && <Check size={14} />}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Price Slider */}
+                            <div style={{ marginBottom: '2.5rem' }}>
+                                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>PRICE</h4>
+                                <div style={{ padding: '0 0.5rem' }}>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="5000"
+                                        step="100"
+                                        value={sliderValue}
+                                        onChange={(e) => setSliderValue(Number(e.target.value))}
+                                        onMouseUp={() => setPriceRange(sliderValue)}
+                                        onTouchEnd={() => setPriceRange(sliderValue)}
+                                        style={{
+                                            background: `linear-gradient(to right, var(--primary) ${(sliderValue / 5000) * 100}%, var(--border) ${(sliderValue / 5000) * 100}%)`
+                                        }}
+                                        className="price-slider"
+                                    />
+                                    <div className="flex justify-between text-muted" style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                                        <span>Min</span>
+                                        <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Up to ₹{sliderValue}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+
                         </div>
                     </aside>
 
@@ -276,8 +278,8 @@ export default function Home() {
                                 >
                                     <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
                                         <img
-                                            src={product.imageUrl}
-                                            alt={product.name}
+                                            src={product.imageUrl || product.image}
+                                            alt={product.name || product.title}
                                             style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s' }}
                                             onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
                                             onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
@@ -294,7 +296,7 @@ export default function Home() {
                                             </div>
                                         </div>
 
-                                        <h3 style={{ fontSize: '1.1rem', marginBottom: 'auto', lineHeight: 1.4 }}>{product.name}</h3>
+                                        <h3 style={{ fontSize: '1.1rem', marginBottom: 'auto', lineHeight: 1.4 }}>{product.name || product.title}</h3>
 
                                         <div style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                             <div>

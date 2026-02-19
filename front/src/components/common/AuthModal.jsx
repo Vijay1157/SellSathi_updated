@@ -292,8 +292,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
     };
 
     const handleGoogleSignIn = async () => {
-        // Switch to email login view as requested
-        setIsEmailLogin(true);
+        if (isRegistering) {
+            setIsEmailSignup(true);
+        } else {
+            setIsEmailLogin(true);
+        }
         setError('');
     };
 
@@ -464,12 +467,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                 <button type="submit" className="auth-submit-btn" disabled={loading}>
                                     {loading ? 'Logging in...' : 'Login with Email'}
                                 </button>
-                                <button type="button" className="auth-back-link" onClick={() => setIsEmailLogin(false)}>Back to Phone Login</button>
+                                <div className="auth-form-footer">
+                                    <p>Don't have an account? <button type="button" onClick={() => { setIsEmailLogin(false); setIsRegistering(true); }}>Register</button></p>
+                                    <button type="button" className="auth-back-link" onClick={() => setIsEmailLogin(false)}>Back to Phone Login</button>
+                                </div>
                             </div>
                         </form>
                     ) : isEmailSignup ? (
                         <form onSubmit={handleRegisterDirectly} className="auth-form">
                             <div className="auth-fields-grid">
+                                <div className="auth-input-group">
+                                    <UserIcon size={18} className="auth-field-icon" />
+                                    <input
+                                        type="text"
+                                        placeholder="Full Name"
+                                        value={formData.fullName}
+                                        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                                        required
+                                    />
+                                </div>
                                 <div className="auth-input-group">
                                     <Mail size={18} className="auth-field-icon" />
                                     <input
@@ -517,7 +533,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                 <button type="submit" className="auth-submit-btn" disabled={loading}>
                                     {loading ? 'Registering...' : 'Register with Email'}
                                 </button>
-                                <button type="button" className="auth-back-link" onClick={() => setIsEmailSignup(false)}>Back to Phone Login</button>
+                                <div className="auth-form-footer">
+                                    <p>Already have an account? <button type="button" onClick={() => { setIsEmailSignup(false); setIsEmailLogin(true); }}>Login</button></p>
+                                    <button type="button" className="auth-back-link" onClick={() => setIsEmailSignup(false)}>Back to Phone Login</button>
+                                </div>
                             </div>
                         </form>
                     ) : (
@@ -696,6 +715,14 @@ const modalStyles = `
     padding: 1.5rem;
 }
 
+/* Hide native browser password reveal icon */
+input::-ms-reveal,
+input::-ms-clear,
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button {
+    display: none !important;
+}
+
 .auth-modal-content {
     background: var(--background);
     border: 1px solid var(--border);
@@ -793,9 +820,39 @@ const modalStyles = `
     transition: all 0.2s;
 }
 
-.auth-input-group input:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+.auth-form-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.auth-form-footer p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.auth-form-footer p button {
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.auth-form-footer p button:hover {
+    text-decoration: underline;
+}
+
+.auth-back-link {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: color 0.2s;
 }
 
 .phone-input-wrapper {

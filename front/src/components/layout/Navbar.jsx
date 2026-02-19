@@ -105,6 +105,9 @@ export default function Navbar() {
                                 style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingRight: '12px' }}
                             >
                                 <User size={20} />
+                                <span style={{ fontSize: '0.9rem', fontWeight: '600', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {user.fullName || user.phone?.split('@')[0] || 'User'}
+                                </span>
                                 <ChevronDown size={16} style={{ marginLeft: '4px' }} />
                             </button>
 
@@ -133,31 +136,38 @@ export default function Navbar() {
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                                             <div style={{
-                                                width: '40px',
-                                                height: '40px',
+                                                width: '44px',
+                                                height: '44px',
                                                 borderRadius: '50%',
                                                 background: 'var(--primary)',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                color: 'white'
+                                                color: 'white',
+                                                fontWeight: 'bold',
+                                                fontSize: '1.2rem'
                                             }}>
-                                                <User size={20} />
+                                                {(user.fullName || 'U').charAt(0).toUpperCase()}
                                             </div>
-                                            <div>
-                                                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>Phone Number</p>
-                                                <p style={{ fontSize: '0.95rem', fontWeight: 'bold', margin: '4px 0 0 0' }}>{user.phone}</p>
+                                            <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                <p style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {user.fullName || 'User'}
+                                                </p>
+                                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {user.email || user.phone}
+                                                </p>
                                             </div>
                                         </div>
                                         <div style={{
                                             fontSize: '0.75rem',
-                                            padding: '6px 8px',
-                                            backgroundColor: 'var(--primary)',
-                                            color: 'white',
+                                            padding: '4px 8px',
+                                            backgroundColor: 'hsla(230, 85%, 60%, 0.1)',
+                                            color: 'var(--primary)',
                                             borderRadius: '4px',
-                                            textAlign: 'center',
+                                            display: 'inline-block',
                                             textTransform: 'capitalize',
-                                            fontWeight: 'bold'
+                                            fontWeight: 'bold',
+                                            marginBottom: '4px'
                                         }}>
                                             {user.role}
                                         </div>
