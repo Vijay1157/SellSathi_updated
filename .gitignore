@@ -9,7 +9,7 @@ back/node_modules/
 .env.production
 
 # Firebase secret key
-serviceAccountKey.json
+gitserviceAccountKey.json
 
 # Logs
 npm-debug.log*

@@ -21,7 +21,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
     const [confirmationResult, setConfirmationResult] = useState(null);
     const [isTestNumber, setIsTestNumber] = useState(false);
     const [formData, setFormData] = useState({
-        fullName: '',
         email: '',
         password: '',
         confirmPassword: '',
@@ -125,7 +124,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 return;
             }
         } else {
-            if (!formData.fullName.trim() || !formData.email.trim() || !formData.password.trim()) {
+            if (!formData.email.trim() || !formData.password.trim()) {
                 setError('Please fill in all information');
                 return;
             }
@@ -157,7 +156,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 const user = userCredential.user;
 
                 // Updated name
-                await updateProfile(user, { displayName: formData.fullName });
+                const displayName = formData.email.split('@')[0];
+                await updateProfile(user, { displayName });
                 idToken = await user.getIdToken();
             } catch (fbErr) {
                 console.warn('Firebase Auth Error:', fbErr);
@@ -176,7 +176,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 body: JSON.stringify({
                     idToken,
                     isTest: currentIsTest,
-                    fullName: formData.fullName || 'User',
                     email: formData.email,
                     phone: isEmailSignup ? null : `+91${phone}`,
                     password: formData.password
@@ -191,7 +190,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                     role: data.role,
                     phone: `+91${phone}`,
                     email: formData.email,
-                    fullName: formData.fullName,
                     isDevMode: currentIsTest
                 };
                 localStorage.setItem('user', JSON.stringify(userData));
@@ -239,7 +237,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
             const payload = isRegistering ? {
                 idToken,
                 phone: phoneNumber,
-                fullName: formData.fullName,
                 email: formData.email,
                 password: formData.password,
                 isTest: isTestNumber,
@@ -404,7 +401,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
         setIsTestNumber(false);
         setIsRegistering(false);
         setIsEmailSignup(false);
-        setFormData({ fullName: '', email: '', password: '', confirmPassword: '', agreedToTerms: false, agreedToPrivacy: false });
+        setFormData({ email: '', password: '', confirmPassword: '', agreedToTerms: false, agreedToPrivacy: false });
         cleanupRecaptcha();
         onClose();
     };
@@ -477,16 +474,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                         <form onSubmit={handleRegisterDirectly} className="auth-form">
                             <div className="auth-fields-grid">
                                 <div className="auth-input-group">
-                                    <UserIcon size={18} className="auth-field-icon" />
-                                    <input
-                                        type="text"
-                                        placeholder="Full Name"
-                                        value={formData.fullName}
-                                        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                                <div className="auth-input-group">
                                     <Mail size={18} className="auth-field-icon" />
                                     <input
                                         type="email"
@@ -545,16 +532,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                 <div className="auth-fields-grid">
                                     {isRegistering && (
                                         <>
-                                            <div className="auth-input-group">
-                                                <UserIcon size={18} className="auth-field-icon" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Full Name"
-                                                    value={formData.fullName}
-                                                    onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                                                    required
-                                                />
-                                            </div>
                                             <div className="auth-input-group">
                                                 <Mail size={18} className="auth-field-icon" />
                                                 <input
