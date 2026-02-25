@@ -1,340 +1,563 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Filter, ShoppingCart, Star, Heart, SlidersHorizontal, ChevronDown, Check } from 'lucide-react';
-import { collection, getDocs } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
+import { ShoppingCart, Star, Heart, Eye, ArrowRight, ChevronLeft, ChevronRight, Clock, Zap, TrendingUp, Sparkles, Award } from 'lucide-react';
+import { collection, getDocs, limit, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { seedProducts } from '../../utils/seedData';
 import { addToCart } from '../../utils/cartUtils';
+import { addToWishlist, removeFromWishlist, listenToWishlist } from '../../utils/wishlistUtils';
+import QuickViewModal from '../../components/common/QuickViewModal';
+
+const HERO_SLIDES = [
+    {
+        id: 1,
+        title: "Summer Fashion Collection",
+        subtitle: "Explore our curated collection of trending summer fashion pieces",
+        badge: "New Season",
+        image: "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=1600&auto=format&fit=crop&q=80",
+        btnText: "Shop Now",
+        link: "/products?category=Fashion"
+    },
+    {
+        id: 2,
+        title: "Premium Electronics",
+        subtitle: "Experience cutting-edge technology with our premium electronics",
+        badge: "Featured",
+        image: "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=1600&auto=format&fit=crop&q=80",
+        btnText: "Discover More",
+        link: "/products?category=Electronics"
+    },
+    {
+        id: 3,
+        title: "Luxury Accessories",
+        subtitle: "Complete your look with our premium accessories collection",
+        badge: "Limited Edition",
+        image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1600&auto=format&fit=crop&q=80",
+        btnText: "View Collection",
+        link: "/products?category=Accessories"
+    }
+];
+
+
+const TODAY_DEALS = [
+    {
+        id: "deal-1",
+        name: "MacBook Pro M2 Max",
+        category: "Electronics",
+        price: 129999,
+        oldPrice: 149498,
+        discount: "13% OFF",
+        image: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800",
+        rating: 4.8,
+        reviews: 1256,
+        timer: "7h 56m",
+        colors: ["#3D3D3F", "#E3E4E5"]
+    },
+    {
+        id: "deal-2",
+        name: "Sony WH-1000XM4 Noise Cancelling",
+        category: "Electronics",
+        price: 19999,
+        oldPrice: 29999,
+        discount: "33% OFF",
+        image: "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=800",
+        rating: 4.9,
+        reviews: 892,
+        timer: "11h 56m",
+        colors: ["#000000", "#C9C4B9"],
+        stock: 0,
+        status: 'Out of Stock'
+    },
+    {
+        id: "deal-3",
+        name: "Apple Watch Series 8",
+        category: "Electronics",
+        price: 34999,
+        oldPrice: 42999,
+        discount: "18% OFF",
+        image: "https://images.unsplash.com/photo-1434494878577-86c23bddad0f?w=800",
+        rating: 4.8,
+        reviews: 567,
+        timer: "3h 56m",
+        colors: ["#1C1C1C", "#E3E4E5", "#0F1626"]
+    },
+    {
+        id: "deal-4",
+        name: "iPad Pro M2 12.9",
+        category: "Electronics",
+        price: 99999,
+        oldPrice: 112999,
+        discount: "11% OFF",
+        image: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=800",
+        rating: 4.9,
+        reviews: 345,
+        timer: "5h 56m",
+        colors: ["#3D3D3F", "#E3E4E5"],
+        stock: 0,
+        status: 'Out of Stock'
+    }
+];
+
+const homeStyles = `
+    .product-uniform-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2.5rem; }
+    .product-card-premium { 
+        background: white; 
+        border-radius: 28px; 
+        padding: 1.25rem; 
+        border: 1px solid #f1f5f9; 
+        transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+        display: flex; 
+        flex-direction: column; 
+        height: 100%; 
+        cursor: pointer;
+        position: relative;
+    }
+    .product-card-premium:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.06);
+    }
+    .card-media { 
+        height: 280px; 
+        background: #f8fafc; 
+        border-radius: 20px; 
+        position: relative; 
+        overflow: hidden; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        margin-bottom: 1.25rem; 
+        padding: 2rem;
+    }
+    .card-media img { 
+        max-width: 100%; 
+        max-height: 100%; 
+        object-fit: contain; 
+        transition: 0.5s;
+    }
+    .product-card-premium:hover .card-media img {
+        transform: scale(1.08);
+    }
+    .discount-badge { 
+        position: absolute; 
+        top: 1rem; 
+        left: 1rem; 
+        background: #E11D48; 
+        color: white; 
+        padding: 0.4rem 0.75rem; 
+        border-radius: 10px; 
+        font-weight: 800; 
+        font-size: 0.75rem; 
+        z-index: 2;
+    }
+    
+    .overlay-tools {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        z-index: 3;
+    }
+    .tool-btn {
+        width: 42px;
+        height: 42px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        border: none;
+        cursor: pointer;
+        transition: 0.3s;
+        color: #64748b;
+    }
+    .tool-btn:hover {
+        background: white;
+        transform: scale(1.1);
+        color: var(--primary);
+    }
+    .tool-btn.active {
+        color: #ef4444;
+    }
+
+    .card-info { flex: 1; display: flex; flex-direction: column; }
+    .card-info .category { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; }
+    .card-info .title { font-size: 1.15rem; font-weight: 800; margin: 0.5rem 0 0.75rem; color: #1e293b; line-height: 1.4; height: 3.2em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    
+    .rating-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
+    .rating-row span { font-size: 0.85rem; font-weight: 700; color: #64748b; }
+
+    .info-bottom { 
+        margin-top: auto; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+    }
+    .price-group { display: flex; flex-direction: column; gap: 0.1rem; }
+    .current-price { font-size: 1.4rem; font-weight: 950; color: #0f172a; }
+    .old-price { font-size: 0.9rem; text-decoration: line-through; color: #94a3b8; font-weight: 600; }
+    
+    .add-to-cart-simple { 
+        width: 48px; 
+        height: 48px; 
+        background: #4f46e5; 
+        color: white; 
+        border-radius: 14px; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        transition: 0.3s; 
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+    }
+    .add-to-cart-simple:hover { 
+        background: #4338ca; 
+        transform: scale(1.05); 
+        box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3);
+    }
+    
+    .hero-carousel { height: 700px; }
+    .hero-slide { height: 100%; background-size: cover; background-position: center; display: flex; align-items: center; color: white; }
+    
+    .section { padding: 5rem 0; }
+    .section-header-compact { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3rem; }
+    .title-modern { font-size: 2.5rem; font-weight: 900; }
+`;
 
 export default function Home() {
-    const [products, setProducts] = useState([]);
-    const [filteredProducts, setFilteredProducts] = useState([]);
+    const [currentSlide, setCurrentSlide] = useState(0);
+    const [featuredProducts, setFeaturedProducts] = useState([]);
+    const [latestProducts, setLatestProducts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [wishlist, setWishlist] = useState([]);
+    const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
+    const [selectedQuickProduct, setSelectedQuickProduct] = useState(null);
+    const navigate = useNavigate();
 
-    // Filters State
-    const [categories, setCategories] = useState([]);
-    const [selectedCategory, setSelectedCategory] = useState('All');
-    const [priceRange, setPriceRange] = useState(5000); // Trigger for filtering
-    const [sliderValue, setSliderValue] = useState(5000); // Visual slider state
-    const [visibleCount, setVisibleCount] = useState(4); // Pagination
-    const [sortBy, setSortBy] = useState('featured');
+    useEffect(() => {
+        const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
+        setWishlist(saved);
+    }, []);
 
-    // Fetch & Seed Data
     useEffect(() => {
         const fetchData = async () => {
-            await seedProducts(); // Run once to ensure data exists
-
             try {
-                const querySnapshot = await getDocs(collection(db, "products"));
-                const productsData = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
+                const productsCol = collection(db, "products");
 
-                setProducts(productsData);
-                setFilteredProducts(productsData);
+                // Fetch Featured
+                const qFeatured = query(productsCol, limit(8));
+                const snapFeatured = await getDocs(qFeatured);
+                let featured = snapFeatured.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                // Extract unique categories
-                const uniqueCategories = ['All', ...new Set(productsData.map(p => p.category))];
-                setCategories(uniqueCategories);
+                // Add fallback mock data if Firestore is empty
+                if (featured.length === 0) {
+                    featured = [
+                        {
+                            id: "deal-1", name: "MacBook Pro M2 Max", price: 129999, oldPrice: 149498, rating: 4.8, reviews: 1256, category: "Electronics",
+                            image: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800", discount: "13% OFF",
+                            colors: ["#3D3D3F", "#E3E4E5"],
+                            storage: [{ label: "512GB", priceOffset: 0 }, { label: "1TB", priceOffset: 20000 }]
+                        },
+                        {
+                            id: "deal-2", name: "Sony WH-1000XM4 Noise Cancelling", price: 19999, oldPrice: 29999, rating: 4.9, reviews: 892, category: "Electronics",
+                            image: "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=800", discount: "33% OFF",
+                            colors: ["#000000", "#C9C4B9"],
+                            stock: 0, status: 'Out of Stock'
+                        },
+                        {
+                            id: "deal-3", name: "Apple Watch Series 8", price: 34999, oldPrice: 42999, rating: 4.8, reviews: 567, category: "Electronics",
+                            image: "https://images.unsplash.com/photo-1434494878577-86c23bddad0f?w=800", discount: "18% OFF",
+                            colors: ["#1C1C1C", "#E3E4E5", "#0F1626"]
+                        },
+                        {
+                            id: "deal-4", name: "iPad Pro M2 12.9", price: 99999, oldPrice: 112999, rating: 4.9, reviews: 345, category: "Electronics",
+                            image: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=800", discount: "11% OFF",
+                            colors: ["#3D3D3F", "#E3E4E5"],
+                            stock: 0, status: 'Out of Stock'
+                        }
+                    ];
+                }
 
+                setFeaturedProducts(featured);
+                setLatestProducts(featured.slice().reverse());
                 setLoading(false);
-            } catch (error) {
-                console.error("Error fetching products:", error);
+            } catch (err) {
+                console.error(err);
                 setLoading(false);
             }
         };
-
         fetchData();
+
+        const timer = setInterval(() => {
+            setCurrentSlide(prev => (prev + 1) % HERO_SLIDES.length);
+        }, 5000);
+        return () => clearInterval(timer);
     }, []);
 
-    const [searchParams] = useSearchParams();
-    const searchQuery = searchParams.get('search')?.toLowerCase() || '';
+    const handleAddToCart = async (e, product) => {
+        if (e) e.stopPropagation();
+        const res = await addToCart(product);
+        if (res.success) navigate('/checkout');
+    };
 
-    const [showPriceSort, setShowPriceSort] = useState(false);
-
-    // Filter Logic
+    // Listen to wishlist changes
     useEffect(() => {
-        if (!products.length) return;
+        console.log('🎬 Home: Setting up wishlist listener');
+        const unsubscribe = listenToWishlist((items) => {
+            console.log('🔄 Home: Received wishlist update with', items.length, 'items:', items.map(i => i.id));
+            setWishlist(items);
+        });
+        return () => {
+            console.log('🛑 Home: Cleaning up wishlist listener');
+            unsubscribe();
+        };
+    }, []);
 
-        let result = [...products]; // Always work on a fresh copy
-
-        // Search Filter
-        if (searchQuery) {
-            result = result.filter(product =>
-                product.name.toLowerCase().includes(searchQuery) ||
-                (product.description && product.description.toLowerCase().includes(searchQuery)) ||
-                (product.category && product.category.toLowerCase().includes(searchQuery))
-            );
+    const toggleWishlist = async (e, product) => {
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
         }
-
-        // Category Filter
-        if (selectedCategory && selectedCategory !== 'All') {
-            result = result.filter(product => product.category === selectedCategory);
+        
+        console.log('🎯 toggleWishlist clicked for product:', product.id);
+        console.log('🎯 Current wishlist state:', wishlist.map(i => i.id));
+        
+        const alreadySaved = wishlist.some(item => item.id === product.id);
+        console.log('🎯 Already in wishlist?', alreadySaved);
+        
+        try {
+            if (alreadySaved) {
+                console.log('🎯 Removing from wishlist...');
+                const result = await removeFromWishlist(product.id);
+                if (result.success) {
+                    console.log('✅ Removed successfully');
+                } else {
+                    console.error('❌ Remove failed:', result.message);
+                }
+            } else {
+                console.log('🎯 Adding to wishlist...');
+                const result = await addToWishlist(product);
+                if (result.success) {
+                    console.log('✅ Added successfully');
+                } else {
+                    console.error('❌ Add failed:', result.message);
+                }
+            }
+        } catch (error) {
+            console.error('❌ toggleWishlist error:', error);
         }
-
-        // Price Filter
-        result = result.filter(product => Number(product.price) <= priceRange);
-
-        // Sorting
-        if (sortBy === 'lowToHigh') {
-            result.sort((a, b) => Number(a.price) - Number(b.price));
-        } else if (sortBy === 'highToLow') {
-            result.sort((a, b) => Number(b.price) - Number(a.price));
-        }
-
-        setFilteredProducts(result);
-        setVisibleCount(4);
-    }, [products, selectedCategory, priceRange, sortBy, searchQuery]);
-
-    const handleFeaturedClick = () => {
-        setSortBy('featured');
-        setShowPriceSort(!showPriceSort);
     };
 
-    const handleAddToCart = async (product) => {
-        const result = await addToCart(product);
-        if (result.success) {
-            alert(result.message);
-        } else {
-            alert(result.message);
-        }
+    const openQuickView = (e, product) => {
+        if (e) e.stopPropagation();
+        setSelectedQuickProduct(product);
+        setIsQuickViewOpen(true);
     };
 
-    if (loading) {
+    const ProductCard = ({ product, index }) => {
+        if (!product || !product.id) return null;
+        const isWishlisted = wishlist.some(item => item.id === product.id);
+
         return (
-            <div className="container" style={{ padding: '4rem 0', display: 'flex', justifyContent: 'center' }}>
-                <div className="animate-spin" style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTop: '3px solid var(--primary)', borderRadius: '50%' }}></div>
-            </div>
+            <motion.div
+                className="product-card-premium"
+                whileHover={{ y: -8 }}
+                onClick={() => {
+                    const recentlyViewed = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');
+                    const filtered = recentlyViewed.filter(item => item.id !== product.id);
+                    const updated = [product, ...filtered].slice(0, 8);
+                    localStorage.setItem('recentlyViewed', JSON.stringify(updated));
+                    navigate("/product/" + product.id);
+                }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+            >
+                <div className="card-media">
+                    {product.discount && <span className="discount-badge">{product.discount}</span>}
+                    <img src={product.image || product.imageUrl} alt={product.name} />
+                    <div className="overlay-tools">
+                        <button
+                            onClick={(e) => toggleWishlist(e, product)}
+                            className={`tool-btn ${isWishlisted ? 'active' : ''}`}
+                            title="Add to Wishlist"
+                        >
+                            <Heart
+                                size={18}
+                                fill={isWishlisted ? "#ef4444" : "none"}
+                                color={isWishlisted ? "#ef4444" : "currentColor"}
+                            />
+                        </button>
+                        <button
+                            onClick={(e) => openQuickView(e, product)}
+                            className="tool-btn"
+                            title="Quick View"
+                        >
+                            <Eye size={18} />
+                        </button>
+                    </div>
+                </div>
+                <div className="card-info">
+                    <span className="category">{product.category || 'Product'}</span>
+                    <h3 className="title">{product.name}</h3>
+
+                    <div className="rating-row">
+                        <Star size={14} fill="#FFB800" color="#FFB800" />
+                        <span>{product.rating || 4.5}</span>
+                        {(product.stock === 0 || product.status === 'Out of Stock') && (
+                            <span style={{ color: '#ef4444', marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 800 }}>OUT OF STOCK</span>
+                        )}
+                    </div>
+
+                    <div className="info-bottom">
+                        <div className="price-group">
+                            <span className="current-price">₹{(product.price || 0).toLocaleString()}</span>
+                            {product.oldPrice && <span className="old-price">₹{product.oldPrice.toLocaleString()}</span>}
+                        </div>
+                        <button
+                            onClick={(e) => handleAddToCart(e, product)}
+                            className="add-to-cart-simple"
+                            title="Add to Cart"
+                            disabled={product.stock === 0 || product.status === 'Out of Stock'}
+                            style={product.stock === 0 || product.status === 'Out of Stock' ? { opacity: 0.5, cursor: 'not-allowed', background: '#94a3b8' } : {}}
+                        >
+                            <ShoppingCart size={18} />
+                        </button>
+                    </div>
+                </div>
+            </motion.div>
         );
-    }
+    };
 
     return (
-        <div className="animate-fade-in">
-            {/* Header/Banner Section could go here if needed, but per request keeping it focused on Marketplace UI */}
-
-            <div className="container" style={{ padding: '2rem 1rem', display: 'flex', gap: '2rem', flexDirection: 'column', md: 'row' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem' }}>
-
-                    {/* Sidebar Filters */}
-                    <aside style={{ height: 'fit-content', position: 'sticky', top: '100px' }}>
-                        <div className="glass-card" style={{ padding: '1.5rem' }}>
-                            {/* Sort By */}
-                            <div style={{ marginBottom: '2.5rem' }}>
-                                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>SORT BY</h4>
-                                <div className="flex flex-col gap-2">
-                                    {/* Featured Toggle Button */}
-                                    <button
-                                        onClick={handleFeaturedClick}
-                                        style={{
-                                            textAlign: 'left',
-                                            padding: '0.75rem 1rem',
-                                            borderRadius: 'var(--radius-md)',
-                                            background: sortBy === 'featured' ? 'var(--primary)' : 'transparent',
-                                            color: sortBy === 'featured' ? 'white' : 'var(--text-muted)',
-                                            fontWeight: '600',
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            transition: 'all 0.2s',
-                                            fontSize: '0.95rem',
-                                            width: '100%'
-                                        }}
-                                        onMouseEnter={(e) => sortBy !== 'featured' && (e.currentTarget.style.background = 'hsla(230, 85%, 60%, 0.1)')}
-                                        onMouseLeave={(e) => sortBy !== 'featured' && (e.currentTarget.style.background = 'transparent')}
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            Featured
-                                        </span>
-                                        <ChevronDown size={14} style={{ transform: showPriceSort ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />
-                                    </button>
-
-                                    {/* Individual Price Sort Options - Revealed when Featured or expanded */}
-                                    {(showPriceSort || sortBy !== 'featured') && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: -10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            className="flex flex-col gap-2"
-                                            style={{ marginTop: '0.5rem', paddingLeft: '1rem', borderLeft: '2px solid var(--border)' }}
-                                        >
-                                            {[
-                                                { id: 'lowToHigh', label: 'Price: Low to High' },
-                                                { id: 'highToLow', label: 'Price: High to Low' }
-                                            ].map(option => (
-                                                <button
-                                                    key={option.id}
-                                                    onClick={() => setSortBy(option.id)}
-                                                    style={{
-                                                        textAlign: 'left',
-                                                        padding: '0.6rem 0.75rem',
-                                                        borderRadius: 'var(--radius-sm)',
-                                                        background: sortBy === option.id ? 'hsla(230, 85%, 60%, 0.1)' : 'transparent',
-                                                        color: sortBy === option.id ? 'var(--primary)' : 'var(--text-muted)',
-                                                        fontWeight: sortBy === option.id ? '600' : '400',
-                                                        display: 'flex',
-                                                        justifyContent: 'space-between',
-                                                        alignItems: 'center',
-                                                        transition: 'all 0.2s',
-                                                        fontSize: '0.85rem'
-                                                    }}
-                                                >
-                                                    {option.label}
-                                                    {sortBy === option.id && <Check size={14} />}
-                                                </button>
-                                            ))}
-                                        </motion.div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-2" style={{ marginBottom: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
-                                <Filter size={20} className="text-muted" />
-                                <h3>Filters</h3>
-                            </div>
-
-                            {/* Categories */}
-                            <div style={{ marginBottom: '2.5rem' }}>
-                                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>CATEGORIES</h4>
-                                <div className="flex flex-col gap-2">
-                                    {categories.map(category => (
-                                        <button
-                                            key={category}
-                                            onClick={() => setSelectedCategory(category)}
-                                            style={{
-                                                textAlign: 'left',
-                                                padding: '0.75rem 1rem',
-                                                borderRadius: 'var(--radius-md)',
-                                                background: selectedCategory === category ? 'var(--primary)' : 'transparent',
-                                                color: selectedCategory === category ? 'white' : 'var(--text-muted)',
-                                                fontWeight: selectedCategory === category ? '600' : '400',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                transition: 'all 0.2s',
-                                                fontSize: '0.95rem'
-                                            }}
-                                            onMouseEnter={(e) => selectedCategory !== category && (e.currentTarget.style.background = 'hsla(230, 85%, 60%, 0.1)')}
-                                            onMouseLeave={(e) => selectedCategory !== category && (e.currentTarget.style.background = 'transparent')}
-                                        >
-                                            {category}
-                                            {selectedCategory === category && <Check size={14} />}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Price Slider */}
-                            <div style={{ marginBottom: '2.5rem' }}>
-                                <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>PRICE</h4>
-                                <div style={{ padding: '0 0.5rem' }}>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="5000"
-                                        step="100"
-                                        value={sliderValue}
-                                        onChange={(e) => setSliderValue(Number(e.target.value))}
-                                        onMouseUp={() => setPriceRange(sliderValue)}
-                                        onTouchEnd={() => setPriceRange(sliderValue)}
-                                        style={{
-                                            background: `linear-gradient(to right, var(--primary) ${(sliderValue / 5000) * 100}%, var(--border) ${(sliderValue / 5000) * 100}%)`
-                                        }}
-                                        className="price-slider"
-                                    />
-                                    <div className="flex justify-between text-muted" style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-                                        <span>Min</span>
-                                        <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Up to ₹{sliderValue}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-
-                        </div>
-                    </aside>
-
-                    {/* Main Content */}
-                    <main>
-                        {/* Header */}
-                        <div className="flex justify-between items-end" style={{ marginBottom: '2rem' }}>
-                            <div>
-                                <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>All <span className="gradient-text">Products</span></h2>
-                                <p className="text-muted">Showing {filteredProducts.length} results</p>
-                            </div>
+        <div className="home-wrapper">
+            {/* Hero Section */}
+            <section className="hero-carousel">
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={currentSlide}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="hero-slide"
+                        style={{ backgroundImage: "linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url(" + HERO_SLIDES[currentSlide].image + ")" }}
+                    >
+                        <div className="container hero-content">
+                            <motion.span
+                                initial={{ y: 20, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                className="hero-badge"
+                            >
+                                <Sparkles size={14} /> {HERO_SLIDES[currentSlide].badge}
+                            </motion.span>
+                            <motion.h1
+                                initial={{ y: 30, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.2 }}
+                            >
+                                {HERO_SLIDES[currentSlide].title}
+                            </motion.h1>
+                            <motion.p
+                                initial={{ y: 30, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.3 }}
+                            >
+                                {HERO_SLIDES[currentSlide].subtitle}
+                            </motion.p>
+                            <motion.div
+                                initial={{ y: 30, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.4 }}
+                                className="hero-btns"
+                            >
+                                <Link to={HERO_SLIDES[currentSlide].link} className="btn-modern btn-main">
+                                    Shop Collection
+                                    <ArrowRight size={18} />
+                                </Link>
+                                <button className="btn-modern btn-outline">Explore Brands</button>
+                            </motion.div>
                         </div>
 
-                        {/* Product Grid */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '2rem', marginBottom: '3rem' }}>
-                            {filteredProducts.slice(0, visibleCount).map((product) => (
-                                <motion.div
-                                    key={product.id}
-                                    layout
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    whileHover={{ y: -8 }}
-                                    className="glass-card"
-                                    style={{ overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}
-                                >
-                                    <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
-                                        <img
-                                            src={product.imageUrl || product.image}
-                                            alt={product.name || product.title}
-                                            style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s' }}
-                                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                        />
-                                    </div>
+                        <div className="carousel-nav">
+                            <button className="nav-btn" onClick={() => setCurrentSlide(prev => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)}>
+                                <ChevronLeft size={24} />
+                            </button>
+                            <button className="nav-btn" onClick={() => setCurrentSlide(prev => (prev + 1) % HERO_SLIDES.length)}>
+                                <ChevronRight size={24} />
+                            </button>
+                        </div>
 
-                                    {/* Content */}
-                                    <div style={{ padding: '1.5rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                        <div className="flex justify-between items-start" style={{ marginBottom: '0.5rem' }}>
-                                            <span className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{product.category}</span>
-                                            <div className="flex items-center gap-1" style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                                                <Star size={12} fill="var(--warning)" color="var(--warning)" />
-                                                <span>4.8</span>
-                                            </div>
-                                        </div>
-
-                                        <h3 style={{ fontSize: '1.1rem', marginBottom: 'auto', lineHeight: 1.4 }}>{product.name || product.title}</h3>
-
-                                        <div style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                            <div>
-                                                <span className="text-muted" style={{ fontSize: '0.8rem', textDecoration: 'line-through' }}>₹{Math.round(product.price * 1.2)}</span>
-                                                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text)' }}>
-                                                    ₹{product.price}
-                                                </div>
-                                            </div>
-                                            <button
-                                                onClick={() => handleAddToCart(product)}
-                                                className="btn btn-primary"
-                                                style={{ borderRadius: '50%', width: '42px', height: '42px', padding: 0 }}
-                                                title="Add to Cart"
-                                            >
-                                                <ShoppingCart size={18} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </motion.div>
+                        <div className="carousel-dots">
+                            {HERO_SLIDES.map((_, i) => (
+                                <div
+                                    key={i}
+                                    className={"dot " + (currentSlide === i ? 'active' : '')}
+                                    onClick={() => setCurrentSlide(i)}
+                                />
                             ))}
                         </div>
+                    </motion.div>
+                </AnimatePresence>
+            </section>
 
-                        {/* Load More Button */}
-                        {visibleCount < filteredProducts.length && (
-                            <div className="flex justify-center" style={{ marginBottom: '2rem' }}>
-                                <button
-                                    className="btn btn-secondary"
-                                    onClick={() => setVisibleCount(prev => prev + 4)}
-                                    style={{ padding: '0.75rem 2rem', minWidth: '150px' }}
-                                >
-                                    Load More
-                                </button>
-                            </div>
-                        )}
-                    </main>
+
+            {/* Today's Deals */}
+            <section className="section deals-section">
+                <div className="container">
+                    <div className="section-header-compact">
+                        <div className="header-info">
+                            <h2 className="title-modern">Flash <span className="gradient-text">Deals</span></h2>
+                            <p>Grab them before they are gone!</p>
+                        </div>
+                    </div>
+
+                    <div className="product-uniform-grid">
+                        {TODAY_DEALS.map((deal, idx) => (
+                            <ProductCard key={deal.id} product={deal} index={idx} />
+                        ))}
+                    </div>
                 </div>
-            </div>
+            </section>
+
+            {/* Product Sections */}
+            {[
+                { title: "Featured Products", subtitle: "Our top picks for you", products: featuredProducts, bg: "bg-light", cat: "Electronics" },
+                { title: "Latest Releases", subtitle: "Stay ahead with the newest additions", products: latestProducts, bg: "bg-white", cat: "Fashion" }
+            ].map((sec, idx) => (
+                <section key={idx} className={"section " + sec.bg}>
+                    <div className="container">
+                        <div className="section-header-compact">
+                            <div className="header-info">
+                                <h2 className="title-modern">{sec.title.split(' ')[0]} <span className="gradient-text">{sec.title.split(' ').slice(1).join(' ')}</span></h2>
+                                <p>{sec.subtitle}</p>
+                            </div>
+                            <Link to={"/products?category=" + sec.cat} className="view-all-btn">Browse All <ArrowRight size={18} /></Link>
+                        </div>
+
+                        <div className="product-uniform-grid">
+                            {loading ? (
+                                [...Array(4)].map((_, i) => <div key={i} className="product-card skeleton" />)
+                            ) : (
+                                sec.products.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)
+                            )}
+                        </div>
+                    </div>
+                </section>
+            ))}
+
+            <QuickViewModal
+                isOpen={isQuickViewOpen}
+                onClose={() => setIsQuickViewOpen(false)}
+                product={selectedQuickProduct}
+                navigate={navigate}
+            />
+
+            <style>{homeStyles}</style>
         </div>
     );
 }
 
+// ... the rest of the file contents have been moved up ...

@@ -1,38 +1,28 @@
-import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import SellerAuthModal from '../common/SellerAuthModal';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function Footer() {
-    const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
+    const navigate = useNavigate();
 
     const handleBecomeSellerClick = () => {
-        // Check if user is logged in
-        const user = localStorage.getItem('user');
-        if (!user) {
-            alert('Please login as a customer first before becoming a seller');
+        const rawUser = localStorage.getItem('user');
+        if (!rawUser) {
+            alert('Please login as a customer first before becoming a seller.');
             return;
         }
 
-        const userData = JSON.parse(user);
+        const userData = JSON.parse(rawUser);
 
-        // Check if user is already a seller
-        if (userData.role === 'SELLER') {
-            alert('You are already registered as a seller');
-            return;
-        }
-
-        // Check if user is admin
+        // Admin accounts cannot apply as sellers
         if (userData.role === 'ADMIN') {
-            alert('Admin cannot become a seller');
+            alert('Admin accounts cannot become sellers.');
             return;
         }
 
-        // Open seller registration modal
-        setIsSellerModalOpen(true);
-    };
-
-    const handleSellerSuccess = () => {
-        setIsSellerModalOpen(false);
+        // For SELLER role — navigate to registration page which will:
+        //   • Show PENDING screen if application is under review
+        //   • Redirect to /seller/dashboard if already APPROVED
+        //   • Show registration form if somehow NONE
+        navigate('/seller/register');
     };
 
     return (
@@ -86,12 +76,6 @@ export default function Footer() {
                     <p className="text-muted">&copy; 2026 SELLSATHI Inc. All rights reserved.</p>
                 </div>
             </div>
-
-            <SellerAuthModal
-                isOpen={isSellerModalOpen}
-                onClose={() => setIsSellerModalOpen(false)}
-                onSuccess={handleSellerSuccess}
-            />
         </footer>
     );
 }

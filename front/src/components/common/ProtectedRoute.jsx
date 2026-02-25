@@ -38,6 +38,15 @@ export default function ProtectedRoute({ children, requiredRole = null }) {
                     }
                 }
                 
+                // Check for consumer access
+                if (requiredRole === 'CONSUMER') {
+                    if (userData.role !== 'CONSUMER') {
+                        console.warn(`Unauthorized consumer access - Role: ${userData.role}`);
+                        setIsAuthorized(false);
+                        return;
+                    }
+                }
+                
                 setIsAuthorized(true);
             } catch (error) {
                 console.error('Error parsing user data:', error);

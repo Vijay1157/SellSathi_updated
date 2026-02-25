@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wishlist Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+        }
+        .success { border-color: #4CAF50; background: #f1f8f4; }
+        .error { border-color: #f44336; background: #fef1f0; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background: #4CAF50;
+            color: white;
+            font-size: 16px;
+        }
+        button:hover { background: #45a049; }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .log {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-left: 4px solid #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Wishlist Debug Test</h1>
+    
+    <div class="test-section">
+        <h2>Step 1: Check Backend Server</h2>
+        <button onclick="testBackend()">Test Backend Connection</button>
+        <div id="backend-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Check Authentication</h2>
+        <p>User ID: <input type="text" id="userId" placeholder="Enter your Firebase UID" style="width: 300px; padding: 8px;"></p>
+        <button onclick="checkAuth()">Check Auth Status</button>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Test Add to Wishlist</h2>
+        <button onclick="testAddWishlist()">Add Test Product</button>
+        <div id="add-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 4: Test Get Wishlist</h2>
+        <button onclick="testGetWishlist()">Get Wishlist</button>
+        <div id="get-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 5: Test Remove from Wishlist</h2>
+        <p>Product ID: <input type="text" id="productId" placeholder="Enter product ID" style="width: 300px; padding: 8px;"></p>
+        <button onclick="testRemoveWishlist()">Remove Product</button>
+        <div id="remove-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Console Logs</h2>
+        <div id="console-logs"></div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'http://localhost:5000';
+        
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('console-logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log';
+            logEntry.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            logsDiv.insertBefore(logEntry, logsDiv.firstChild);
+            console.log(message);
+        }
+
+        async function testBackend() {
+            const resultDiv = document.getElementById('backend-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            log('🔵 Testing backend connection...');
+            
+            try {
+                const response = await fetch(BACKEND_URL);
+                const text = await response.text();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<p class="success">✅ Backend is running!</p><pre>${text}</pre>`;
+                    log('✅ Backend is running on port 5000');
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ Backend returned error: ${response.status}</p>`;
+                    log('❌ Backend error: ' + response.status);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Cannot connect to backend: ${error.message}</p>
+                    <p>Make sure backend is running: <code>cd back && npm start</code></p>`;
+                log('❌ Backend connection failed: ' + error.message);
+            }
+        }
+
+        function checkAuth() {
+            const userId = document.getElementById('userId').value;
+            const resultDiv = document.getElementById('auth-result');
+            
+            if (!userId) {
+                resultDiv.innerHTML = '<p class="error">❌ Please enter your Firebase UID</p>';
+                log('❌ No user ID provided');
+                return;
+            }
+            
+            resultDiv.innerHTML = `<p class="success">✅ User ID: ${userId}</p>
+                <p>This will be used for API calls</p>`;
+            log('✅ User ID set: ' + userId);
+        }
+
+        async function testAddWishlist() {
+            const userId = document.getElementById('userId').value;
+            const resultDiv = document.getElementById('add-result');
+            
+            if (!userId) {
+                resultDiv.innerHTML = '<p class="error">❌ Please enter User ID first (Step 2)</p>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>Adding test product...</p>';
+            log('🔵 Adding test product to wishlist...');
+            
+            const testProduct = {
+                id: 'test-' + Date.now(),
+                name: 'Test Product',
+                price: 999,
+                image: 'https://via.placeholder.com/150',
+                category: 'Test',
+                rating: 4.5,
+                reviews: 10
+            };
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/user/${userId}/wishlist/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product: testProduct })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `<p class="success">✅ Product added successfully!</p>
+                        <pre>${JSON.stringify(testProduct, null, 2)}</pre>
+                        <pre>Response: ${JSON.stringify(data, null, 2)}</pre>`;
+                    log('✅ Product added: ' + testProduct.id);
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ Failed: ${data.message}</p>`;
+                    log('❌ Add failed: ' + data.message);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                log('❌ Add error: ' + error.message);
+            }
+        }
+
+        async function testGetWishlist() {
+            const userId = document.getElementById('userId').value;
+            const resultDiv = document.getElementById('get-result');
+            
+            if (!userId) {
+                resultDiv.innerHTML = '<p class="error">❌ Please enter User ID first (Step 2)</p>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>Fetching wishlist...</p>';
+            log('🔵 Fetching wishlist...');
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/user/${userId}/wishlist`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `<p class="success">✅ Wishlist fetched! (${data.items.length} items)</p>
+                        <pre>${JSON.stringify(data.items, null, 2)}</pre>`;
+                    log('✅ Wishlist fetched: ' + data.items.length + ' items');
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ Failed: ${data.message}</p>`;
+                    log('❌ Fetch failed: ' + data.message);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                log('❌ Fetch error: ' + error.message);
+            }
+        }
+
+        async function testRemoveWishlist() {
+            const userId = document.getElementById('userId').value;
+            const productId = document.getElementById('productId').value;
+            const resultDiv = document.getElementById('remove-result');
+            
+            if (!userId) {
+                resultDiv.innerHTML = '<p class="error">❌ Please enter User ID first (Step 2)</p>';
+                return;
+            }
+            
+            if (!productId) {
+                resultDiv.innerHTML = '<p class="error">❌ Please enter Product ID</p>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<p>Removing product...</p>';
+            log('🔴 Removing product: ' + productId);
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/user/${userId}/wishlist/remove`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ productId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `<p class="success">✅ Product removed successfully!</p>
+                        <pre>Response: ${JSON.stringify(data, null, 2)}</pre>`;
+                    log('✅ Product removed: ' + productId);
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ Failed: ${data.message}</p>`;
+                    log('❌ Remove failed: ' + data.message);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                log('❌ Remove error: ' + error.message);
+            }
+        }
+
+        // Auto-test backend on load
+        window.onload = () => {
+            log('🚀 Wishlist Debug Test loaded');
+            testBackend();
+        };
+    </script>
+</body>
+</html>

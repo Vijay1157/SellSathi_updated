@@ -3,13 +3,31 @@
   "version": "1.0.0",
   "description": "Root package for frontend and backend",
   "scripts": {
-    "dev": "concurrently \"npm run dev:front\" \"npm run dev:back\"",
+    "dev": "concurrently \"npm run dev:front\" \"npm run dev:backend\"",
     "dev:front": "npm --prefix front run dev",
     "dev:back": "npm --prefix back run dev",
+    "dev:backend": "concurrently \"npm --prefix back run dev\" \"node services/auth.cjs\"",
     "build": "npm --prefix front run build",
-    "start": "npm --prefix back run start"
+    "start": "npm --prefix back run start",
+    "start:backend": "concurrently \"npm --prefix back run start\" \"node services/auth.cjs\""
   },
   "devDependencies": {
     "concurrently": "^8.0.1"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.13.5",
+    "bcrypt": "^6.0.0",
+    "body-parser": "^2.2.2",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.6.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
+    "nodemailer": "^8.0.1",
+    "recharts": "^3.7.0",
+    "redis": "^5.11.0"
   }
 }

@@ -9,7 +9,8 @@ back/node_modules/
 .env.production
 
 # Firebase secret key
-gitserviceAccountKey.json
+serviceAccountKey.json
+back/serviceAccountKey.json
 
 # Logs
 npm-debug.log*
@@ -19,3 +20,25 @@ yarn-error.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Build directories
+dist/
+build/
+front/dist/
+front/build/
+
+# Generated files
+invoices/*.pdf
+back/invoices/*.pdf
+
+# IDE files
+.vscode/
+.kiro/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+CLEANUP_SUMMARY.md
