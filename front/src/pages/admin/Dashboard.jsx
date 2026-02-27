@@ -1115,10 +1115,12 @@ export default function AdminDashboard() {
                                             <td style={{ padding: '1.25rem 1.5rem' }}>
                                                 <span style={{
                                                     background: normalizedStatus === 'Delivered' ? 'rgba(var(--success-rgb), 0.1)' :
+                                                        normalizedStatus === 'Cancelled' ? 'rgba(239, 68, 68, 0.1)' :
                                                         normalizedStatus === 'Processing' ? 'rgba(var(--primary-rgb), 0.1)' :
                                                             normalizedStatus === 'Shipped' ? 'rgba(var(--accent-rgb), 0.1)' :
                                                                 'rgba(var(--warning-rgb), 0.1)',
                                                     color: normalizedStatus === 'Delivered' ? 'var(--success)' :
+                                                        normalizedStatus === 'Cancelled' ? '#ef4444' :
                                                         normalizedStatus === 'Processing' ? 'var(--primary)' :
                                                             normalizedStatus === 'Shipped' ? 'var(--accent)' :
                                                                 'var(--warning)',

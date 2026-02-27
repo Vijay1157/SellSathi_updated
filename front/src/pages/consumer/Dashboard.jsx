@@ -23,10 +23,13 @@ import {
     Wallet,
     LayoutDashboard,
     Shield,
-    Banknote
+    Banknote,
+    Star,
+    MessageSquare
 } from 'lucide-react';
 import { listenToWishlist, removeFromWishlist as removeFromWishlistAPI } from '../../utils/wishlistUtils';
 import { authFetch } from '../../utils/api';
+import ReviewModal from '../../components/common/ReviewModal';
 
 // Helper function to format dates from Firestore Timestamp
 const formatDate = (timestamp) => {
@@ -67,6 +70,9 @@ export default function ConsumerDashboard() {
     const [orders, setOrders] = useState([]);
     const [wishlist, setWishlist] = useState([]);
     const [addresses, setAddresses] = useState([]);
+    const [reviewableOrders, setReviewableOrders] = useState([]);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const [selectedReviewProduct, setSelectedReviewProduct] = useState(null);
     const [stats, setStats] = useState({ total: 0, pending: 0, delivered: 0, totalSpent: 0 });
     const [activeTab, setActiveTab] = useState('dashboard');
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -117,7 +123,8 @@ export default function ConsumerDashboard() {
                     await Promise.race([
                         Promise.all([
                             fetchOrders(currentUser.uid),
-                            fetchAddresses(currentUser.uid)
+                            fetchAddresses(currentUser.uid),
+                            fetchReviewableOrders(currentUser.uid)
                         ]),
                         new Promise((_, reject) =>
                             setTimeout(() => reject(new Error('Timeout')), 5000)
@@ -200,11 +207,24 @@ export default function ConsumerDashboard() {
         }
     };
 
+    const fetchReviewableOrders = async (userId) => {
+        try {
+            const response = await authFetch(`/api/user/${userId}/reviewable-orders`);
+            const data = await response.json();
+            if (data.success) {
+                setReviewableOrders(data.orders || []);
+            }
+        } catch (error) {
+            console.error('Error fetching reviewable orders:', error);
+            setReviewableOrders([]);
+        }
+    };
+
     const fetchAddresses = async (userId) => {
         try {
-            const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', userId)));
-            if (!userDoc.empty) {
-                const userData = userDoc.docs[0].data();
+            const userDoc = await getDoc(doc(db, 'users', userId));
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
                 setAddresses(userData.addresses || []);
             } else {
                 setAddresses([]);
@@ -240,6 +260,7 @@ export default function ConsumerDashboard() {
                     lastName: '',
                     addressLine: '',
                     city: '',
+                    state: '',
                     pincode: '',
                     phone: ''
                 });
@@ -247,6 +268,23 @@ export default function ConsumerDashboard() {
             }
         } catch (error) {
             console.error('Error saving address:', error);
+        }
+    };
+
+    const setAsDefaultAddress = async (addressIndex) => {
+        try {
+            const addressToUpdate = { ...addresses[addressIndex], id: addressIndex, isDefault: true };
+            const response = await authFetch(`/api/user/${user.uid}/address/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: addressToUpdate })
+            });
+            const data = await response.json();
+            if (data.success) {
+                await fetchAddresses(user.uid);
+            }
+        } catch (error) {
+            console.error('Error setting default address:', error);
         }
     };
 
@@ -453,6 +491,20 @@ export default function ConsumerDashboard() {
                                 >
                                     <MapPin size={18} />
                                     <span>Address Book</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setActiveTab('reviews')}
+                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'reviews' ? 'bg-blue-50 text-primary' : 'text-gray-700 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <Star size={18} />
+                                        <span>My Reviews</span>
+                                    </div>
+                                    {reviewableOrders.length > 0 && (
+                                        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{reviewableOrders.length}</span>
+                                    )}
                                 </button>
 
                                 <button
@@ -1230,13 +1282,21 @@ export default function ConsumerDashboard() {
                                     ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {addresses.map((address, index) => (
-                                                <div key={index} className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors">
+                                                <div key={index} className={`border rounded-lg p-4 transition-colors ${address.isDefault ? 'border-green-500 bg-green-50/30' : 'border-gray-200 hover:border-primary'}`}>
                                                     <div className="flex items-start justify-between mb-3">
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
                                                                 <MapPin size={16} className="text-primary" />
                                                             </div>
-                                                            <span className="font-semibold text-gray-900">{address.label}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-semibold text-gray-900">{address.label}</span>
+                                                                {address.isDefault && (
+                                                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                                                        <CheckCircle2 size={12} />
+                                                                        Default
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <button
@@ -1253,11 +1313,74 @@ export default function ConsumerDashboard() {
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <div className="text-sm text-gray-700 space-y-1">
+                                                    <div className="text-sm text-gray-700 space-y-1 mb-3">
                                                         <p className="font-medium">{address.firstName} {address.lastName}</p>
                                                         <p>{address.addressLine}</p>
                                                         <p>{address.city}, {address.state} {address.pincode}</p>
                                                         <p className="text-gray-500">Phone: {address.phone}</p>
+                                                    </div>
+                                                    {!address.isDefault && (
+                                                        <button
+                                                            onClick={() => setAsDefaultAddress(index)}
+                                                            className="w-full py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                                                        >
+                                                            <CheckCircle2 size={14} />
+                                                            Set as Default
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'reviews' && (
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                                <div className="px-6 py-4 border-b border-gray-200">
+                                    <h2 className="text-lg font-semibold text-gray-900">Write Reviews</h2>
+                                    <p className="text-sm text-gray-500 mt-1">Share your experience with products you've purchased</p>
+                                </div>
+                                <div className="p-6">
+                                    {reviewableOrders.length === 0 ? (
+                                        <div className="text-center py-12">
+                                            <Star size={48} className="text-gray-300 mx-auto mb-4" />
+                                            <p className="text-gray-500 mb-2">No products to review</p>
+                                            <p className="text-sm text-gray-400">Products from delivered orders will appear here</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {reviewableOrders.map((item, index) => (
+                                                <div key={index} className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors">
+                                                    <div className="flex gap-4">
+                                                        <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                                                            {item.productImage ? (
+                                                                <img src={item.productImage} alt={item.productName} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center">
+                                                                    <Package size={32} className="text-gray-400" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <h3 className="font-semibold text-gray-900 text-sm mb-1">{item.productName}</h3>
+                                                            <p className="text-xs text-gray-500 mb-2">Delivered on {item.deliveredDate}</p>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedReviewProduct({
+                                                                        productId: item.productId,
+                                                                        productName: item.productName,
+                                                                        orderId: item.orderId
+                                                                    });
+                                                                    setShowReviewModal(true);
+                                                                }}
+                                                                className="px-4 py-2 bg-primary text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                                            >
+                                                                <Star size={14} />
+                                                                Write Review
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -1428,6 +1551,24 @@ export default function ConsumerDashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Review Modal */}
+            {showReviewModal && selectedReviewProduct && (
+                <ReviewModal
+                    isOpen={showReviewModal}
+                    onClose={() => {
+                        setShowReviewModal(false);
+                        setSelectedReviewProduct(null);
+                        // Refresh reviewable orders after submitting review
+                        if (user) {
+                            fetchReviewableOrders(user.uid);
+                        }
+                    }}
+                    productId={selectedReviewProduct.productId}
+                    productName={selectedReviewProduct.productName}
+                    orderId={selectedReviewProduct.orderId}
+                />
+            )}
         </div>
     );
 }

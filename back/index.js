@@ -1002,6 +1002,264 @@ app.get("/admin/orders", verifyAuth, verifyAdmin, async (req, res) => {
     }
 });
 
+// ============================================
+// REVIEW ENDPOINTS
+// ============================================
+
+// POST /api/reviews - Submit a product review
+app.post("/api/reviews", verifyAuth, async (req, res) => {
+    try {
+        const { productId, orderId, rating, title, body } = req.body;
+        const userId = req.user.uid;
+
+        if (!productId || !rating || !title || !body) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields"
+            });
+        }
+
+        // Get user info
+        const userDoc = await db.collection("users").doc(userId).get();
+        const userData = userDoc.exists ? userDoc.data() : {};
+        const customerName = userData.name || userData.fullName || "Anonymous";
+
+        // Get product info
+        const productDoc = await db.collection("products").doc(productId).get();
+        const productData = productDoc.exists ? productDoc.data() : {};
+        const productName = productData.title || "Unknown Product";
+
+        // Create review
+        const reviewData = {
+            productId,
+            orderId: orderId || null,
+            userId,
+            customerName,
+            productName,
+            rating: parseInt(rating),
+            title,
+            body,
+            verified: orderId ? true : false, // Verified if linked to an order
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: "active" // active, hidden, deleted
+        };
+
+        const reviewRef = await db.collection("reviews").add(reviewData);
+
+        return res.status(200).json({
+            success: true,
+            message: "Review submitted successfully",
+            reviewId: reviewRef.id
+        });
+    } catch (error) {
+        console.error("SUBMIT REVIEW ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to submit review"
+        });
+    }
+});
+
+// GET /admin/reviews - Get all reviews for admin dashboard
+app.get("/admin/reviews", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const reviewsSnap = await db.collection("reviews")
+            .where("status", "==", "active")
+            .orderBy("createdAt", "desc")
+            .get();
+
+        const reviews = [];
+        
+        // Get all products and calculate their ratings
+        const productsSnap = await db.collection("products").get();
+        const productMap = {};
+        productsSnap.forEach(doc => {
+            const prod = doc.data();
+            productMap[doc.id] = {
+                category: prod.category || "Uncategorized",
+                brand: prod.brand || "Unknown",
+                title: prod.title || "Unknown Product"
+            };
+        });
+
+        // Calculate product ratings
+        const productRatings = {};
+        reviewsSnap.forEach(doc => {
+            const reviewData = doc.data();
+            const productId = reviewData.productId;
+            if (productId) {
+                if (!productRatings[productId]) {
+                    productRatings[productId] = { total: 0, count: 0 };
+                }
+                productRatings[productId].total += (reviewData.rating || 0);
+                productRatings[productId].count += 1;
+            }
+        });
+
+        // Build review list with enriched data
+        reviewsSnap.forEach(doc => {
+            const reviewData = doc.data();
+            const productId = reviewData.productId;
+            const productInfo = productMap[productId] || { category: "Uncategorized", brand: "Unknown", title: reviewData.productName || "Unknown Product" };
+            const ratingInfo = productRatings[productId] || { total: 0, count: 0 };
+            const avgRating = ratingInfo.count > 0 ? ratingInfo.total / ratingInfo.count : 0;
+
+            reviews.push({
+                id: doc.id,
+                productName: productInfo.title,
+                productCategory: productInfo.category,
+                productBrand: productInfo.brand,
+                productAvgRating: avgRating,
+                productReviewCount: ratingInfo.count,
+                customerName: reviewData.customerName || "Anonymous",
+                customerId: reviewData.userId || "N/A",
+                rating: reviewData.rating || 0,
+                title: reviewData.title || "",
+                body: reviewData.body || "",
+                feedback: reviewData.body || "", // Admin dashboard uses 'feedback' field
+                date: formatDateDDMMYYYY(reviewData.createdAt),
+                verified: reviewData.verified || false,
+                orderId: reviewData.orderId || null
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            reviews
+        });
+    } catch (error) {
+        console.error("GET REVIEWS ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch reviews",
+            reviews: []
+        });
+    }
+});
+
+// DELETE /admin/review/:reviewId - Delete a review
+app.delete("/admin/review/:reviewId", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const { reviewId } = req.params;
+
+        await db.collection("reviews").doc(reviewId).update({
+            status: "deleted",
+            deletedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Review deleted successfully"
+        });
+    } catch (error) {
+        console.error("DELETE REVIEW ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete review"
+        });
+    }
+});
+
+// GET /api/products/:productId/reviews - Get reviews for a specific product
+app.get("/api/products/:productId/reviews", async (req, res) => {
+    try {
+        const { productId } = req.params;
+
+        const reviewsSnap = await db.collection("reviews")
+            .where("productId", "==", productId)
+            .where("status", "==", "active")
+            .orderBy("createdAt", "desc")
+            .get();
+
+        const reviews = [];
+        reviewsSnap.forEach(doc => {
+            const reviewData = doc.data();
+            reviews.push({
+                id: doc.id,
+                rating: reviewData.rating || 0,
+                title: reviewData.title || "",
+                body: reviewData.body || "",
+                author: reviewData.customerName || "Anonymous",
+                createdAt: reviewData.createdAt,
+                verified: reviewData.verified || false
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            reviews
+        });
+    } catch (error) {
+        console.error("GET PRODUCT REVIEWS ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch product reviews",
+            reviews: []
+        });
+    }
+});
+
+// GET /api/user/:uid/reviewable-orders - Get orders that can be reviewed
+app.get("/api/user/:uid/reviewable-orders", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        
+        if (req.user.uid !== uid) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        // Get delivered orders for this user
+        const ordersSnap = await db.collection("orders")
+            .where("userId", "==", uid)
+            .where("status", "==", "Delivered")
+            .get();
+
+        // Get existing reviews by this user
+        const reviewsSnap = await db.collection("reviews")
+            .where("userId", "==", uid)
+            .get();
+
+        const reviewedProducts = new Set();
+        reviewsSnap.forEach(doc => {
+            const review = doc.data();
+            if (review.productId) {
+                reviewedProducts.add(review.productId);
+            }
+        });
+
+        const reviewableOrders = [];
+        ordersSnap.forEach(doc => {
+            const order = doc.data();
+            if (order.items && Array.isArray(order.items)) {
+                order.items.forEach(item => {
+                    // Only include if not already reviewed
+                    if (!reviewedProducts.has(item.productId || item.id)) {
+                        reviewableOrders.push({
+                            orderId: order.orderId || doc.id,
+                            productId: item.productId || item.id,
+                            productName: item.name || item.title,
+                            productImage: item.imageUrl || item.image,
+                            deliveredDate: formatDateDDMMYYYY(order.createdAt)
+                        });
+                    }
+                });
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            orders: reviewableOrders
+        });
+    } catch (error) {
+        console.error("GET REVIEWABLE ORDERS ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch reviewable orders",
+            orders: []
+        });
+    }
+});
+
 // GET /admin/seller-analytics - Advanced seller metrics for Payout tab
 app.get("/admin/seller-analytics", verifyAuth, verifyAdmin, async (req, res) => {
     try {
@@ -2501,7 +2759,7 @@ app.post("/payment/verify", async (req, res) => {
                 }
             }
 
-            return res.status(200).json({ success: true, orderId: orderRef.id });
+            return res.status(200).json({ success: true, orderId: orderData.orderId, documentId: orderRef.id });
         } else {
             return res.status(400).json({ success: false, message: "Invalid signature" });
         }
@@ -2626,7 +2884,7 @@ app.post("/payment/cod-order", verifyAuth, async (req, res) => {
             }
         }
 
-        return res.status(200).json({ success: true, orderId: orderRef.id });
+        return res.status(200).json({ success: true, orderId: orderData.orderId, documentId: orderRef.id });
     } catch (error) {
         console.error("COD ERROR:", error);
         return res.status(500).json({ success: false, message: "COD placement failed" });
@@ -2680,13 +2938,17 @@ app.post("/seller/pickup-address", verifyAuth, async (req, res) => {
     }
 });
 
-// POST /api/orders/:orderId/cancel - Cancel order and shipment
+// POST /api/orders/:orderId/cancel - Cancel order and initiate refund
 app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
     try {
         const { orderId } = req.params;
+        const userId = req.user.uid;
+
+        console.log('[CANCEL ORDER] Request from user:', userId, 'for order:', orderId);
 
         // Find order by document ID or orderId field
         let orderDoc = await db.collection("orders").doc(orderId).get();
+        let orderDocId = orderId;
 
         if (!orderDoc.exists) {
             const query = await db.collection("orders").where("orderId", "==", orderId).get();
@@ -2697,44 +2959,100 @@ app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
                 });
             }
             orderDoc = query.docs[0];
+            orderDocId = orderDoc.id;
         }
 
         const orderData = orderDoc.data();
+        
+        console.log('[CANCEL ORDER] Order data:', {
+            orderUserId: orderData.userId,
+            orderUid: orderData.uid,
+            requestUserId: userId,
+            status: orderData.status
+        });
 
-        // Check if order has a shipment ID
-        if (!orderData.shipmentId) {
-            return res.status(400).json({
+        // Verify user owns this order (check both userId and uid fields)
+        const isOwner = orderData.userId === userId || 
+                       orderData.uid === userId || 
+                       orderData.userId === req.user.email ||
+                       orderData.uid === req.user.email;
+        
+        if (!isOwner) {
+            console.log('[CANCEL ORDER] Authorization failed - user does not own order');
+            return res.status(403).json({
                 success: false,
-                message: "Order does not have a shipment ID"
+                message: "You are not authorized to cancel this order"
             });
         }
 
-        // Cancel shipment in Shiprocket
-        const cancelResult = await shiprocketService.cancelOrder(
-            orderData.shipmentId,
-            orderData.orderId || orderId
-        );
-
-        if (cancelResult.success) {
-            // Update order status in database
-            await orderDoc.ref.update({
-                status: "Cancelled",
-                shippingStatus: "CANCELLED",
-                cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-                cancellationReason: "Customer requested cancellation"
-            });
-
-            return res.status(200).json({
-                success: true,
-                message: "Order cancelled successfully"
-            });
-        } else {
+        // Check if order can be cancelled
+        const cancellableStatuses = ['Order Placed', 'Placed', 'Processing', 'Pending'];
+        if (!cancellableStatuses.includes(orderData.status)) {
             return res.status(400).json({
                 success: false,
-                message: cancelResult.error,
-                details: cancelResult.details
+                message: `Order cannot be cancelled. Current status: ${orderData.status}`
             });
         }
+
+        // Check if already cancelled
+        if (orderData.status === 'Cancelled') {
+            return res.status(400).json({
+                success: false,
+                message: "Order is already cancelled"
+            });
+        }
+
+        console.log('[CANCEL ORDER] Proceeding with cancellation...');
+
+        // Cancel shipment in Shiprocket if shipment ID exists
+        let shipmentCancelled = false;
+        if (orderData.shipmentId) {
+            try {
+                const cancelResult = await shiprocketService.cancelOrder(
+                    orderData.shipmentId,
+                    orderData.orderId || orderId
+                );
+                shipmentCancelled = cancelResult.success;
+            } catch (error) {
+                console.error("Shiprocket cancellation error:", error);
+                // Continue with order cancellation even if Shiprocket fails
+            }
+        }
+
+        // Calculate refund amount
+        const refundAmount = orderData.total || 0;
+        const paymentMethod = orderData.paymentMethod || 'COD';
+
+        // Update order status in database
+        const updateData = {
+            status: "Cancelled",
+            shippingStatus: "CANCELLED",
+            cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+            cancellationReason: "Customer requested cancellation",
+            refundStatus: paymentMethod === 'COD' ? 'Not Applicable' : 'Pending',
+            refundAmount: paymentMethod === 'COD' ? 0 : refundAmount,
+            refundMethod: paymentMethod === 'COD' ? 'N/A' : 'Original Payment Method',
+            refundProcessingTime: paymentMethod === 'COD' ? 'N/A' : '5-7 business days'
+        };
+
+        await db.collection("orders").doc(orderDocId).update(updateData);
+
+        // Send cancellation email (optional)
+        // TODO: Implement email notification
+
+        return res.status(200).json({
+            success: true,
+            message: "Order cancelled successfully",
+            refundInfo: {
+                refundAmount: paymentMethod === 'COD' ? 0 : refundAmount,
+                refundStatus: paymentMethod === 'COD' ? 'Not Applicable' : 'Pending',
+                refundMethod: paymentMethod === 'COD' ? 'N/A' : 'Original Payment Method',
+                processingTime: paymentMethod === 'COD' ? 'N/A' : '5-7 business days',
+                message: paymentMethod === 'COD' 
+                    ? 'No refund applicable for Cash on Delivery orders' 
+                    : 'Refund will be processed to your original payment method within 5-7 business days'
+            }
+        });
     } catch (error) {
         console.error("CANCEL ORDER ERROR:", error);
         return res.status(500).json({
@@ -2950,20 +3268,38 @@ app.post("/api/user/:uid/address/save", verifyAuth, async (req, res) => {
         const doc = await userRef.get();
 
         if (!doc.exists) {
+            // First address, set as default if not specified
+            if (address.isDefault === undefined) {
+                address.isDefault = true;
+            }
             await userRef.set({
                 uid,
                 addresses: [address],
                 createdAt: new Date()
             });
         } else {
-            const currentAddresses = doc.data().addresses || [];
+            let currentAddresses = doc.data().addresses || [];
+            
+            // If this address is being set as default, unset all others
+            if (address.isDefault === true) {
+                currentAddresses = currentAddresses.map(addr => ({
+                    ...addr,
+                    isDefault: false
+                }));
+            }
+            
             if (address.id !== undefined) {
                 // Update existing address
                 currentAddresses[address.id] = address;
             } else {
                 // Add new address
+                // If this is the first address, set as default
+                if (currentAddresses.length === 0 && address.isDefault === undefined) {
+                    address.isDefault = true;
+                }
                 currentAddresses.push(address);
             }
+            
             await userRef.update({
                 addresses: currentAddresses,
                 updatedAt: new Date()
@@ -2989,7 +3325,15 @@ app.post("/api/user/:uid/address/delete", verifyAuth, async (req, res) => {
 
         if (doc.exists) {
             const currentAddresses = doc.data().addresses || [];
+            const wasDefault = currentAddresses[addressId]?.isDefault;
+            
             currentAddresses.splice(addressId, 1);
+            
+            // If deleted address was default and there are remaining addresses, set first one as default
+            if (wasDefault && currentAddresses.length > 0) {
+                currentAddresses[0].isDefault = true;
+            }
+            
             await userRef.update({
                 addresses: currentAddresses,
                 updatedAt: new Date()
@@ -3000,6 +3344,52 @@ app.post("/api/user/:uid/address/delete", verifyAuth, async (req, res) => {
     } catch (error) {
         console.error("ADDRESS DELETE ERROR:", error);
         return res.status(500).json({ success: false, message: "Failed to delete address" });
+    }
+});
+
+// Get all addresses for a user
+app.get("/api/user/:uid/addresses", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        if (req.user.uid !== uid) return res.status(403).json({ success: false, message: "Access denied" });
+
+        const userRef = db.collection("users").doc(uid);
+        const doc = await userRef.get();
+
+        if (doc.exists) {
+            const addresses = doc.data().addresses || [];
+            return res.status(200).json({ success: true, addresses });
+        }
+
+        return res.status(200).json({ success: true, addresses: [] });
+    } catch (error) {
+        console.error("GET ADDRESSES ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch addresses" });
+    }
+});
+
+// Get default address for a user
+app.get("/api/user/:uid/address/default", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        if (req.user.uid !== uid) return res.status(403).json({ success: false, message: "Access denied" });
+
+        const userRef = db.collection("users").doc(uid);
+        const doc = await userRef.get();
+
+        if (doc.exists) {
+            const addresses = doc.data().addresses || [];
+            const defaultAddress = addresses.find(addr => addr.isDefault === true);
+            
+            if (defaultAddress) {
+                return res.status(200).json({ success: true, address: defaultAddress });
+            }
+        }
+
+        return res.status(200).json({ success: true, address: null });
+    } catch (error) {
+        console.error("GET DEFAULT ADDRESS ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch default address" });
     }
 });
 
