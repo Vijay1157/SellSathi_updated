@@ -27,6 +27,9 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.1",
+    "pdfkit": "^0.17.2",
+    "raw-body": "^3.0.2",
+    "razorpay": "^2.9.6",
     "recharts": "^3.7.0",
     "redis": "^5.11.0"
   }

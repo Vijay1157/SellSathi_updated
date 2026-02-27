@@ -432,19 +432,39 @@ export default function ProductDetail() {
                         <div className="price-box glass-card">
                             <div className="price-row">
                                 <span className="final-price">
-                                    ₹{(purchaseOption === 'exchange' ? (product.price || 0) * 0.9 : (product.price || 0)).toLocaleString()}
+                                    ₹{(() => {
+                                        let basePrice = product.price || 0;
+                                        // Size-varied pricing
+                                        if (product.pricingType === 'varied' && product.sizePrices && selectedSize && product.sizePrices[selectedSize]) {
+                                            basePrice = Number(product.sizePrices[selectedSize]);
+                                        }
+                                        // Variant price offsets (storage, memory)
+                                        if (selectedStorage && typeof selectedStorage === 'object' && selectedStorage.priceOffset) {
+                                            basePrice += Number(selectedStorage.priceOffset);
+                                        }
+                                        if (selectedMemory && typeof selectedMemory === 'object' && selectedMemory.priceOffset) {
+                                            basePrice += Number(selectedMemory.priceOffset);
+                                        }
+                                        if (purchaseOption === 'exchange') basePrice *= 0.9;
+                                        return basePrice.toLocaleString();
+                                    })()}
                                 </span>
                                 {product.oldPrice && (
                                     <span className="original-price">
                                         ₹{Number(product.oldPrice).toLocaleString()}
                                     </span>
                                 )}
+                                {product.discountPrice && !product.oldPrice && (
+                                    <span className="original-price">
+                                        ₹{Number(product.discountPrice).toLocaleString()}
+                                    </span>
+                                )}
                                 <span className="discount-tag">
-                                    {purchaseOption === 'exchange' ? '23% off' : (product.discount || (product.oldPrice ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100) + '%' : '13% off'))}
+                                    {purchaseOption === 'exchange' ? '23% off' : (product.discount || (product.oldPrice ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100) + '%' : (product.discountPrice ? Math.round(((product.price - product.discountPrice) / product.price) * 100) + '% off' : '')))}
                                 </span>
                             </div>
                             <div className={`stock-status ${(product.stock === 0 || product.status === 'Out of Stock') ? 'out' : 'in'}`}>
-                                {(product.stock === 0 || product.status === 'Out of Stock') ? 'Out of Stock' : 'In Stock'}
+                                {(product.stock === 0 || product.status === 'Out of Stock') ? 'Out of Stock' : `In Stock${product.stock ? ` (${product.stock} units)` : ''}`}
                             </div>
                         </div>
 

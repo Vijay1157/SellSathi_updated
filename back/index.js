@@ -73,6 +73,27 @@ admin.initializeApp({
 const db = admin.firestore();
 const orderController = require("./controllers/orderController");
 
+// Helper function to format dates as dd/mm/yyyy
+const formatDateDDMMYYYY = (date) => {
+    if (!date) return new Date().toLocaleDateString('en-GB');
+    
+    let dateObj;
+    if (typeof date.toDate === 'function') {
+        dateObj = date.toDate();
+    } else if (date._seconds) {
+        dateObj = new Date(date._seconds * 1000);
+    } else if (date instanceof Date) {
+        dateObj = date;
+    } else {
+        dateObj = new Date(date);
+    }
+    
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
 // Initialize Shiprocket service
 const shiprocketService = require("./services/shiprocketService");
 const emailService = require("./services/emailService");
@@ -487,11 +508,15 @@ app.post("/auth/apply-seller", async (req, res) => {
         const sellerRef = db.collection("sellers").doc(uid);
         await sellerRef.set({
             uid,
-            phone: sellerDetails.phone,
-            shopName: sellerDetails.shopName,
-            category: sellerDetails.category,
-            address: sellerDetails.address,
+            phone: sellerDetails.phone || "",
+            shopName: sellerDetails.shopName || "",
+            category: sellerDetails.category || "",
+            address: sellerDetails.address || "",
             gstNumber: sellerDetails.gstNumber || "",
+            aadhaarNumber: sellerDetails.aadhaarNumber || "",
+            age: sellerDetails.age || "",
+            aadhaarImageUrl: sellerDetails.aadhaarImageUrl || "",
+            extractedName: sellerDetails.extractedName || "",
             sellerStatus: "PENDING",
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
             approvedAt: null,
@@ -717,14 +742,14 @@ app.get("/admin/sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 email: userData?.phone || "N/A",
                 type: "Individual",
                 status: sellerData.sellerStatus,
-                joined: (sellerData.appliedAt && typeof sellerData.appliedAt.toDate === 'function')
-                    ? sellerData.appliedAt.toDate().toISOString().split('T')[0]
-                    : (sellerData.appliedAt && sellerData.appliedAt._seconds)
-                        ? new Date(sellerData.appliedAt._seconds * 1000).toISOString().split('T')[0]
-                        : new Date().toISOString().split('T')[0],
+                joined: formatDateDDMMYYYY(sellerData.appliedAt),
                 shopName: sellerData.shopName,
                 category: sellerData.category,
-                address: sellerData.address
+                address: sellerData.address,
+                aadhaarNumber: sellerData.aadhaarNumber || "",
+                age: sellerData.age || "",
+                aadhaarImageUrl: sellerData.aadhaarImageUrl || "",
+                extractedName: sellerData.extractedName || ""
             });
         }
 
@@ -764,16 +789,19 @@ app.get("/admin/products", verifyAuth, verifyAdmin, async (req, res) => {
                     }
                 }
 
-                let dateStr = new Date().toISOString().split('T')[0];
-                try {
-                    if (productData.createdAt?.toDate) dateStr = productData.createdAt.toDate().toISOString().split('T')[0];
-                } catch (_) { }
+                let dateStr = formatDateDDMMYYYY(productData.createdAt);
+
+                const price = Number(productData.price) || 0;
+                const discountPrice = productData.discountPrice ? Number(productData.discountPrice) : null;
 
                 products.push({
                     id: doc.id,
                     title: productData.title || productData.name || "Untitled",
                     seller: sellerPhone,
-                    price: Number(productData.price) || 0,
+                    price: price,
+                    discountPrice: discountPrice,
+                    discountedPrice: discountPrice, // For backward compatibility
+                    stock: Number(productData.stock) || 0,
                     category: productData.category || "N/A",
                     status: productData.status || "Active",
                     date: dateStr
@@ -814,6 +842,23 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
             const userSnap = await db.collection("users").doc(doc.id).get();
             const userData = userSnap.data();
 
+            // Get product count for this seller
+            const productsSnap = await db.collection("products").where("sellerId", "==", doc.id).get();
+            const totalProducts = productsSnap.size;
+            
+            // Debug logging for specific seller
+            if (sellerData.shopName && sellerData.shopName.toLowerCase().includes('rahul')) {
+                console.log(`[ALL-SELLERS] Seller: ${sellerData.shopName}, UID: ${doc.id}, Products: ${totalProducts}`);
+                if (totalProducts > 0) {
+                    const sampleProducts = productsSnap.docs.slice(0, 3).map(p => ({
+                        id: p.id,
+                        title: p.data().title || p.data().name,
+                        sellerId: p.data().sellerId
+                    }));
+                    console.log(`[ALL-SELLERS] Sample products:`, JSON.stringify(sampleProducts));
+                }
+            }
+
             let totalRevenue = 0;
             let deliveredCount = 0;
 
@@ -834,9 +879,11 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 uid: doc.id,
                 name: sellerData.shopName,
                 email: userData?.email || userData?.phone || "N/A",
+                phone: userData?.phone || "N/A",
                 type: "Individual",
                 status: sellerData.sellerStatus,
-                joined: sellerData.appliedAt ? sellerData.appliedAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                joined: formatDateDDMMYYYY(sellerData.appliedAt),
+                createdAt: sellerData.appliedAt ? sellerData.appliedAt.toDate().toISOString() : new Date().toISOString(),
                 shopName: sellerData.shopName,
                 category: sellerData.category,
                 address: sellerData.address,
@@ -846,11 +893,14 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 extractedName: sellerData.extractedName,
                 isBlocked: sellerData.isBlocked || false,
                 financials: {
+                    totalProducts,
                     totalRevenue,
                     deliveredCount
                 }
             });
         }
+        
+        console.log(`[ALL-SELLERS] Total sellers returned: ${sellers.length}`);
         return res.status(200).json({ success: true, sellers });
     } catch (error) {
         console.error("GET ALL SELLERS ERROR:", error);
@@ -880,6 +930,46 @@ app.post("/admin/seller/:uid/block", verifyAuth, verifyAdmin, async (req, res) =
     }
 });
 
+// DEBUG ENDPOINT - Check products for a seller
+app.get("/admin/debug/seller/:uid/products", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        
+        // Get seller info
+        const sellerSnap = await db.collection("sellers").doc(uid).get();
+        const sellerData = sellerSnap.exists ? sellerSnap.data() : null;
+        
+        // Get products
+        const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
+        const products = [];
+        productsSnap.forEach(doc => {
+            const data = doc.data();
+            products.push({
+                id: doc.id,
+                title: data.title || data.name,
+                sellerId: data.sellerId,
+                price: data.price,
+                category: data.category,
+                status: data.status
+            });
+        });
+        
+        return res.status(200).json({
+            success: true,
+            seller: {
+                uid,
+                shopName: sellerData?.shopName,
+                exists: sellerSnap.exists
+            },
+            productCount: products.length,
+            products
+        });
+    } catch (error) {
+        console.error("DEBUG PRODUCTS ERROR:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // GET /admin/orders - All orders
 app.get("/admin/orders", verifyAuth, verifyAdmin, async (req, res) => {
     try {
@@ -894,7 +984,7 @@ app.get("/admin/orders", verifyAuth, verifyAdmin, async (req, res) => {
                 customer: orderData.customerName || "Unknown",
                 total: orderData.total || 0,
                 status: orderData.status || "Processing",
-                date: orderData.createdAt ? orderData.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                date: formatDateDDMMYYYY(orderData.createdAt),
                 items: orderData.items || []
             });
         }
@@ -1009,17 +1099,35 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         if (!sellerSnap.exists) return res.status(404).send("Seller not found");
         const sellerData = sellerSnap.data();
 
+        // Get user data for contact
+        const userSnap = await db.collection("users").doc(uid).get();
+        const userData = userSnap.exists ? userSnap.data() : {};
+        const sellerContact = userData.phone || userData.email || "N/A";
+
         // Get Products 
         const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
         let totalProducts = 0;
         let totalStockLeft = 0;
+        let totalInventoryValue = 0;
         let productStats = {};
 
         productsSnap.forEach(p => {
             const prod = p.data();
             totalProducts++;
-            totalStockLeft += (prod.stock || 0);
-            productStats[p.id] = { name: prod.title, price: prod.price || 0, stock: prod.stock || 0, sold: 0, revenue: 0 };
+            const stock = prod.stock || 0;
+            const price = prod.price || 0;
+            const discountedPrice = prod.discountedPrice || price;
+            totalStockLeft += stock;
+            totalInventoryValue += (discountedPrice * stock);
+            productStats[p.id] = { 
+                name: prod.title, 
+                price: price,
+                discountedPrice: prod.discountedPrice || null,
+                stock: stock, 
+                sold: 0, 
+                revenue: 0,
+                worth: discountedPrice * stock
+            };
         });
 
         // Get Orders
@@ -1043,58 +1151,163 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
             }
         });
 
-        // Generate PDF
-        const doc = new PDFDocument({ margin: 50 });
+        const avgRevenuePerProduct = totalProducts > 0 ? (grossRevenue / totalProducts) : 0;
+
+        // Generate PDF with proper formatting
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=analytics_${sellerData.shopName?.replace(/\s+/g, '_') || 'seller'}.pdf`);
         doc.pipe(res);
 
-        // Header
-        doc.fontSize(20).text('Sellsathi Admin Platform', { align: 'center' });
-        doc.fontSize(14).text('Detailed Seller Analytics Report', { align: 'center' });
-        doc.moveDown();
+        // Header Section
+        doc.fontSize(24).fillColor('#6366f1').text('SELLSATHI', 50, 50);
+        doc.fontSize(9).fillColor('#666666')
+           .text('Your Trusted E-Commerce Platform', 50, 78)
+           .text('Empowering Sellers, Delighting Customers', 50, 90)
+           .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 102);
 
-        // Seller Info
-        doc.fontSize(12).text(`Shop Name: ${sellerData.shopName}`);
-        doc.text(`Category: ${sellerData.category}`);
-        doc.text(`Report Date: ${new Date().toLocaleDateString()}`);
-        doc.moveDown();
+        // Report Date (top right)
+        const reportDate = new Date().toLocaleDateString('en-GB');
+        doc.fontSize(9).fillColor('#666666')
+           .text('Report Date:', 450, 50)
+           .fontSize(10).fillColor('#000000')
+           .text(reportDate, 450, 62);
 
-        // Summary
-        doc.fontSize(14).text('Performance Summary', { underline: true });
-        doc.moveDown(0.5);
-        doc.fontSize(10).text(`Total Active Products: ${totalProducts}`);
-        doc.text(`Total Units Sold: ${unitsSold}`);
-        doc.text(`Remaining Stock: ${totalStockLeft}`);
-        doc.text(`Gross Revenue: Rs. ${grossRevenue.toLocaleString()}`);
-        doc.moveDown();
+        // Horizontal line
+        doc.moveTo(50, 125).lineTo(545, 125).strokeColor('#6366f1').lineWidth(2).stroke();
 
-        // Product Table
-        doc.fontSize(14).text('Product Matrix', { underline: true });
-        doc.moveDown(0.5);
+        // Title
+        doc.fontSize(18).fillColor('#000000').font('Helvetica-Bold')
+           .text('SELLER ANALYTICS REPORT', 50, 145, { align: 'center' });
+        doc.fontSize(11).fillColor('#666666').font('Helvetica')
+           .text('Comprehensive Performance & Inventory Analysis', 50, 168, { align: 'center' });
 
-        const tableTop = doc.y;
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text('Product Name', 50, tableTop);
-        doc.text('Price', 250, tableTop);
-        doc.text('Stock', 320, tableTop);
-        doc.text('Sold', 380, tableTop);
-        doc.text('Revenue', 450, tableTop);
+        // Seller Information Section
+        doc.rect(50, 195, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+           .text('SELLER INFORMATION', 55, 200);
 
-        doc.moveTo(50, tableTop + 12).lineTo(550, tableTop + 12).stroke();
+        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        doc.text('Shop Name:', 55, 225);
+        doc.text(sellerData.shopName || 'N/A', 150, 225);
+        doc.text('Category:', 320, 225);
+        doc.text(sellerData.category || 'N/A', 390, 225);
 
-        let y = tableTop + 20;
-        doc.font('Helvetica');
-        Object.values(productStats).sort((a, b) => b.revenue - a.revenue).forEach(p => {
-            if (y > 700) { doc.addPage(); y = 50; }
-            doc.text(p.name.substring(0, 30), 50, y);
-            doc.text(`Rs. ${p.price}`, 250, y);
-            doc.text(`${p.stock}`, 320, y);
-            doc.text(`${p.sold}`, 380, y);
-            doc.text(`Rs. ${p.revenue}`, 450, y);
-            y += 15;
-            doc.moveTo(50, y - 5).lineTo(550, y - 5).stroke('#f3f4f6');
+        doc.text('Seller ID:', 55, 245);
+        doc.text(uid.substring(0, 20), 150, 245);
+        doc.text('Contact:', 320, 245);
+        doc.text(sellerContact, 390, 245);
+
+        doc.text('Email:', 55, 265);
+        doc.text(sellerData.email || 'N/A', 150, 265);
+
+        // Performance Summary Section
+        doc.rect(50, 295, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+           .text('PERFORMANCE SUMMARY', 55, 300);
+
+        // Four colored boxes - All Blue for formal look
+        const boxY = 330;
+        const boxWidth = 115;
+        const boxHeight = 60;
+        const boxGap = 10;
+
+        // Total Products (Blue)
+        doc.rect(50, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+           .text('Total Products', 55, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(totalProducts.toString(), 55, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Units Sold (Blue)
+        doc.rect(50 + boxWidth + boxGap, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+           .text('Units Sold', 50 + boxWidth + boxGap + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(unitsSold.toString(), 50 + boxWidth + boxGap + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Stock Left (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 2, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+           .text('Stock Left', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(totalStockLeft.toString(), 50 + (boxWidth + boxGap) * 2 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Total Revenue (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 3, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+           .text('Total Revenue', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(20).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(`Rs.${grossRevenue}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Additional metrics
+        doc.fontSize(10).fillColor('#000000').font('Helvetica');
+        doc.text('Total Inventory Value:', 55, boxY + boxHeight + 20);
+        doc.text(`Rs.${totalInventoryValue.toLocaleString()}`, 180, boxY + boxHeight + 20);
+        doc.text('Average Revenue per Product:', 320, boxY + boxHeight + 20);
+        doc.text(`Rs.${Math.round(avgRevenuePerProduct)}`, 480, boxY + boxHeight + 20);
+
+        // Product Inventory & Sales Details Section
+        doc.rect(50, boxY + boxHeight + 50, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+           .text('PRODUCT INVENTORY & SALES DETAILS', 55, boxY + boxHeight + 55);
+
+        // Table Header
+        const tableTop = boxY + boxHeight + 85;
+        doc.rect(50, tableTop, 495, 20).fillAndStroke('#6366f1', '#6366f1');
+        doc.fontSize(9).fillColor('#ffffff').font('Helvetica-Bold');
+        doc.text('Product Name', 55, tableTop + 6);
+        doc.text('Price', 200, tableTop + 6);
+        doc.text('Disc.', 250, tableTop + 6);
+        doc.text('Stock', 295, tableTop + 6);
+        doc.text('Sold', 340, tableTop + 6);
+        doc.text('Revenue', 385, tableTop + 6);
+        doc.text('Worth', 450, tableTop + 6);
+        doc.text('Margin', 505, tableTop + 6);
+
+        // Table Rows
+        let y = tableTop + 25;
+        doc.font('Helvetica').fillColor('#000000');
+        const sortedProducts = Object.values(productStats).sort((a, b) => b.revenue - a.revenue);
+
+        sortedProducts.forEach((p, index) => {
+            if (y > 720) { 
+                doc.addPage(); 
+                y = 50;
+                // Redraw header on new page
+                doc.rect(50, y, 495, 20).fillAndStroke('#6366f1', '#6366f1');
+                doc.fontSize(9).fillColor('#ffffff').font('Helvetica-Bold');
+                doc.text('Product Name', 55, y + 6);
+                doc.text('Price', 200, y + 6);
+                doc.text('Disc.', 250, y + 6);
+                doc.text('Stock', 295, y + 6);
+                doc.text('Sold', 340, y + 6);
+                doc.text('Revenue', 385, y + 6);
+                doc.text('Worth', 450, y + 6);
+                doc.text('Margin', 505, y + 6);
+                y += 25;
+            }
+
+            doc.fontSize(8).fillColor('#000000').font('Helvetica');
+            doc.text(p.name.substring(0, 25), 55, y);
+            doc.text(`Rs.${p.price}`, 200, y);
+            doc.text(p.discountedPrice ? `Rs.${p.discountedPrice}` : '-', 250, y);
+            doc.text(p.stock.toString(), 295, y);
+            doc.text(p.sold.toString(), 340, y);
+            doc.text(`Rs.${p.revenue}`, 385, y);
+            doc.text(`Rs.${p.worth}`, 450, y);
+            
+            const margin = p.discountedPrice ? Math.round(((p.price - p.discountedPrice) / p.price) * 100) : 0;
+            doc.text(margin > 0 ? `${100 - margin}%` : '0%', 505, y);
+
+            y += 18;
+            doc.moveTo(50, y - 3).lineTo(545, y - 3).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
         });
+
+        // Footer
+        doc.fontSize(8).fillColor('#999999').font('Helvetica')
+           .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, 770, { align: 'center' });
+        doc.text('Page 1 of 1', 50, 785, { align: 'center' });
 
         doc.end();
     } catch (err) {
@@ -1113,19 +1326,33 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         if (!sellerSnap.exists) return res.status(404).send("Seller not found");
         const sellerData = sellerSnap.data();
 
-        // Fetch user data for email
+        // Fetch user data for contact
         const userSnap = await db.collection("users").doc(uid).get();
-        const sellerEmail = userSnap.data()?.email || userSnap.data()?.phone || "N/A";
+        const userData = userSnap.exists ? userSnap.data() : {};
+        const sellerContact = userData.phone || userData.email || "N/A";
+        const sellerEmail = userData.email || "N/A";
+
+        // Get Products count
+        const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
+        const totalProducts = productsSnap.size;
+        
+        console.log(`[INVOICE PDF] Seller ${uid}: Found ${totalProducts} products`);
+        
+        // Debug: Log first few product IDs
+        if (productsSnap.size > 0) {
+            const productIds = productsSnap.docs.slice(0, 3).map(d => d.id);
+            console.log(`[INVOICE PDF] Sample product IDs:`, productIds);
+        } else {
+            console.log(`[INVOICE PDF] No products found for sellerId=${uid}`);
+        }
 
         // Fetch Orders
         let ordersQuery = db.collection("orders").where("status", "==", "Delivered");
-
-        // Notice: Cannot do inequality filters on multiple fields easily right now without an index,
-        // so we will fetch all delivered and filter in memory if fromDate/toDate are provided.
         const ordersSnap = await ordersQuery.get();
 
         let totalRevenue = 0;
-        let deliveredItems = [];
+        let deliveredCount = 0;
+        const orderDetails = []; // Store order details for table
 
         ordersSnap.forEach(o => {
             const order = o.data();
@@ -1139,8 +1366,6 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
                     to.setHours(23, 59, 59, 999);
                     if (to < orderDate) inDateRange = false;
                 }
-            } else {
-                inDateRange = false; // Ignore orders without proper creation date if filtering
             }
 
             if (inDateRange && order.items && Array.isArray(order.items)) {
@@ -1148,12 +1373,16 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
                     if (item.sellerId === uid) {
                         const rev = (item.price || 0) * (item.quantity || 1);
                         totalRevenue += rev;
-                        deliveredItems.push({
-                            name: item.title,
-                            qty: item.quantity || 1,
+                        deliveredCount++;
+                        
+                        // Store order details
+                        orderDetails.push({
+                            orderId: o.id,
+                            orderDate: orderDate ? orderDate.toLocaleDateString('en-GB') : 'N/A',
+                            productName: item.name || 'N/A',
+                            quantity: item.quantity || 1,
                             price: item.price || 0,
-                            revenue: rev,
-                            date: orderDate?.toLocaleDateString() || "N/A"
+                            total: rev
                         });
                     }
                 });
@@ -1161,75 +1390,199 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         });
 
         const platformCharges = totalRevenue * 0.10;
-        const netPayout = totalRevenue - platformCharges;
+        const amountToReceive = totalRevenue - platformCharges;
 
-        // Generate PDF
-        const doc = new PDFDocument({ margin: 50 });
+        // Generate PDF with proper formatting
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=invoice_${sellerData.shopName?.replace(/\s+/g, '_') || 'seller'}.pdf`);
         doc.pipe(res);
 
-        // Header
-        doc.fontSize(24).font('Helvetica-Bold').text('SELLER INVOICE', { align: 'right', color: '#333333' });
-        doc.moveDown();
+        // Header Section
+        doc.fontSize(28).fillColor('#6366f1').font('Helvetica-Bold').text('SELLSATHI', 50, 50);
+        doc.fontSize(10).fillColor('#999999').font('Helvetica')
+           .text('Your Trusted E-Commerce Platform', 50, 82)
+           .text('Empowering Sellers, Delighting Customers', 50, 96)
+           .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 110);
 
-        doc.fontSize(12).font('Helvetica-Bold').text('Sellsathi Admin', 50, 50);
-        doc.font('Helvetica').text('Platform Settlement Document', 50, 65);
-        doc.text(`Date Generated: ${new Date().toLocaleDateString()}`, 50, 80);
+        // Report Date (top right)
+        const reportDate = new Date().toLocaleDateString('en-GB');
+        doc.fontSize(10).fillColor('#666666').font('Helvetica')
+           .text('Report Date:', 450, 50)
+           .fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+           .text(reportDate, 450, 65);
+
+        // Horizontal line
+        doc.moveTo(50, 135).lineTo(545, 135).strokeColor('#6366f1').lineWidth(2).stroke();
+
+        // Title
+        doc.fontSize(20).fillColor('#000000').font('Helvetica-Bold')
+           .text('SELLER INVOICE REPORT', 50, 155, { align: 'center' });
+        
+        // Period subtitle
+        let periodText = 'Complete Invoice History';
         if (fromDate && toDate) {
-            doc.text(`Period: ${fromDate} to ${toDate}`, 50, 95);
-        } else {
-            doc.text(`Period: All Time (Delivered)`, 50, 95);
+            const from = new Date(fromDate).toLocaleDateString('en-GB');
+            const to = new Date(toDate).toLocaleDateString('en-GB');
+            periodText = `Period: ${from} to ${to}`;
+        } else if (fromDate) {
+            periodText = `From: ${new Date(fromDate).toLocaleDateString('en-GB')}`;
+        } else if (toDate) {
+            periodText = `Until: ${new Date(toDate).toLocaleDateString('en-GB')}`;
+        }
+        
+        doc.fontSize(12).fillColor('#999999').font('Helvetica')
+           .text(periodText, 50, 180, { align: 'center' });
+
+        // Seller Information Section
+        doc.rect(50, 210, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
+           .text('SELLER INFORMATION', 55, 216);
+
+        doc.fontSize(11).font('Helvetica').fillColor('#000000');
+        
+        // Two column layout for seller info
+        doc.text('Shop Name:', 55, 245);
+        doc.text(sellerData.shopName || 'N/A', 180, 245);
+        doc.text('Category:', 320, 245);
+        doc.text(sellerData.category || 'N/A', 420, 245);
+
+        doc.text('Seller ID:', 55, 265);
+        doc.text(uid.substring(0, 25), 180, 265);
+        doc.text('Phone:', 320, 265);
+        doc.text(sellerContact, 420, 265);
+
+        doc.text('Email:', 55, 285);
+        doc.text(sellerEmail, 180, 285);
+
+        // Invoice Summary Section
+        doc.rect(50, 315, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
+           .text('INVOICE SUMMARY', 55, 321);
+
+        // Four colored boxes - All Blue for formal look
+        const boxY = 355;
+        const boxWidth = 115;
+        const boxHeight = 70;
+        const boxGap = 10;
+
+        // Total Products Listed (Blue)
+        doc.rect(50, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+           .text('Total Products', 55, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+           .text('Listed', 55, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(28).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(totalProducts.toString(), 55, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Total Revenue Earned (Blue)
+        doc.rect(50 + boxWidth + boxGap, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+           .text('Total Revenue', 50 + boxWidth + boxGap + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+           .text('Earned', 50 + boxWidth + boxGap + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(`Rs.${totalRevenue}`, 50 + boxWidth + boxGap + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Platform Charges (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 2, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+           .text('Platform Charges', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+           .text('(10%)', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(`Rs.${platformCharges.toFixed(2)}`, 50 + (boxWidth + boxGap) * 2 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Amount to Receive (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 3, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+           .text('Amount to', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+           .text('Receive', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
+           .text(`Rs.${amountToReceive.toFixed(2)}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Based on text
+        doc.fontSize(10).fillColor('#999999').font('Helvetica')
+           .text(`Based on ${deliveredCount} delivered orders`, 50, boxY + boxHeight + 15, { align: 'center', width: 495 });
+
+        // Order Details Table (if there are orders)
+        if (orderDetails.length > 0) {
+            let tableY = boxY + boxHeight + 50;
+            
+            // Check if we need a new page
+            if (tableY > 650) {
+                doc.addPage();
+                tableY = 50;
+            }
+
+            // Table Header
+            doc.rect(50, tableY, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+            doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
+               .text('ORDER DETAILS', 55, tableY + 6);
+
+            tableY += 30;
+
+            // Table Column Headers
+            doc.fontSize(9).fillColor('#666666').font('Helvetica-Bold');
+            doc.text('Date', 55, tableY);
+            doc.text('Order ID', 110, tableY);
+            doc.text('Product Name', 190, tableY, { width: 150 });
+            doc.text('Qty', 350, tableY);
+            doc.text('Price', 390, tableY);
+            doc.text('Total', 470, tableY);
+
+            // Header underline
+            doc.moveTo(50, tableY + 15).lineTo(545, tableY + 15).strokeColor('#e5e7eb').lineWidth(1).stroke();
+
+            tableY += 25;
+
+            // Table Rows
+            doc.fontSize(8).fillColor('#000000').font('Helvetica');
+            
+            orderDetails.forEach((order, index) => {
+                // Check if we need a new page
+                if (tableY > 720) {
+                    doc.addPage();
+                    tableY = 50;
+                    
+                    // Repeat headers on new page
+                    doc.fontSize(9).fillColor('#666666').font('Helvetica-Bold');
+                    doc.text('Date', 55, tableY);
+                    doc.text('Order ID', 110, tableY);
+                    doc.text('Product Name', 190, tableY, { width: 150 });
+                    doc.text('Qty', 350, tableY);
+                    doc.text('Price', 390, tableY);
+                    doc.text('Total', 470, tableY);
+                    
+                    doc.moveTo(50, tableY + 15).lineTo(545, tableY + 15).strokeColor('#e5e7eb').lineWidth(1).stroke();
+                    tableY += 25;
+                    doc.fontSize(8).fillColor('#000000').font('Helvetica');
+                }
+
+                // Alternate row background
+                if (index % 2 === 0) {
+                    doc.rect(50, tableY - 5, 495, 20).fillAndStroke('#f9fafb', '#f9fafb');
+                }
+
+                doc.text(order.orderDate, 55, tableY);
+                doc.text(order.orderId.substring(0, 12) + '...', 110, tableY);
+                doc.text(order.productName.substring(0, 30), 190, tableY, { width: 150 });
+                doc.text(order.quantity.toString(), 350, tableY);
+                doc.text(`Rs.${order.price}`, 390, tableY);
+                doc.text(`Rs.${order.total}`, 470, tableY);
+
+                tableY += 20;
+            });
+
+            // Table footer line
+            doc.moveTo(50, tableY).lineTo(545, tableY).strokeColor('#e5e7eb').lineWidth(1).stroke();
         }
 
-        // Seller Info
-        doc.fontSize(12).font('Helvetica-Bold').text('Billed To:', 50, 130);
-        doc.font('Helvetica').text(`Shop Name: ${sellerData.shopName}`, 50, 145);
-        doc.text(`Owner: ${sellerData.extractedName || sellerData.name || "N/A"}`, 50, 160);
-        doc.text(`Contact: ${sellerEmail}`, 50, 175);
-        doc.text(`Category: ${sellerData.category}`, 50, 190);
-
-        // Financial Summary
-        doc.rect(50, 220, 500, 100).fillAndStroke('#f9fafb', '#e5e7eb');
-        doc.fill('#000000');
-        doc.fontSize(14).font('Helvetica-Bold').text('Settlement Summary', 60, 235);
-
-        doc.fontSize(11).font('Helvetica');
-        doc.text(`Total Items Delivered: ${deliveredItems.length}`, 60, 260);
-        doc.text(`Gross Revenue: Rs. ${totalRevenue.toLocaleString()}`, 60, 275);
-        doc.text(`Platform Fee (10%): Rs. ${platformCharges.toLocaleString()}`, 60, 290);
-
-        doc.fontSize(12).font('Helvetica-Bold').text(`Net Amount Payable: Rs. ${netPayout.toLocaleString()}`, 300, 290, { align: 'right', width: 230 });
-
-        doc.moveDown(4);
-
-        // Itemized Breakdown
-        doc.fontSize(14).font('Helvetica-Bold').text('Itemized Breakdown', 50, 340);
-        doc.moveDown(0.5);
-
-        let tableTop = doc.y;
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text('Date', 50, tableTop);
-        doc.text('Item Name', 120, tableTop);
-        doc.text('Qty', 350, tableTop);
-        doc.text('Price', 400, tableTop);
-        doc.text('Total', 480, tableTop);
-
-        // Line under table headers
-        doc.moveTo(50, tableTop + 12).lineTo(550, tableTop + 12).stroke();
-
-        let y = tableTop + 20;
-        doc.font('Helvetica');
-        deliveredItems.forEach(item => {
-            if (y > 700) { doc.addPage(); y = 50; }
-            doc.text(item.date, 50, y);
-            doc.text(item.name.substring(0, 40), 120, y);
-            doc.text(`${item.qty}`, 350, y);
-            doc.text(`${item.price}`, 400, y);
-            doc.text(`${item.revenue}`, 480, y);
-            y += 15;
-            doc.moveTo(50, y - 5).lineTo(550, y - 5).stroke('#f3f4f6');
-        });
+        // Footer
+        const footerY = orderDetails.length > 0 ? (doc.y > 720 ? 750 : 750) : 750;
+        doc.fontSize(9).fillColor('#cccccc').font('Helvetica')
+           .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, footerY, { align: 'center', width: 495 });
 
         doc.end();
     } catch (err) {
@@ -1378,12 +1731,46 @@ app.post("/seller/product/add", verifyAuth, async (req, res) => {
             return res.status(400).json({ success: false, message: "Missing data" });
         }
 
+        const price = Number(productData.price);
+        if (isNaN(price) || price <= 0) {
+            return res.status(400).json({ success: false, message: "Price must be a positive number" });
+        }
+
         const newProduct = {
-            ...productData,
+            title: productData.title || productData.name,
+            name: productData.title || productData.name,
+            price: price,
+            discountPrice: productData.discountPrice || null,
+            category: productData.category,
+            description: productData.description || "",
+            image: productData.image || "",
+            imageUrl: productData.image || productData.imageUrl || "",
+            stock: Number(productData.stock) || 0,
             sellerId,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: "Active" // Default status
+            status: "Active"
         };
+
+        // Dynamic fields: sizes, colors, variants, specifications
+        if (productData.sizes && Array.isArray(productData.sizes) && productData.sizes.length > 0) {
+            newProduct.sizes = productData.sizes;
+            newProduct.pricingType = productData.pricingType || "same";
+            if (productData.pricingType === "varied" && productData.sizePrices) {
+                newProduct.sizePrices = productData.sizePrices;
+            }
+        }
+        if (productData.colors && Array.isArray(productData.colors) && productData.colors.length > 0) {
+            newProduct.colors = productData.colors;
+        }
+        const VARIANT_KEYS = ["storage", "memory", "weight"];
+        for (const vk of VARIANT_KEYS) {
+            if (productData[vk] && Array.isArray(productData[vk]) && productData[vk].length > 0) {
+                newProduct[vk] = productData[vk];
+            }
+        }
+        if (productData.specifications && typeof productData.specifications === "object" && Object.keys(productData.specifications).length > 0) {
+            newProduct.specifications = productData.specifications;
+        }
 
         const docRef = await db.collection("products").add(newProduct);
 
@@ -1440,7 +1827,7 @@ app.get("/seller/:uid/orders", verifyAuth, async (req, res) => {
                     items: sellerItems, // Only show items relevant to this seller
                     total: sellerItems.reduce((acc, item) => acc + (item.price * item.quantity), 0),
                     status: order.status,
-                    date: order.createdAt?.toDate().toISOString().split('T')[0] || new Date().toISOString().split('T')[0]
+                    date: formatDateDDMMYYYY(order.createdAt)
                 });
             }
         });
@@ -1526,16 +1913,7 @@ app.get("/seller/:uid/dashboard-data", verifyAuth, async (req, res) => {
                 if (order.status === 'Processing') newOrdersCount++;
                 if (order.status === 'Pending') pendingOrdersCount++;;
 
-                let orderDate = new Date().toISOString().split('T')[0];
-                try {
-                    if (order.createdAt && typeof order.createdAt.toDate === 'function') {
-                        orderDate = order.createdAt.toDate().toISOString().split('T')[0];
-                    } else if (order.createdAt && order.createdAt._seconds) {
-                        orderDate = new Date(order.createdAt._seconds * 1000).toISOString().split('T')[0];
-                    }
-                } catch (e) {
-                    console.error("Error parsing order date:", e);
-                }
+                let orderDate = formatDateDDMMYYYY(order.createdAt);
 
                 sellerOrders.push({
                     id: doc.id,
@@ -1585,7 +1963,7 @@ app.get("/seller/:uid/dashboard-data", verifyAuth, async (req, res) => {
                 profile: { shopName: "Demo Shop", name: "Demo Seller", status: "APPROVED" },
                 stats: { totalSales: 15000, totalProducts: 2, newOrders: 1, pendingOrders: 0 },
                 products: [{ id: 'mock1', title: 'Sample Product', price: 999, stock: 10, category: 'Electronics' }],
-                orders: [{ id: 'mock-o1', orderId: 'OD123', customer: 'Demo Customer', total: 999, status: 'Processing', date: new Date().toISOString().split('T')[0] }]
+                orders: [{ id: 'mock-o1', orderId: 'OD123', customer: 'Demo Customer', total: 999, status: 'Processing', date: formatDateDDMMYYYY(new Date()) }]
             });
         }
 

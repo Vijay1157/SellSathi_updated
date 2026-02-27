@@ -42,7 +42,7 @@ export default function ProductListing() {
     useEffect(() => {
         const fetchProducts = async () => {
             setLoading(true);
-            
+
             // Define mockData outside try block for scope accessibility
             const mockData = [
                 // Electronics
@@ -127,7 +127,7 @@ export default function ProductListing() {
                 },
                 { id: "fashion-14", name: "Designer Kurta Set", price: 3499, oldPrice: 4599, rating: 4.7, reviews: 215, category: "Women's Fashion", subCategory: "Ethnic Wear", image: "https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?w=800", sizes: ['S', 'M', 'L', 'XL'], stock: 0, status: 'Out of Stock' }
             ];
-            
+
             try {
                 const q = query(collection(db, "products"), limit(20));
                 const snap = await getDocs(q);
@@ -279,61 +279,7 @@ export default function ProductListing() {
 
                 <div className="listing-layout">
                     {/* Sidebar Filters */}
-                    <aside className="filters-sidebar glass-card">
-                        <div className="sidebar-section">
-                            <h3>Categories</h3>
-                            <div className="category-list">
-                                <button
-                                    className={selectedCategory === 'All' ? 'active' : ''}
-                                    onClick={() => navigate('/products')}
-                                >
-                                    All Categories {selectedCategory === 'All' && <Check size={14} />}
-                                </button>
-                                {CATEGORIES.map(cat => (
-                                    <button
-                                        key={cat}
-                                        className={selectedCategory === cat ? 'active' : ''}
-                                        onClick={() => navigate(`/products?category=${cat}`)}
-                                    >
-                                        {cat} {selectedCategory === cat && <Check size={14} />}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
 
-                        <div className="sidebar-section">
-                            <h3>Price Range</h3>
-                            <div className="price-filter">
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100000"
-                                    step="500"
-                                    value={priceRange}
-                                    onChange={(e) => setPriceRange(Number(e.target.value))}
-                                />
-                                <div className="price-labels">
-                                    <span>₹0</span>
-                                    <span>₹{priceRange.toLocaleString()}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="sidebar-section">
-                            <h3>Customer Review</h3>
-                            <div className="rating-filters">
-                                {[4, 3, 2].map(r => (
-                                    <div key={r} className="rating-opt">
-                                        <input type="checkbox" />
-                                        <div className="stars">
-                                            {[...Array(5)].map((_, i) => <Star key={i} size={14} fill={i < r ? "#FFB800" : "transparent"} color="#FFB800" />)}
-                                        </div>
-                                        <span>& up</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </aside>
 
                     {/* Product Grid Area */}
                     <main className="product-main">
@@ -472,7 +418,7 @@ const listingStyles = `
 .view-toggle button { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--text-muted); transition: 0.3s; }
 .view-toggle button.active { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
 
-.listing-layout { display: grid; grid-template-columns: 320px 1fr; gap: 4rem; margin-top: 3rem; }
+.listing-layout { display: block; margin-top: 3rem; }
 
 .filters-sidebar { height: fit-content; padding: 2.5rem; position: sticky; top: 120px; border-radius: 32px; }
 .sidebar-section { margin-bottom: 3rem; }

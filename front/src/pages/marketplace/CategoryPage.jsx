@@ -23,6 +23,13 @@ export default function CategoryPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Redirection to "remove this page" as requested by user
+        if (categoryName) {
+            navigate(`/products?category=${categoryName}`, { replace: true });
+        }
+    }, [categoryName, navigate]);
+
+    useEffect(() => {
         const fetchCategoryProducts = async () => {
             setLoading(true);
             try {

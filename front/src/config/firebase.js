@@ -3,13 +3,13 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDT-demNl_Yx2eR_tsOHxn4MXAzIJ6d8nQ",
-    authDomain: "sellsathi.firebaseapp.com",
-    projectId: "sellsathi",
-    storageBucket: "sellsathi.firebasestorage.app",
-    messagingSenderId: "643847496704",
-    appId: "1:643847496704:web:a3254d6452d2eb634224e5",
-    measurementId: "G-FKQE3GELCZ"
+  apiKey: "AIzaSyAgz9OL6NYOxwxpzgz7e6Y1Zk6861Gpvt0",
+  authDomain: "sellsathi-94ede.firebaseapp.com",
+  projectId: "sellsathi-94ede",
+  storageBucket: "sellsathi-94ede.firebasestorage.app",
+  messagingSenderId: "213392011043",
+  appId: "1:213392011043:web:669298ae968e8af8a6a696",
+  measurementId: "G-TRNXGBX0HL"
 };
 
 // Initialize Firebase

@@ -86,7 +86,7 @@ app.get("/debug/headers", (req, res) => {
 
 admin.initializeApp({
     credential: admin.credential.cert(require("./serviceAccountKey.json")),
-    storageBucket: "sellsathi.firebasestorage.app"
+    storageBucket: "sellsathi-94ede.firebasestorage.app"
 });
 
 const db = admin.firestore();
@@ -444,11 +444,20 @@ app.post("/auth/login", async (req, res) => {
         const userRef = db.collection("users").doc(uid);
         const userSnap = await userRef.get();
 
+        const normalizePhone = (val) => {
+            if (!val) return "";
+            const digits = String(val).replace(/\D/g, "");
+            return digits.length > 10 ? digits.slice(-10) : digits;
+        };
+
         if (!userSnap.exists) {
+            const isAdminPhone = normalizePhone(phoneNumber) === normalizePhone(ADMIN_PHONE);
+            const initialRole = isAdminPhone ? "ADMIN" : "CONSUMER";
+
             await userRef.set({
                 uid,
                 phone: phoneNumber,
-                role: "CONSUMER",
+                role: initialRole,
                 isActive: true,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
@@ -456,9 +465,9 @@ app.post("/auth/login", async (req, res) => {
             return res.status(200).json({
                 success: true,
                 uid,
-                role: "CONSUMER",
-                status: "NEW_USER",
-                message: "New user created as CONSUMER",
+                role: initialRole,
+                status: isAdminPhone ? "AUTHORIZED" : "NEW_USER",
+                message: `New user created as ${initialRole}`,
             });
         }
         const userData = userSnap.data();
@@ -472,12 +481,6 @@ app.post("/auth/login", async (req, res) => {
         }
 
         let userRole = userData.role;
-
-        const normalizePhone = (val) => {
-            if (!val) return "";
-            const digits = String(val).replace(/\D/g, "");
-            return digits.length > 10 ? digits.slice(-10) : digits;
-        };
 
         // STRICT SECURITY CHECK: Only the designated phone number can be ADMIN
         // DEV FIX: Ensure test-login admin always has Firestore role=ADMIN for verifyAdmin checks.
@@ -1654,15 +1657,40 @@ app.post("/seller/product/add", verifyAuth, async (req, res) => {
 
         const newProduct = {
             title: productData.title,
+            name: productData.title, // alias for ProductDetail compatibility
             price: price,
+            discountPrice: productData.discountPrice || null,
             category: productData.category,
             description: productData.description || "",
             image: productData.image || "",
-            imageUrl: productData.imageUrl || "",
+            imageUrl: productData.image || productData.imageUrl || "",
+            stock: Number(productData.stock) || 0,
             sellerId,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             status: "Active"
         };
+
+        // ── Dynamic fields: sizes, colors, variants, specifications ──
+        if (productData.sizes && Array.isArray(productData.sizes) && productData.sizes.length > 0) {
+            newProduct.sizes = productData.sizes;
+            newProduct.pricingType = productData.pricingType || "same";
+            if (productData.pricingType === "varied" && productData.sizePrices) {
+                newProduct.sizePrices = productData.sizePrices;
+            }
+        }
+        if (productData.colors && Array.isArray(productData.colors) && productData.colors.length > 0) {
+            newProduct.colors = productData.colors;
+        }
+        // Variant arrays: storage, memory, weight, etc.
+        const VARIANT_KEYS = ["storage", "memory", "weight"];
+        for (const vk of VARIANT_KEYS) {
+            if (productData[vk] && Array.isArray(productData[vk]) && productData[vk].length > 0) {
+                newProduct[vk] = productData[vk];
+            }
+        }
+        if (productData.specifications && typeof productData.specifications === "object" && Object.keys(productData.specifications).length > 0) {
+            newProduct.specifications = productData.specifications;
+        }
 
         // 1. Save to main products collection
         const mainDocRef = await db.collection("products").add(newProduct);

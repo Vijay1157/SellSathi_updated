@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
+    ArrowLeft,
     CreditCard,
     MapPin,
     ShoppingBag,
@@ -467,11 +468,20 @@ export default function Checkout() {
     return (
         <div className="bg-gray-50/20 min-h-screen">
             <div className="container px-6 py-12 max-w-7xl mx-auto">
-                <div className="mb-12">
-                    <h1 className="text-4xl font-black text-gray-900 tracking-tight">
-                        Checkout <span className="text-gray-400 font-light">Process</span>
-                    </h1>
-                    <p className="text-gray-500 font-medium mt-2">Securely complete your purchase at Sellsathi</p>
+                <div className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                        <h1 className="text-4xl font-black text-gray-900 tracking-tight">
+                            Checkout <span className="text-gray-400 font-light">Process</span>
+                        </h1>
+                        <p className="text-gray-500 font-medium mt-2">Securely complete your purchase at Sellsathi</p>
+                    </div>
+                    <Link
+                        to="/"
+                        className="flex items-center justify-center gap-2 px-6 py-4 bg-white border border-gray-100 rounded-2xl font-bold text-gray-600 hover:bg-gray-50 hover:border-primary/20 hover:text-primary transition-all shadow-sm self-start"
+                    >
+                        <ArrowLeft size={18} />
+                        Back to Shopping
+                    </Link>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-12 gap-12 items-start">

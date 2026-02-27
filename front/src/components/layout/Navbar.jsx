@@ -7,7 +7,7 @@ import { db } from '../../config/firebase';
 import { listenToCart } from '../../utils/cartUtils';
 import { listenToWishlist } from '../../utils/wishlistUtils';
 
-const MAIN_CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories"];
+const MAIN_CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories", "Today's Deals", "New Arrivals", "Trending"];
 
 const LANGUAGES = [
     { code: 'en', name: 'English', native: 'English' },
@@ -48,26 +48,50 @@ export default function Navbar() {
         const fetchMegaData = async () => {
             try {
                 const snap = await getDocs(collection(db, "products"));
-                const products = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                let products = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                // Fallback demo data if DB is empty to ensure mega menu is visible
+                if (products.length < 5) {
+                    const demoItems = [
+                        { id: 'e1', name: 'Smart Watch X', price: 12999, category: 'Electronics', subCategory: 'Gadgets', tags: ['Tech', 'Wearable'], image: 'https://images.unsplash.com/photo-1546868871-70ca48370731' },
+                        { id: 'e2', name: 'Noise Buds', price: 2999, category: 'Electronics', subCategory: 'Audio', tags: ['Music'], image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df' },
+                        { id: 'm1', name: 'Classic Polo', price: 1499, category: "Men's Fashion", subCategory: 'Apparel', tags: ['Summer'], image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518' },
+                        { id: 'w1', name: 'Silk Saree', price: 4999, category: "Women's Fashion", subCategory: 'Traditional', tags: ['Ethnic'], image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c' },
+                        { id: 'h1', name: 'Wall Art', price: 899, category: 'Home & Living', subCategory: 'Decor', tags: ['Home'], image: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38' }
+                    ];
+                    products = [...products, ...demoItems];
+                }
 
                 const mega = {};
                 MAIN_CATEGORIES.forEach(cat => {
-                    const catProducts = products.filter(p => p.category === cat);
+                    let catProducts;
+                    if (cat === "Today's Deals") {
+                        catProducts = products.filter(p => p.discount || p.oldPrice || p.id === 'e2');
+                    } else if (cat === "New Arrivals") {
+                        catProducts = [...products].reverse().slice(0, 10);
+                    } else if (cat === "Trending") {
+                        catProducts = products.filter(p => (p.rating || 0) >= 4.5 || p.id === 'e1');
+                    } else {
+                        catProducts = products.filter(p => p.category === cat);
+                    }
+
                     const subGroups = {};
                     catProducts.forEach(p => {
-                        const sub = p.subCategory || 'General';
+                        const sub = p.subCategory || 'Featured';
                         if (!subGroups[sub]) subGroups[sub] = [];
                         subGroups[sub].push(p);
                     });
 
-                    mega[cat] = {
-                        categories: Object.keys(subGroups).map(sub => ({
-                            id: sub.toLowerCase().replace(/\s+/g, '-'),
-                            name: sub,
-                            items: subGroups[sub].slice(0, 4) // Show top 4 items in menu
-                        })),
-                        popular: Array.from(new Set(catProducts.flatMap(p => p.tags || []))).slice(0, 4)
-                    };
+                    if (catProducts.length > 0) {
+                        mega[cat] = {
+                            categories: Object.keys(subGroups).map(sub => ({
+                                id: sub.toLowerCase().replace(/\s+/g, '-'),
+                                name: sub,
+                                items: subGroups[sub].slice(0, 4)
+                            })),
+                            popular: Array.from(new Set(catProducts.flatMap(p => p.tags || []))).slice(0, 4)
+                        };
+                    }
                 });
                 setDynamicMegaData(mega);
             } catch (err) {
@@ -82,7 +106,7 @@ export default function Navbar() {
             const count = items.reduce((acc, item) => acc + (item.quantity || 1), 0);
             setCartCount(count);
         });
-        
+
         const unsubscribeWishlist = listenToWishlist((items) => {
             setWishlistCount(items.length);
         });
@@ -163,100 +187,70 @@ export default function Navbar() {
                             SELLSATHI
                         </Link>
 
-                        <div className="nav-location" onClick={() => {
-                            const newLoc = prompt("Enter your PIN code or city:");
-                            if (newLoc) setLocationName(newLoc);
-                        }}>
-                            <MapPin size={20} className="pin-icon" />
-                            <div className="location-info">
-                                <span className="label">Deliver to</span>
-                                <span className="value">{locationName}</span>
-                            </div>
-                            <ChevronDown size={14} className="chevron" />
-                        </div>
-
-                        <div className="nav-search">
-                            <Search size={18} className="search-icon" />
-                            <input
-                                type="text"
-                                placeholder="Search products, brands and more..."
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && e.target.value.trim()) {
-                                        const params = new URLSearchParams();
-                                        params.set('search', e.target.value.trim());
-                                        navigate(`/products?${params.toString()}`);
-                                        e.target.blur();
-                                    }
-                                }}
-                            />
-                        </div>
-
-                        <div className="nav-selectors">
-                            {/* Language Selector */}
-                            <div className="selector-container">
-                                <button
-                                    className="selector-trigger"
-                                    onClick={() => {
-                                        setIsLangOpen(!isLangOpen);
-                                        setIsCurrencyOpen(false);
-                                    }}
-                                >
-                                    <Languages size={18} />
-                                    <span>{selectedLang.name}</span>
-                                    <ChevronDown size={14} className={isLangOpen ? 'rotate' : ''} />
-                                </button>
-                                {isLangOpen && (
-                                    <div className="selector-dropdown glass-card animate-slide-up">
-                                        {LANGUAGES.map(lang => (
-                                            <button
-                                                key={lang.code}
-                                                className={selectedLang.code === lang.code ? 'active' : ''}
-                                                onClick={() => {
-                                                    setSelectedLang(lang);
-                                                    setIsLangOpen(false);
-                                                }}
-                                            >
-                                                <span className="lang-native">{lang.native}</span>
-                                                {selectedLang.code === lang.code && <span className="dot"></span>}
-                                            </button>
-                                        ))}
+                        {!location.pathname.startsWith('/checkout') && (
+                            <>
+                                <div className="nav-location" onClick={() => {
+                                    const newLoc = prompt("Enter your PIN code or city:");
+                                    if (newLoc) setLocationName(newLoc);
+                                }}>
+                                    <MapPin size={20} className="pin-icon" />
+                                    <div className="location-info">
+                                        <span className="label">Deliver to</span>
+                                        <span className="value">{locationName}</span>
                                     </div>
-                                )}
-                            </div>
+                                    <ChevronDown size={14} className="chevron" />
+                                </div>
 
-                            {/* Currency Selector */}
-                            <div className="selector-container">
-                                <button
-                                    className="selector-trigger"
-                                    onClick={() => {
-                                        setIsCurrencyOpen(!isCurrencyOpen);
-                                        setIsLangOpen(false);
-                                    }}
-                                >
-                                    <span className="currency-symbol-btn">{selectedCurrency.symbol}</span>
-                                    <span>{selectedCurrency.code}</span>
-                                    <ChevronDown size={14} className={isCurrencyOpen ? 'rotate' : ''} />
-                                </button>
-                                {isCurrencyOpen && (
-                                    <div className="selector-dropdown currency-dropdown glass-card animate-slide-up">
-                                        {CURRENCIES.map(curr => (
-                                            <button
-                                                key={curr.code}
-                                                className={selectedCurrency.code === curr.code ? 'active' : ''}
-                                                onClick={() => {
-                                                    setSelectedCurrency(curr);
-                                                    setIsCurrencyOpen(false);
-                                                }}
-                                            >
-                                                <span className="curr-symbol">{curr.symbol}</span>
-                                                <span className="curr-name">{curr.name}</span>
-                                                <span className="curr-code-fade">({curr.symbol})</span>
-                                            </button>
-                                        ))}
+                                <div className="nav-search">
+                                    <Search size={18} className="search-icon" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search products, brands and more..."
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && e.target.value.trim()) {
+                                                const params = new URLSearchParams();
+                                                params.set('search', e.target.value.trim());
+                                                navigate(`/products?${params.toString()}`);
+                                                e.target.blur();
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="nav-selectors">
+                                    {/* Language Selector */}
+                                    <div className="selector-container">
+                                        <button
+                                            className="selector-trigger"
+                                            onClick={() => {
+                                                setIsLangOpen(!isLangOpen);
+                                            }}
+                                        >
+                                            <Languages size={18} />
+                                            <span>{selectedLang.name}</span>
+                                            <ChevronDown size={14} className={isLangOpen ? 'rotate' : ''} />
+                                        </button>
+                                        {isLangOpen && (
+                                            <div className="selector-dropdown glass-card animate-slide-up">
+                                                {LANGUAGES.map(lang => (
+                                                    <button
+                                                        key={lang.code}
+                                                        className={selectedLang.code === lang.code ? 'active' : ''}
+                                                        onClick={() => {
+                                                            setSelectedLang(lang);
+                                                            setIsLangOpen(false);
+                                                        }}
+                                                    >
+                                                        <span className="lang-native">{lang.native}</span>
+                                                        {selectedLang.code === lang.code && <span className="dot"></span>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
-                        </div>
+                                </div>
+                            </>
+                        )}
 
                         <div className="nav-actions">
                             <Link to="/wishlist" className="btn btn-secondary icon-btn wishlist-btn-nav">
@@ -289,7 +283,11 @@ export default function Navbar() {
                                                 </div>
                                             </div>
                                             <div className="menu-items">
-                                                <button onClick={() => { navigate('/dashboard'); setIsProfileOpen(false); }}>
+                                                <button onClick={() => {
+                                                    const path = user.role === 'ADMIN' ? '/admin' : (user.role === 'SELLER' ? '/seller/dashboard' : '/dashboard');
+                                                    navigate(path);
+                                                    setIsProfileOpen(false);
+                                                }}>
                                                     <ShoppingBag size={16} /> My Dashboard
                                                 </button>
                                                 <button onClick={() => { setIsLoginModalOpen(true); setIsProfileOpen(false); }}>
@@ -311,99 +309,100 @@ export default function Navbar() {
                     </div>
                 </div>
 
-                <div className="sub-nav-wrapper">
-                    <div className="sub-nav container">
-                        {['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories", "Today's Deals", "New Arrivals", "Trending"].map(cat => {
-                            let path = `/products?category=${cat}`;
-                            if (cat === "Today's Deals") path = "/deals";
-                            if (cat === "New Arrivals") path = "/new-arrivals";
-                            if (cat === "Trending") path = "/trending";
+                {!location.pathname.startsWith('/checkout') && (
+                    <div className="sub-nav-wrapper" onMouseLeave={() => setActiveMegaMenu(null)}>
+                        <div className="sub-nav container">
+                            {['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories", "Today's Deals", "New Arrivals", "Trending"].map(cat => {
+                                let path = `/products?category=${cat}`;
+                                if (cat === "Today's Deals") path = "/deals";
+                                if (cat === "New Arrivals") path = "/new-arrivals";
+                                if (cat === "Trending") path = "/trending";
 
-                            const isMega = !!dynamicMegaData[cat];
-                            const hubPath = isMega ? `/category/${cat}` : path;
+                                const isMega = !!dynamicMegaData[cat];
 
-                            return (
-                                <div key={cat} className="sub-nav-item">
-                                    <Link
-                                        to={hubPath}
-                                        className={`sub-nav-link ${location.pathname.includes(cat) ? 'active' : ''}`}
-                                        onMouseEnter={() => isMega && setActiveMegaMenu(cat)}
-                                        onClick={() => setActiveMegaMenu(null)}
-                                    >
-                                        {cat}
-                                        {isMega && <ChevronDown size={12} />}
-                                    </Link>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Mega Menu Dropdown */}
-                    {activeMegaMenu && dynamicMegaData[activeMegaMenu] && (
-                        <div className="mega-menu animate-slide-down">
-                            <div className="container mega-menu-content">
-                                <div className="mega-sidebar">
-                                    <h3 onClick={() => { navigate(`/category/${activeMegaMenu}`); setActiveMegaMenu(null); }} style={{ cursor: 'pointer' }}>
-                                        {activeMegaMenu}
-                                    </h3>
-                                    <div className="sidebar-items">
-                                        {dynamicMegaData[activeMegaMenu].categories.map((scat, idx) => (
-                                            <button
-                                                key={scat.id}
-                                                className={activeSubCategory === idx ? 'active' : ''}
-                                                onMouseEnter={() => setActiveSubCategory(idx)}
-                                                onClick={() => { navigate(`/products?category=${activeMegaMenu}&sub=${scat.name}`); setActiveMegaMenu(null); }}
-                                            >
-                                                {scat.name}
-                                                <ArrowRight size={14} className="arrow" />
-                                            </button>
-                                        ))}
+                                return (
+                                    <div key={cat} className="sub-nav-item">
+                                        <Link
+                                            to={path}
+                                            className={`sub-nav-link ${location.pathname.includes(cat) ? 'active' : ''}`}
+                                            onMouseEnter={() => isMega && setActiveMegaMenu(cat)}
+                                            onClick={() => setActiveMegaMenu(null)}
+                                        >
+                                            {cat}
+                                            {isMega && <ChevronDown size={12} />}
+                                        </Link>
                                     </div>
-                                </div>
+                                );
+                            })}
+                        </div>
 
-                                <div className="mega-main">
-                                    {dynamicMegaData[activeMegaMenu].categories[activeSubCategory] && (
-                                        <>
-                                            <div className="mega-title-row">
-                                                <h4>{dynamicMegaData[activeMegaMenu].categories[activeSubCategory].name}</h4>
-                                            </div>
-                                            <div className="mega-grid">
-                                                {dynamicMegaData[activeMegaMenu].categories[activeSubCategory].items.map((item, idx) => (
-                                                    <div
-                                                        key={item.id}
-                                                        className="mega-item-card"
-                                                        onClick={() => { navigate(`/product/${item.id}`); setActiveMegaMenu(null); }}
-                                                    >
-                                                        <div className="img-box">
-                                                            <img src={item.images?.[0] || item.image} alt={item.name} />
-                                                        </div>
-                                                        <div className="item-info">
-                                                            <h5>{item.name}</h5>
-                                                            <p>₹{item.price?.toLocaleString()}</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
-
-                                    <div className="mega-footer">
-                                        <div className="popular-tags">
-                                            <span className="label">Popular Tags:</span>
-                                            {dynamicMegaData[activeMegaMenu].popular.map(tag => (
-                                                <Link key={tag} to={`/products?search=${tag}`} className="tag" onClick={() => setActiveMegaMenu(null)}>{tag}</Link>
+                        {/* Mega Menu Dropdown */}
+                        {activeMegaMenu && dynamicMegaData[activeMegaMenu] && (
+                            <div className="mega-menu animate-slide-down" onMouseEnter={() => setActiveMegaMenu(activeMegaMenu)}>
+                                <div className="container mega-menu-content">
+                                    <div className="mega-sidebar">
+                                        <h3 onClick={() => { navigate(`/products?category=${activeMegaMenu}`); setActiveMegaMenu(null); }} style={{ cursor: 'pointer' }}>
+                                            {activeMegaMenu}
+                                        </h3>
+                                        <div className="sidebar-items">
+                                            {dynamicMegaData[activeMegaMenu].categories.map((scat, idx) => (
+                                                <button
+                                                    key={scat.id}
+                                                    className={activeSubCategory === idx ? 'active' : ''}
+                                                    onMouseEnter={() => setActiveSubCategory(idx)}
+                                                    onClick={() => { navigate(`/products?category=${activeMegaMenu}&sub=${scat.name}`); setActiveMegaMenu(null); }}
+                                                >
+                                                    {scat.name}
+                                                    <ArrowRight size={14} className="arrow" />
+                                                </button>
                                             ))}
                                         </div>
-                                        <Link to={`/category/${activeMegaMenu}`} className="explore-link" onClick={() => setActiveMegaMenu(null)}>
-                                            Explore {activeMegaMenu} <ArrowRight size={14} />
-                                        </Link>
+                                    </div>
+
+                                    <div className="mega-main">
+                                        {dynamicMegaData[activeMegaMenu].categories[activeSubCategory] && (
+                                            <>
+                                                <div className="mega-title-row">
+                                                    <h4>{dynamicMegaData[activeMegaMenu].categories[activeSubCategory].name}</h4>
+                                                </div>
+                                                <div className="mega-grid">
+                                                    {dynamicMegaData[activeMegaMenu].categories[activeSubCategory].items.map((item, idx) => (
+                                                        <div
+                                                            key={item.id}
+                                                            className="mega-item-card"
+                                                            onClick={() => { navigate(`/product/${item.id}`); setActiveMegaMenu(null); }}
+                                                        >
+                                                            <div className="img-box">
+                                                                <img src={item.images?.[0] || item.image || item.imageUrl} alt={item.name} />
+                                                            </div>
+                                                            <div className="item-info">
+                                                                <h5>{item.name}</h5>
+                                                                <p>₹{item.price?.toLocaleString()}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+
+                                        <div className="mega-footer">
+                                            <div className="popular-tags">
+                                                <span className="label">Popular Tags:</span>
+                                                {dynamicMegaData[activeMegaMenu].popular.map(tag => (
+                                                    <Link key={tag} to={`/products?search=${tag}`} className="tag" onClick={() => setActiveMegaMenu(null)}>{tag}</Link>
+                                                ))}
+                                            </div>
+                                            <Link to={`/products?category=${activeMegaMenu}`} className="explore-link" onClick={() => setActiveMegaMenu(null)}>
+                                                Explore {activeMegaMenu} <ArrowRight size={14} />
+                                            </Link>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-            </nav>
+                        )}
+                    </div>
+                )}
+            </nav >
 
             <style>{navStyles}</style>
 
