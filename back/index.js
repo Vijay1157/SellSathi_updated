@@ -550,10 +550,9 @@ app.post("/auth/apply-seller", async (req, res) => {
 });
 
 // TEST CREDENTIALS ENDPOINT - For development/testing purposes only
-// This endpoint allows testing without Firebase phone auth
 app.post("/auth/test-login", async (req, res) => {
-    if (!IS_DEV) {
-        return res.status(404).json({ success: false, message: "Not found" });
+    if (!ALLOW_TEST_UID) {
+        return res.status(404).json({ success: false, message: "Not found. Test login is disabled in production." });
     }
     try {
         const { phone, otp } = req.body;
