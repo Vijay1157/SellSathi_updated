@@ -1,28 +1,31 @@
 
-import { doc, getDoc, setDoc, updateDoc, increment, collection, onSnapshot, deleteDoc, getDocs } from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
+import { authFetch } from './api';
+
+// Helper to get current user UID (consistent with wishlist)
+const getUID = () => {
+    try {
+        const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+        if (localUser?.uid?.startsWith('test_')) return localUser.uid;
+        return auth.currentUser?.uid || localUser?.uid;
+    } catch (e) {
+        return auth.currentUser?.uid;
+    }
+};
 
 export const addToCart = async (product, selections = {}) => {
     try {
-        let user = auth.currentUser;
-        let userId = user?.uid;
-
-        if (!userId) {
-            const localUser = JSON.parse(localStorage.getItem('user') || 'null');
-            if (localUser && localUser.uid) {
-                userId = localUser.uid;
-            }
-        }
+        const uid = getUID();
 
         const variantKey = Object.values(selections).filter(Boolean).join('_');
         const cartItemId = variantKey ? `${product.id}_${variantKey.replace(/\s+/g, '')}` : product.id;
 
         const cartItemData = {
             productId: product.id,
-            id: product.id,
+            id: cartItemId, // Use cartItemId as the unique document ID
             sellerId: product.sellerId || null,
             name: product.name || product.title,
-            price: product.price + (selections.storage?.priceOffset || 0) + (selections.memory?.priceOffset || 0),
+            price: Number(product.price) + (selections.storage?.priceOffset || 0) + (selections.memory?.priceOffset || 0),
             imageUrl: product.imageUrl || product.image,
             quantity: 1,
             category: product.category,
@@ -34,106 +37,86 @@ export const addToCart = async (product, selections = {}) => {
             }
         };
 
-        // If still no userId, use localStorage (Guest Cart)
-        if (!userId) {
+        if (!uid) {
+            // Guest mode: localStorage
             const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
-            const existingItemIndex = localCart.findIndex(item => item.cartItemId === cartItemId || item.id === cartItemId);
+            const existingItemIndex = localCart.findIndex(item => item.id === cartItemId);
 
             if (existingItemIndex > -1) {
                 localCart[existingItemIndex].quantity += 1;
             } else {
-                localCart.push({ ...cartItemData, cartItemId });
+                localCart.push(cartItemData);
             }
             localStorage.setItem('tempCart', JSON.stringify(localCart));
             window.dispatchEvent(new Event('cartUpdate'));
             return { success: true, message: "Added to guest cart" };
-        }
-
-        const cartItemRef = doc(db, "users", userId, "cart", cartItemId);
-        const cartItemSnap = await getDoc(cartItemRef);
-
-        if (cartItemSnap.exists()) {
-            await updateDoc(cartItemRef, {
-                quantity: increment(1)
-            });
         } else {
-            await setDoc(cartItemRef, { ...cartItemData, id: cartItemId });
-        }
+            // Logged in: Backend API
+            const response = await authFetch(`/api/user/${uid}/cart/add`, {
+                method: 'POST',
+                body: JSON.stringify({ cartItem: cartItemData })
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || 'Failed to add to backend');
 
-        return { success: true, message: "Added to cart successfully" };
+            window.dispatchEvent(new Event('cartUpdate'));
+            return { success: true, message: "Added to cart successfully" };
+        }
     } catch (error) {
         console.error("Error adding to cart:", error);
-        return { success: false, message: "Failed to add to cart" };
+        return { success: false, message: error.message || "Failed to add to cart" };
     }
 };
 
 export const listenToCart = (callback) => {
-    let unsubscribeSnap = null;
-
-    const setupListener = () => {
-        // Cleanup previous snapshot listener if it exists
-        if (unsubscribeSnap) {
-            unsubscribeSnap();
-            unsubscribeSnap = null;
+    const handleUpdate = async () => {
+        try {
+            const uid = getUID();
+            if (!uid) {
+                const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
+                callback(localCart);
+            } else {
+                const response = await authFetch(`/api/user/${uid}/cart`);
+                const data = await response.json();
+                if (data.success) {
+                    callback(data.cart || []);  // Fixed: use data.cart instead of data.items
+                } else {
+                    callback([]);
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching cart for listener:", error);
+            callback([]);
         }
-
-        let user = auth.currentUser;
-        let userId = user?.uid;
-
-        if (!userId) {
-            const localUser = JSON.parse(localStorage.getItem('user') || 'null');
-            if (localUser && localUser.uid) userId = localUser.uid;
-        }
-
-        if (!userId) {
-            const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
-            callback(localCart);
-            return;
-        }
-
-        const q = collection(db, "users", userId, "cart");
-        unsubscribeSnap = onSnapshot(q, (querySnapshot) => {
-            const items = [];
-            querySnapshot.forEach((doc) => {
-                items.push({ id: doc.id, ...doc.data() });
-            });
-            callback(items);
-        }, (error) => {
-            console.error("Error listening to cart:", error);
-        });
     };
 
-    window.addEventListener('cartUpdate', setupListener);
-    setupListener(); // Initial call
+    window.addEventListener('cartUpdate', handleUpdate);
+    handleUpdate();
 
     return () => {
-        window.removeEventListener('cartUpdate', setupListener);
-        if (unsubscribeSnap) unsubscribeSnap();
+        window.removeEventListener('cartUpdate', handleUpdate);
     };
 };
 
-export const removeFromCart = async (productId) => {
-    let user = auth.currentUser;
-    let userId = user?.uid;
-
-    if (!userId) {
-        const localUser = JSON.parse(localStorage.getItem('user') || 'null');
-        if (localUser && localUser.uid) {
-            userId = localUser.uid;
-        }
-    }
-
-    if (!userId) {
-        // Remove from local storage
-        const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
-        const updatedCart = localCart.filter(item => item.productId !== productId);
-        localStorage.setItem('tempCart', JSON.stringify(updatedCart));
-        return { success: true };
-    }
-
+export const removeFromCart = async (cartItemId) => {
     try {
-        await deleteDoc(doc(db, "users", userId, "cart", productId));
-        return { success: true };
+        const uid = getUID();
+        if (!uid) {
+            const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
+            const updated = localCart.filter(item => item.id !== cartItemId);
+            localStorage.setItem('tempCart', JSON.stringify(updated));
+            window.dispatchEvent(new Event('cartUpdate'));
+            return { success: true };
+        } else {
+            const response = await authFetch(`/api/user/${uid}/cart/${cartItemId}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || 'Failed to remove');
+
+            window.dispatchEvent(new Event('cartUpdate'));
+            return { success: true };
+        }
     } catch (error) {
         console.error("Error removing from cart:", error);
         return { success: false, message: error.message };
@@ -141,32 +124,26 @@ export const removeFromCart = async (productId) => {
 };
 
 export const clearCart = async () => {
-    let user = auth.currentUser;
-    let userId = user?.uid;
-
-    if (!userId) {
-        const localUser = JSON.parse(localStorage.getItem('user') || 'null');
-        if (localUser?.uid) userId = localUser.uid;
-    }
-
-    if (!userId) {
-        localStorage.setItem('tempCart', '[]');
-        return { success: true };
-    }
-
     try {
-        // Firestore doesn't provide a direct way to delete a collection.
-        // We'll just clear local state if we want, but usually we'd delete each doc.
-        const q = collection(db, "users", userId, "cart");
-        const snap = await getDocs(q);
-        const batch = [];
-        snap.forEach(doc => {
-            batch.push(deleteDoc(doc.ref));
-        });
-        await Promise.all(batch);
-        return { success: true };
+        const uid = getUID();
+        if (!uid) {
+            localStorage.setItem('tempCart', '[]');
+            window.dispatchEvent(new Event('cartUpdate'));
+            return { success: true };
+        } else {
+            // Clear cart by setting empty array
+            const response = await authFetch(`/api/user/${uid}/cart/add`, {
+                method: 'POST',
+                body: JSON.stringify({ cartItem: null, clearCart: true })
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || 'Failed to clear');
+
+            window.dispatchEvent(new Event('cartUpdate'));
+            return { success: true };
+        }
     } catch (error) {
         console.error("Error clearing cart:", error);
-        return { success: false };
+        return { success: false, message: error.message };
     }
 };

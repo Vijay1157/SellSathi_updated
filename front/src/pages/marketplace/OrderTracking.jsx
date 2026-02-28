@@ -76,7 +76,22 @@ export default function OrderTracking() {
                 if (orderDoc.exists()) {
                     setOrder({ id: orderDoc.id, ...orderDoc.data() });
                 }
-                alert('Order cancelled successfully!');
+                
+                // Show refund information
+                const refundInfo = data.refundInfo;
+                if (refundInfo) {
+                    alert(
+                        `Order cancelled successfully!\n\n` +
+                        `${refundInfo.message}\n\n` +
+                        (refundInfo.refundAmount > 0 ? 
+                            `Refund Amount: ₹${refundInfo.refundAmount}\n` +
+                            `Refund Method: ${refundInfo.refundMethod}\n` +
+                            `Processing Time: ${refundInfo.processingTime}` 
+                            : '')
+                    );
+                } else {
+                    alert('Order cancelled successfully!');
+                }
             } else {
                 alert(`Failed to cancel order: ${data.message}`);
             }
@@ -110,7 +125,8 @@ export default function OrderTracking() {
     }
 
     const currentStatus = mapOrderStatus(order);
-    const canCancel = order.status !== 'Cancelled' && order.status !== 'Delivered' && order.shipmentId;
+    const cancellableStatuses = ['Order Placed', 'Placed', 'Processing', 'Pending'];
+    const canCancel = order.status !== 'Cancelled' && order.status !== 'Delivered' && cancellableStatuses.includes(order.status);
 
     return (
         <div className="container animate-fade-in" style={{ padding: '4rem 0', minHeight: '80vh' }}>
@@ -196,24 +212,58 @@ export default function OrderTracking() {
                     )}
 
                     {order.status === 'Cancelled' && (
-                        <div style={{
-                            padding: '1rem',
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            borderRadius: '12px',
-                            marginBottom: '2rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.75rem'
-                        }}>
-                            <XCircle size={20} style={{ color: '#ef4444' }} />
-                            <div>
-                                <p style={{ margin: 0, fontWeight: '600', color: '#ef4444' }}>Order Cancelled</p>
-                                <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0 }}>
-                                    {order.cancellationReason || 'This order has been cancelled'}
-                                </p>
+                        <>
+                            <div style={{
+                                padding: '1rem',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '12px',
+                                marginBottom: '1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.75rem'
+                            }}>
+                                <XCircle size={20} style={{ color: '#ef4444' }} />
+                                <div>
+                                    <p style={{ margin: 0, fontWeight: '600', color: '#ef4444' }}>Order Cancelled</p>
+                                    <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0 }}>
+                                        {order.cancellationReason || 'This order has been cancelled'}
+                                    </p>
+                                </div>
                             </div>
-                        </div>
+                            
+                            {order.refundStatus && order.refundStatus !== 'Not Applicable' && (
+                                <div style={{
+                                    padding: '1rem',
+                                    background: 'rgba(59, 130, 246, 0.1)',
+                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                    borderRadius: '12px',
+                                    marginBottom: '2rem'
+                                }}>
+                                    <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#3b82f6' }}>Refund Information</h4>
+                                    <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span className="text-muted">Refund Amount:</span>
+                                            <span style={{ fontWeight: '600' }}>₹{order.refundAmount?.toLocaleString('en-IN') || 0}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span className="text-muted">Refund Status:</span>
+                                            <span style={{ fontWeight: '600', color: order.refundStatus === 'Completed' ? '#10b981' : '#f59e0b' }}>
+                                                {order.refundStatus}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span className="text-muted">Refund Method:</span>
+                                            <span style={{ fontWeight: '600' }}>{order.refundMethod || 'N/A'}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span className="text-muted">Processing Time:</span>
+                                            <span style={{ fontWeight: '600' }}>{order.refundProcessingTime || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
 
                     <OrderTimeline currentStatus={currentStatus} />
@@ -327,7 +377,7 @@ export default function OrderTracking() {
                     </div>
 
                     <button
-                        onClick={() => navigate(`/invoice?orderId=${order.id}`)}
+                        onClick={() => navigate(`/invoice?orderId=${order.orderId || order.id}`)}
                         className="btn btn-primary flex items-center justify-center gap-3"
                         style={{
                             width: '100%',

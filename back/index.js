@@ -73,6 +73,27 @@ admin.initializeApp({
 const db = admin.firestore();
 const orderController = require("./controllers/orderController");
 
+// Helper function to format dates as dd/mm/yyyy
+const formatDateDDMMYYYY = (date) => {
+    if (!date) return new Date().toLocaleDateString('en-GB');
+
+    let dateObj;
+    if (typeof date.toDate === 'function') {
+        dateObj = date.toDate();
+    } else if (date._seconds) {
+        dateObj = new Date(date._seconds * 1000);
+    } else if (date instanceof Date) {
+        dateObj = date;
+    } else {
+        dateObj = new Date(date);
+    }
+
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
 // Initialize Shiprocket service
 const shiprocketService = require("./services/shiprocketService");
 const emailService = require("./services/emailService");
@@ -487,11 +508,15 @@ app.post("/auth/apply-seller", async (req, res) => {
         const sellerRef = db.collection("sellers").doc(uid);
         await sellerRef.set({
             uid,
-            phone: sellerDetails.phone,
-            shopName: sellerDetails.shopName,
-            category: sellerDetails.category,
-            address: sellerDetails.address,
+            phone: sellerDetails.phone || "",
+            shopName: sellerDetails.shopName || "",
+            category: sellerDetails.category || "",
+            address: sellerDetails.address || "",
             gstNumber: sellerDetails.gstNumber || "",
+            aadhaarNumber: sellerDetails.aadhaarNumber || "",
+            age: sellerDetails.age || "",
+            aadhaarImageUrl: sellerDetails.aadhaarImageUrl || "",
+            extractedName: sellerDetails.extractedName || "",
             sellerStatus: "PENDING",
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
             approvedAt: null,
@@ -717,14 +742,14 @@ app.get("/admin/sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 email: userData?.phone || "N/A",
                 type: "Individual",
                 status: sellerData.sellerStatus,
-                joined: (sellerData.appliedAt && typeof sellerData.appliedAt.toDate === 'function')
-                    ? sellerData.appliedAt.toDate().toISOString().split('T')[0]
-                    : (sellerData.appliedAt && sellerData.appliedAt._seconds)
-                        ? new Date(sellerData.appliedAt._seconds * 1000).toISOString().split('T')[0]
-                        : new Date().toISOString().split('T')[0],
+                joined: formatDateDDMMYYYY(sellerData.appliedAt),
                 shopName: sellerData.shopName,
                 category: sellerData.category,
-                address: sellerData.address
+                address: sellerData.address,
+                aadhaarNumber: sellerData.aadhaarNumber || "",
+                age: sellerData.age || "",
+                aadhaarImageUrl: sellerData.aadhaarImageUrl || "",
+                extractedName: sellerData.extractedName || ""
             });
         }
 
@@ -764,16 +789,19 @@ app.get("/admin/products", verifyAuth, verifyAdmin, async (req, res) => {
                     }
                 }
 
-                let dateStr = new Date().toISOString().split('T')[0];
-                try {
-                    if (productData.createdAt?.toDate) dateStr = productData.createdAt.toDate().toISOString().split('T')[0];
-                } catch (_) { }
+                let dateStr = formatDateDDMMYYYY(productData.createdAt);
+
+                const price = Number(productData.price) || 0;
+                const discountPrice = productData.discountPrice ? Number(productData.discountPrice) : null;
 
                 products.push({
                     id: doc.id,
                     title: productData.title || productData.name || "Untitled",
                     seller: sellerPhone,
-                    price: Number(productData.price) || 0,
+                    price: price,
+                    discountPrice: discountPrice,
+                    discountedPrice: discountPrice, // For backward compatibility
+                    stock: Number(productData.stock) || 0,
                     category: productData.category || "N/A",
                     status: productData.status || "Active",
                     date: dateStr
@@ -814,6 +842,23 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
             const userSnap = await db.collection("users").doc(doc.id).get();
             const userData = userSnap.data();
 
+            // Get product count for this seller
+            const productsSnap = await db.collection("products").where("sellerId", "==", doc.id).get();
+            const totalProducts = productsSnap.size;
+
+            // Debug logging for specific seller
+            if (sellerData.shopName && sellerData.shopName.toLowerCase().includes('rahul')) {
+                console.log(`[ALL-SELLERS] Seller: ${sellerData.shopName}, UID: ${doc.id}, Products: ${totalProducts}`);
+                if (totalProducts > 0) {
+                    const sampleProducts = productsSnap.docs.slice(0, 3).map(p => ({
+                        id: p.id,
+                        title: p.data().title || p.data().name,
+                        sellerId: p.data().sellerId
+                    }));
+                    console.log(`[ALL-SELLERS] Sample products:`, JSON.stringify(sampleProducts));
+                }
+            }
+
             let totalRevenue = 0;
             let deliveredCount = 0;
 
@@ -834,9 +879,11 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 uid: doc.id,
                 name: sellerData.shopName,
                 email: userData?.email || userData?.phone || "N/A",
+                phone: userData?.phone || "N/A",
                 type: "Individual",
                 status: sellerData.sellerStatus,
-                joined: sellerData.appliedAt ? sellerData.appliedAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                joined: formatDateDDMMYYYY(sellerData.appliedAt),
+                createdAt: sellerData.appliedAt ? sellerData.appliedAt.toDate().toISOString() : new Date().toISOString(),
                 shopName: sellerData.shopName,
                 category: sellerData.category,
                 address: sellerData.address,
@@ -846,11 +893,14 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 extractedName: sellerData.extractedName,
                 isBlocked: sellerData.isBlocked || false,
                 financials: {
+                    totalProducts,
                     totalRevenue,
                     deliveredCount
                 }
             });
         }
+
+        console.log(`[ALL-SELLERS] Total sellers returned: ${sellers.length}`);
         return res.status(200).json({ success: true, sellers });
     } catch (error) {
         console.error("GET ALL SELLERS ERROR:", error);
@@ -880,6 +930,46 @@ app.post("/admin/seller/:uid/block", verifyAuth, verifyAdmin, async (req, res) =
     }
 });
 
+// DEBUG ENDPOINT - Check products for a seller
+app.get("/admin/debug/seller/:uid/products", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const { uid } = req.params;
+
+        // Get seller info
+        const sellerSnap = await db.collection("sellers").doc(uid).get();
+        const sellerData = sellerSnap.exists ? sellerSnap.data() : null;
+
+        // Get products
+        const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
+        const products = [];
+        productsSnap.forEach(doc => {
+            const data = doc.data();
+            products.push({
+                id: doc.id,
+                title: data.title || data.name,
+                sellerId: data.sellerId,
+                price: data.price,
+                category: data.category,
+                status: data.status
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            seller: {
+                uid,
+                shopName: sellerData?.shopName,
+                exists: sellerSnap.exists
+            },
+            productCount: products.length,
+            products
+        });
+    } catch (error) {
+        console.error("DEBUG PRODUCTS ERROR:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // GET /admin/orders - All orders
 app.get("/admin/orders", verifyAuth, verifyAdmin, async (req, res) => {
     try {
@@ -894,7 +984,7 @@ app.get("/admin/orders", verifyAuth, verifyAdmin, async (req, res) => {
                 customer: orderData.customerName || "Unknown",
                 total: orderData.total || 0,
                 status: orderData.status || "Processing",
-                date: orderData.createdAt ? orderData.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                date: formatDateDDMMYYYY(orderData.createdAt),
                 items: orderData.items || []
             });
         }
@@ -908,6 +998,278 @@ app.get("/admin/orders", verifyAuth, verifyAdmin, async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to fetch orders"
+        });
+    }
+});
+
+// ============================================
+// REVIEW ENDPOINTS
+// ============================================
+
+// POST /api/reviews - Submit a product review
+app.post("/api/reviews", verifyAuth, async (req, res) => {
+    try {
+        const { productId, orderId, rating, title, body } = req.body;
+        const userId = req.user.uid;
+
+        if (!productId || !rating || !title || !body) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields"
+            });
+        }
+
+        // Get user info
+        const userDoc = await db.collection("users").doc(userId).get();
+        const userData = userDoc.exists ? userDoc.data() : {};
+        const customerName = userData.name || userData.fullName || "Anonymous";
+
+        // Get product info
+        const productDoc = await db.collection("products").doc(productId).get();
+        const productData = productDoc.exists ? productDoc.data() : {};
+        const productName = productData.title || "Unknown Product";
+
+        // Create review
+        const reviewData = {
+            productId,
+            orderId: orderId || null,
+            userId,
+            customerName,
+            productName,
+            rating: parseInt(rating),
+            title,
+            body,
+            verified: orderId ? true : false, // Verified if linked to an order
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: "active" // active, hidden, deleted
+        };
+
+        const reviewRef = await db.collection("reviews").add(reviewData);
+
+        return res.status(200).json({
+            success: true,
+            message: "Review submitted successfully",
+            reviewId: reviewRef.id
+        });
+    } catch (error) {
+        console.error("SUBMIT REVIEW ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to submit review"
+        });
+    }
+});
+
+// GET /admin/reviews - Get all reviews for admin dashboard
+app.get("/admin/reviews", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const reviewsSnap = await db.collection("reviews")
+            .where("status", "==", "active")
+            .get();
+
+        const reviews = [];
+
+        // Get all products and calculate their ratings
+        const productsSnap = await db.collection("products").get();
+        const productMap = {};
+        productsSnap.forEach(doc => {
+            const prod = doc.data();
+            productMap[doc.id] = {
+                category: prod.category || "Uncategorized",
+                brand: prod.brand || "Unknown",
+                title: prod.title || "Unknown Product"
+            };
+        });
+
+        // Calculate product ratings
+        const productRatings = {};
+        reviewsSnap.forEach(doc => {
+            const reviewData = doc.data();
+            const productId = reviewData.productId;
+            if (productId) {
+                if (!productRatings[productId]) {
+                    productRatings[productId] = { total: 0, count: 0 };
+                }
+                productRatings[productId].total += (reviewData.rating || 0);
+                productRatings[productId].count += 1;
+            }
+        });
+
+        // Sort in memory by date (descending)
+        const reviewsDocs = reviewsSnap.docs;
+        reviewsDocs.sort((a, b) => {
+            const ta = a.data().createdAt?.toMillis() || 0;
+            const tb = b.data().createdAt?.toMillis() || 0;
+            return tb - ta;
+        });
+
+        // Build review list with enriched data
+        reviewsDocs.forEach(doc => {
+            const reviewData = doc.data();
+            const productId = reviewData.productId;
+            const productInfo = productMap[productId] || { category: "Uncategorized", brand: "Unknown", title: reviewData.productName || "Unknown Product" };
+            const ratingInfo = productRatings[productId] || { total: 0, count: 0 };
+            const avgRating = ratingInfo.count > 0 ? ratingInfo.total / ratingInfo.count : 0;
+
+            reviews.push({
+                id: doc.id,
+                productName: productInfo.title,
+                productCategory: productInfo.category,
+                productBrand: productInfo.brand,
+                productAvgRating: avgRating,
+                productReviewCount: ratingInfo.count,
+                customerName: reviewData.customerName || "Anonymous",
+                customerId: reviewData.userId || "N/A",
+                rating: reviewData.rating || 0,
+                title: reviewData.title || "",
+                body: reviewData.body || "",
+                feedback: reviewData.body || "", // Admin dashboard uses 'feedback' field
+                date: formatDateDDMMYYYY(reviewData.createdAt),
+                verified: reviewData.verified || false,
+                orderId: reviewData.orderId || null
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            reviews
+        });
+    } catch (error) {
+        console.error("GET REVIEWS ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch reviews",
+            reviews: []
+        });
+    }
+});
+
+// DELETE /admin/review/:reviewId - Delete a review
+app.delete("/admin/review/:reviewId", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const { reviewId } = req.params;
+
+        await db.collection("reviews").doc(reviewId).update({
+            status: "deleted",
+            deletedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Review deleted successfully"
+        });
+    } catch (error) {
+        console.error("DELETE REVIEW ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete review"
+        });
+    }
+});
+
+// GET /api/products/:productId/reviews - Get reviews for a specific product
+app.get("/api/products/:productId/reviews", async (req, res) => {
+    try {
+        const { productId } = req.params;
+
+        const reviewsSnap = await db.collection("reviews")
+            .where("productId", "==", productId)
+            .where("status", "==", "active")
+            .get();
+
+        // Sort in memory (descending)
+        const reviewsDocs = reviewsSnap.docs;
+        reviewsDocs.sort((a, b) => {
+            const ta = a.data().createdAt?.toMillis() || 0;
+            const tb = b.data().createdAt?.toMillis() || 0;
+            return tb - ta;
+        });
+
+        const reviews = [];
+        reviewsDocs.forEach(doc => {
+            const reviewData = doc.data();
+            reviews.push({
+                id: doc.id,
+                rating: reviewData.rating || 0,
+                title: reviewData.title || "",
+                body: reviewData.body || "",
+                author: reviewData.customerName || "Anonymous",
+                createdAt: reviewData.createdAt,
+                verified: reviewData.verified || false
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            reviews
+        });
+    } catch (error) {
+        console.error("GET PRODUCT REVIEWS ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch product reviews",
+            reviews: []
+        });
+    }
+});
+
+// GET /api/user/:uid/reviewable-orders - Get orders that can be reviewed
+app.get("/api/user/:uid/reviewable-orders", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+
+        if (req.user.uid !== uid) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        // Get delivered orders for this user
+        const ordersSnap = await db.collection("orders")
+            .where("userId", "==", uid)
+            .where("status", "==", "Delivered")
+            .get();
+
+        // Get existing reviews by this user
+        const reviewsSnap = await db.collection("reviews")
+            .where("userId", "==", uid)
+            .get();
+
+        const reviewedProducts = new Set();
+        reviewsSnap.forEach(doc => {
+            const review = doc.data();
+            if (review.productId) {
+                reviewedProducts.add(review.productId);
+            }
+        });
+
+        const reviewableOrders = [];
+        ordersSnap.forEach(doc => {
+            const order = doc.data();
+            if (order.items && Array.isArray(order.items)) {
+                order.items.forEach(item => {
+                    // Only include if not already reviewed
+                    if (!reviewedProducts.has(item.productId || item.id)) {
+                        reviewableOrders.push({
+                            orderId: order.orderId || doc.id,
+                            productId: item.productId || item.id,
+                            productName: item.name || item.title,
+                            productImage: item.imageUrl || item.image,
+                            deliveredDate: formatDateDDMMYYYY(order.createdAt)
+                        });
+                    }
+                });
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            orders: reviewableOrders
+        });
+    } catch (error) {
+        console.error("GET REVIEWABLE ORDERS ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch reviewable orders",
+            orders: []
         });
     }
 });
@@ -1009,17 +1371,35 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         if (!sellerSnap.exists) return res.status(404).send("Seller not found");
         const sellerData = sellerSnap.data();
 
+        // Get user data for contact
+        const userSnap = await db.collection("users").doc(uid).get();
+        const userData = userSnap.exists ? userSnap.data() : {};
+        const sellerContact = userData.phone || userData.email || "N/A";
+
         // Get Products 
         const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
         let totalProducts = 0;
         let totalStockLeft = 0;
+        let totalInventoryValue = 0;
         let productStats = {};
 
         productsSnap.forEach(p => {
             const prod = p.data();
             totalProducts++;
-            totalStockLeft += (prod.stock || 0);
-            productStats[p.id] = { name: prod.title, price: prod.price || 0, stock: prod.stock || 0, sold: 0, revenue: 0 };
+            const stock = prod.stock || 0;
+            const price = prod.price || 0;
+            const discountedPrice = prod.discountedPrice || price;
+            totalStockLeft += stock;
+            totalInventoryValue += (discountedPrice * stock);
+            productStats[p.id] = {
+                name: prod.title,
+                price: price,
+                discountedPrice: prod.discountedPrice || null,
+                stock: stock,
+                sold: 0,
+                revenue: 0,
+                worth: discountedPrice * stock
+            };
         });
 
         // Get Orders
@@ -1043,58 +1423,163 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
             }
         });
 
-        // Generate PDF
-        const doc = new PDFDocument({ margin: 50 });
+        const avgRevenuePerProduct = totalProducts > 0 ? (grossRevenue / totalProducts) : 0;
+
+        // Generate PDF with proper formatting
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=analytics_${sellerData.shopName?.replace(/\s+/g, '_') || 'seller'}.pdf`);
         doc.pipe(res);
 
-        // Header
-        doc.fontSize(20).text('Sellsathi Admin Platform', { align: 'center' });
-        doc.fontSize(14).text('Detailed Seller Analytics Report', { align: 'center' });
-        doc.moveDown();
+        // Header Section
+        doc.fontSize(24).fillColor('#6366f1').text('SELLSATHI', 50, 50);
+        doc.fontSize(9).fillColor('#666666')
+            .text('Your Trusted E-Commerce Platform', 50, 78)
+            .text('Empowering Sellers, Delighting Customers', 50, 90)
+            .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 102);
 
-        // Seller Info
-        doc.fontSize(12).text(`Shop Name: ${sellerData.shopName}`);
-        doc.text(`Category: ${sellerData.category}`);
-        doc.text(`Report Date: ${new Date().toLocaleDateString()}`);
-        doc.moveDown();
+        // Report Date (top right)
+        const reportDate = new Date().toLocaleDateString('en-GB');
+        doc.fontSize(9).fillColor('#666666')
+            .text('Report Date:', 450, 50)
+            .fontSize(10).fillColor('#000000')
+            .text(reportDate, 450, 62);
 
-        // Summary
-        doc.fontSize(14).text('Performance Summary', { underline: true });
-        doc.moveDown(0.5);
-        doc.fontSize(10).text(`Total Active Products: ${totalProducts}`);
-        doc.text(`Total Units Sold: ${unitsSold}`);
-        doc.text(`Remaining Stock: ${totalStockLeft}`);
-        doc.text(`Gross Revenue: Rs. ${grossRevenue.toLocaleString()}`);
-        doc.moveDown();
+        // Horizontal line
+        doc.moveTo(50, 125).lineTo(545, 125).strokeColor('#6366f1').lineWidth(2).stroke();
 
-        // Product Table
-        doc.fontSize(14).text('Product Matrix', { underline: true });
-        doc.moveDown(0.5);
+        // Title
+        doc.fontSize(18).fillColor('#000000').font('Helvetica-Bold')
+            .text('SELLER ANALYTICS REPORT', 50, 145, { align: 'center' });
+        doc.fontSize(11).fillColor('#666666').font('Helvetica')
+            .text('Comprehensive Performance & Inventory Analysis', 50, 168, { align: 'center' });
 
-        const tableTop = doc.y;
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text('Product Name', 50, tableTop);
-        doc.text('Price', 250, tableTop);
-        doc.text('Stock', 320, tableTop);
-        doc.text('Sold', 380, tableTop);
-        doc.text('Revenue', 450, tableTop);
+        // Seller Information Section
+        doc.rect(50, 195, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text('SELLER INFORMATION', 55, 200);
 
-        doc.moveTo(50, tableTop + 12).lineTo(550, tableTop + 12).stroke();
+        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        doc.text('Shop Name:', 55, 225);
+        doc.text(sellerData.shopName || 'N/A', 150, 225);
+        doc.text('Category:', 320, 225);
+        doc.text(sellerData.category || 'N/A', 390, 225);
 
-        let y = tableTop + 20;
-        doc.font('Helvetica');
-        Object.values(productStats).sort((a, b) => b.revenue - a.revenue).forEach(p => {
-            if (y > 700) { doc.addPage(); y = 50; }
-            doc.text(p.name.substring(0, 30), 50, y);
-            doc.text(`Rs. ${p.price}`, 250, y);
-            doc.text(`${p.stock}`, 320, y);
-            doc.text(`${p.sold}`, 380, y);
-            doc.text(`Rs. ${p.revenue}`, 450, y);
-            y += 15;
-            doc.moveTo(50, y - 5).lineTo(550, y - 5).stroke('#f3f4f6');
+        doc.text('Seller ID:', 55, 245);
+        doc.text(uid.substring(0, 20), 150, 245);
+        doc.text('Contact:', 320, 245);
+        doc.text(sellerContact, 390, 245);
+
+        doc.text('Email:', 55, 265);
+        doc.text(sellerData.email || 'N/A', 150, 265);
+
+        // Performance Summary Section
+        doc.rect(50, 295, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text('PERFORMANCE SUMMARY', 55, 300);
+
+        // Four colored boxes - All Blue for formal look
+        const boxY = 330;
+        const boxWidth = 115;
+        const boxHeight = 60;
+        const boxGap = 10;
+
+        // Total Products (Blue)
+        doc.rect(50, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+            .text('Total Products', 55, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(totalProducts.toString(), 55, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Units Sold (Blue)
+        doc.rect(50 + boxWidth + boxGap, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+            .text('Units Sold', 50 + boxWidth + boxGap + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(unitsSold.toString(), 50 + boxWidth + boxGap + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Stock Left (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 2, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+            .text('Stock Left', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(totalStockLeft.toString(), 50 + (boxWidth + boxGap) * 2 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Total Revenue (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 3, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+            .text('Total Revenue', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(20).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(`Rs.${grossRevenue}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Additional metrics
+        doc.fontSize(10).fillColor('#000000').font('Helvetica');
+        doc.text('Total Inventory Value:', 55, boxY + boxHeight + 20);
+        doc.text(`Rs.${totalInventoryValue.toLocaleString()}`, 180, boxY + boxHeight + 20);
+        doc.text('Average Revenue per Product:', 320, boxY + boxHeight + 20);
+        doc.text(`Rs.${Math.round(avgRevenuePerProduct)}`, 480, boxY + boxHeight + 20);
+
+        // Product Inventory & Sales Details Section
+        doc.rect(50, boxY + boxHeight + 50, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text('PRODUCT INVENTORY & SALES DETAILS', 55, boxY + boxHeight + 55);
+
+        // Table Header
+        const tableTop = boxY + boxHeight + 85;
+        doc.rect(50, tableTop, 495, 20).fillAndStroke('#6366f1', '#6366f1');
+        doc.fontSize(9).fillColor('#ffffff').font('Helvetica-Bold');
+        doc.text('Product Name', 55, tableTop + 6);
+        doc.text('Price', 200, tableTop + 6);
+        doc.text('Disc.', 250, tableTop + 6);
+        doc.text('Stock', 295, tableTop + 6);
+        doc.text('Sold', 340, tableTop + 6);
+        doc.text('Revenue', 385, tableTop + 6);
+        doc.text('Worth', 450, tableTop + 6);
+        doc.text('Margin', 505, tableTop + 6);
+
+        // Table Rows
+        let y = tableTop + 25;
+        doc.font('Helvetica').fillColor('#000000');
+        const sortedProducts = Object.values(productStats).sort((a, b) => b.revenue - a.revenue);
+
+        sortedProducts.forEach((p, index) => {
+            if (y > 720) {
+                doc.addPage();
+                y = 50;
+                // Redraw header on new page
+                doc.rect(50, y, 495, 20).fillAndStroke('#6366f1', '#6366f1');
+                doc.fontSize(9).fillColor('#ffffff').font('Helvetica-Bold');
+                doc.text('Product Name', 55, y + 6);
+                doc.text('Price', 200, y + 6);
+                doc.text('Disc.', 250, y + 6);
+                doc.text('Stock', 295, y + 6);
+                doc.text('Sold', 340, y + 6);
+                doc.text('Revenue', 385, y + 6);
+                doc.text('Worth', 450, y + 6);
+                doc.text('Margin', 505, y + 6);
+                y += 25;
+            }
+
+            doc.fontSize(8).fillColor('#000000').font('Helvetica');
+            doc.text(p.name.substring(0, 25), 55, y);
+            doc.text(`Rs.${p.price}`, 200, y);
+            doc.text(p.discountedPrice ? `Rs.${p.discountedPrice}` : '-', 250, y);
+            doc.text(p.stock.toString(), 295, y);
+            doc.text(p.sold.toString(), 340, y);
+            doc.text(`Rs.${p.revenue}`, 385, y);
+            doc.text(`Rs.${p.worth}`, 450, y);
+
+            const margin = p.discountedPrice ? Math.round(((p.price - p.discountedPrice) / p.price) * 100) : 0;
+            doc.text(margin > 0 ? `${100 - margin}%` : '0%', 505, y);
+
+            y += 18;
+            doc.moveTo(50, y - 3).lineTo(545, y - 3).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
         });
+
+        // Footer
+        doc.fontSize(8).fillColor('#999999').font('Helvetica')
+            .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, 770, { align: 'center' });
+        doc.text('Page 1 of 1', 50, 785, { align: 'center' });
 
         doc.end();
     } catch (err) {
@@ -1113,19 +1598,33 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         if (!sellerSnap.exists) return res.status(404).send("Seller not found");
         const sellerData = sellerSnap.data();
 
-        // Fetch user data for email
+        // Fetch user data for contact
         const userSnap = await db.collection("users").doc(uid).get();
-        const sellerEmail = userSnap.data()?.email || userSnap.data()?.phone || "N/A";
+        const userData = userSnap.exists ? userSnap.data() : {};
+        const sellerContact = userData.phone || userData.email || "N/A";
+        const sellerEmail = userData.email || "N/A";
+
+        // Get Products count
+        const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
+        const totalProducts = productsSnap.size;
+
+        console.log(`[INVOICE PDF] Seller ${uid}: Found ${totalProducts} products`);
+
+        // Debug: Log first few product IDs
+        if (productsSnap.size > 0) {
+            const productIds = productsSnap.docs.slice(0, 3).map(d => d.id);
+            console.log(`[INVOICE PDF] Sample product IDs:`, productIds);
+        } else {
+            console.log(`[INVOICE PDF] No products found for sellerId=${uid}`);
+        }
 
         // Fetch Orders
         let ordersQuery = db.collection("orders").where("status", "==", "Delivered");
-
-        // Notice: Cannot do inequality filters on multiple fields easily right now without an index,
-        // so we will fetch all delivered and filter in memory if fromDate/toDate are provided.
         const ordersSnap = await ordersQuery.get();
 
         let totalRevenue = 0;
-        let deliveredItems = [];
+        let deliveredCount = 0;
+        const orderDetails = []; // Store order details for table
 
         ordersSnap.forEach(o => {
             const order = o.data();
@@ -1139,8 +1638,6 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
                     to.setHours(23, 59, 59, 999);
                     if (to < orderDate) inDateRange = false;
                 }
-            } else {
-                inDateRange = false; // Ignore orders without proper creation date if filtering
             }
 
             if (inDateRange && order.items && Array.isArray(order.items)) {
@@ -1148,12 +1645,16 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
                     if (item.sellerId === uid) {
                         const rev = (item.price || 0) * (item.quantity || 1);
                         totalRevenue += rev;
-                        deliveredItems.push({
-                            name: item.title,
-                            qty: item.quantity || 1,
+                        deliveredCount++;
+
+                        // Store order details
+                        orderDetails.push({
+                            orderId: o.id,
+                            orderDate: orderDate ? orderDate.toLocaleDateString('en-GB') : 'N/A',
+                            productName: item.name || 'N/A',
+                            quantity: item.quantity || 1,
                             price: item.price || 0,
-                            revenue: rev,
-                            date: orderDate?.toLocaleDateString() || "N/A"
+                            total: rev
                         });
                     }
                 });
@@ -1161,75 +1662,199 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         });
 
         const platformCharges = totalRevenue * 0.10;
-        const netPayout = totalRevenue - platformCharges;
+        const amountToReceive = totalRevenue - platformCharges;
 
-        // Generate PDF
-        const doc = new PDFDocument({ margin: 50 });
+        // Generate PDF with proper formatting
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=invoice_${sellerData.shopName?.replace(/\s+/g, '_') || 'seller'}.pdf`);
         doc.pipe(res);
 
-        // Header
-        doc.fontSize(24).font('Helvetica-Bold').text('SELLER INVOICE', { align: 'right', color: '#333333' });
-        doc.moveDown();
+        // Header Section
+        doc.fontSize(28).fillColor('#6366f1').font('Helvetica-Bold').text('SELLSATHI', 50, 50);
+        doc.fontSize(10).fillColor('#999999').font('Helvetica')
+            .text('Your Trusted E-Commerce Platform', 50, 82)
+            .text('Empowering Sellers, Delighting Customers', 50, 96)
+            .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 110);
 
-        doc.fontSize(12).font('Helvetica-Bold').text('Sellsathi Admin', 50, 50);
-        doc.font('Helvetica').text('Platform Settlement Document', 50, 65);
-        doc.text(`Date Generated: ${new Date().toLocaleDateString()}`, 50, 80);
+        // Report Date (top right)
+        const reportDate = new Date().toLocaleDateString('en-GB');
+        doc.fontSize(10).fillColor('#666666').font('Helvetica')
+            .text('Report Date:', 450, 50)
+            .fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text(reportDate, 450, 65);
+
+        // Horizontal line
+        doc.moveTo(50, 135).lineTo(545, 135).strokeColor('#6366f1').lineWidth(2).stroke();
+
+        // Title
+        doc.fontSize(20).fillColor('#000000').font('Helvetica-Bold')
+            .text('SELLER INVOICE REPORT', 50, 155, { align: 'center' });
+
+        // Period subtitle
+        let periodText = 'Complete Invoice History';
         if (fromDate && toDate) {
-            doc.text(`Period: ${fromDate} to ${toDate}`, 50, 95);
-        } else {
-            doc.text(`Period: All Time (Delivered)`, 50, 95);
+            const from = new Date(fromDate).toLocaleDateString('en-GB');
+            const to = new Date(toDate).toLocaleDateString('en-GB');
+            periodText = `Period: ${from} to ${to}`;
+        } else if (fromDate) {
+            periodText = `From: ${new Date(fromDate).toLocaleDateString('en-GB')}`;
+        } else if (toDate) {
+            periodText = `Until: ${new Date(toDate).toLocaleDateString('en-GB')}`;
         }
 
-        // Seller Info
-        doc.fontSize(12).font('Helvetica-Bold').text('Billed To:', 50, 130);
-        doc.font('Helvetica').text(`Shop Name: ${sellerData.shopName}`, 50, 145);
-        doc.text(`Owner: ${sellerData.extractedName || sellerData.name || "N/A"}`, 50, 160);
-        doc.text(`Contact: ${sellerEmail}`, 50, 175);
-        doc.text(`Category: ${sellerData.category}`, 50, 190);
+        doc.fontSize(12).fillColor('#999999').font('Helvetica')
+            .text(periodText, 50, 180, { align: 'center' });
 
-        // Financial Summary
-        doc.rect(50, 220, 500, 100).fillAndStroke('#f9fafb', '#e5e7eb');
-        doc.fill('#000000');
-        doc.fontSize(14).font('Helvetica-Bold').text('Settlement Summary', 60, 235);
+        // Seller Information Section
+        doc.rect(50, 210, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
+            .text('SELLER INFORMATION', 55, 216);
 
-        doc.fontSize(11).font('Helvetica');
-        doc.text(`Total Items Delivered: ${deliveredItems.length}`, 60, 260);
-        doc.text(`Gross Revenue: Rs. ${totalRevenue.toLocaleString()}`, 60, 275);
-        doc.text(`Platform Fee (10%): Rs. ${platformCharges.toLocaleString()}`, 60, 290);
+        doc.fontSize(11).font('Helvetica').fillColor('#000000');
 
-        doc.fontSize(12).font('Helvetica-Bold').text(`Net Amount Payable: Rs. ${netPayout.toLocaleString()}`, 300, 290, { align: 'right', width: 230 });
+        // Two column layout for seller info
+        doc.text('Shop Name:', 55, 245);
+        doc.text(sellerData.shopName || 'N/A', 180, 245);
+        doc.text('Category:', 320, 245);
+        doc.text(sellerData.category || 'N/A', 420, 245);
 
-        doc.moveDown(4);
+        doc.text('Seller ID:', 55, 265);
+        doc.text(uid.substring(0, 25), 180, 265);
+        doc.text('Phone:', 320, 265);
+        doc.text(sellerContact, 420, 265);
 
-        // Itemized Breakdown
-        doc.fontSize(14).font('Helvetica-Bold').text('Itemized Breakdown', 50, 340);
-        doc.moveDown(0.5);
+        doc.text('Email:', 55, 285);
+        doc.text(sellerEmail, 180, 285);
 
-        let tableTop = doc.y;
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text('Date', 50, tableTop);
-        doc.text('Item Name', 120, tableTop);
-        doc.text('Qty', 350, tableTop);
-        doc.text('Price', 400, tableTop);
-        doc.text('Total', 480, tableTop);
+        // Invoice Summary Section
+        doc.rect(50, 315, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
+            .text('INVOICE SUMMARY', 55, 321);
 
-        // Line under table headers
-        doc.moveTo(50, tableTop + 12).lineTo(550, tableTop + 12).stroke();
+        // Four colored boxes - All Blue for formal look
+        const boxY = 355;
+        const boxWidth = 115;
+        const boxHeight = 70;
+        const boxGap = 10;
 
-        let y = tableTop + 20;
-        doc.font('Helvetica');
-        deliveredItems.forEach(item => {
-            if (y > 700) { doc.addPage(); y = 50; }
-            doc.text(item.date, 50, y);
-            doc.text(item.name.substring(0, 40), 120, y);
-            doc.text(`${item.qty}`, 350, y);
-            doc.text(`${item.price}`, 400, y);
-            doc.text(`${item.revenue}`, 480, y);
-            y += 15;
-            doc.moveTo(50, y - 5).lineTo(550, y - 5).stroke('#f3f4f6');
-        });
+        // Total Products Listed (Blue)
+        doc.rect(50, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+            .text('Total Products', 55, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+            .text('Listed', 55, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(28).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(totalProducts.toString(), 55, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Total Revenue Earned (Blue)
+        doc.rect(50 + boxWidth + boxGap, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+            .text('Total Revenue', 50 + boxWidth + boxGap + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+            .text('Earned', 50 + boxWidth + boxGap + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(`Rs.${totalRevenue}`, 50 + boxWidth + boxGap + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Platform Charges (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 2, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+            .text('Platform Charges', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+            .text('(10%)', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(`Rs.${platformCharges.toFixed(2)}`, 50 + (boxWidth + boxGap) * 2 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Amount to Receive (Blue)
+        doc.rect(50 + (boxWidth + boxGap) * 3, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
+        doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
+            .text('Amount to', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(9).fillColor('#6366f1')
+            .text('Receive', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(`Rs.${amountToReceive.toFixed(2)}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+
+        // Based on text
+        doc.fontSize(10).fillColor('#999999').font('Helvetica')
+            .text(`Based on ${deliveredCount} delivered orders`, 50, boxY + boxHeight + 15, { align: 'center', width: 495 });
+
+        // Order Details Table (if there are orders)
+        if (orderDetails.length > 0) {
+            let tableY = boxY + boxHeight + 50;
+
+            // Check if we need a new page
+            if (tableY > 650) {
+                doc.addPage();
+                tableY = 50;
+            }
+
+            // Table Header
+            doc.rect(50, tableY, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+            doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
+                .text('ORDER DETAILS', 55, tableY + 6);
+
+            tableY += 30;
+
+            // Table Column Headers
+            doc.fontSize(9).fillColor('#666666').font('Helvetica-Bold');
+            doc.text('Date', 55, tableY);
+            doc.text('Order ID', 110, tableY);
+            doc.text('Product Name', 190, tableY, { width: 150 });
+            doc.text('Qty', 350, tableY);
+            doc.text('Price', 390, tableY);
+            doc.text('Total', 470, tableY);
+
+            // Header underline
+            doc.moveTo(50, tableY + 15).lineTo(545, tableY + 15).strokeColor('#e5e7eb').lineWidth(1).stroke();
+
+            tableY += 25;
+
+            // Table Rows
+            doc.fontSize(8).fillColor('#000000').font('Helvetica');
+
+            orderDetails.forEach((order, index) => {
+                // Check if we need a new page
+                if (tableY > 720) {
+                    doc.addPage();
+                    tableY = 50;
+
+                    // Repeat headers on new page
+                    doc.fontSize(9).fillColor('#666666').font('Helvetica-Bold');
+                    doc.text('Date', 55, tableY);
+                    doc.text('Order ID', 110, tableY);
+                    doc.text('Product Name', 190, tableY, { width: 150 });
+                    doc.text('Qty', 350, tableY);
+                    doc.text('Price', 390, tableY);
+                    doc.text('Total', 470, tableY);
+
+                    doc.moveTo(50, tableY + 15).lineTo(545, tableY + 15).strokeColor('#e5e7eb').lineWidth(1).stroke();
+                    tableY += 25;
+                    doc.fontSize(8).fillColor('#000000').font('Helvetica');
+                }
+
+                // Alternate row background
+                if (index % 2 === 0) {
+                    doc.rect(50, tableY - 5, 495, 20).fillAndStroke('#f9fafb', '#f9fafb');
+                }
+
+                doc.text(order.orderDate, 55, tableY);
+                doc.text(order.orderId.substring(0, 12) + '...', 110, tableY);
+                doc.text(order.productName.substring(0, 30), 190, tableY, { width: 150 });
+                doc.text(order.quantity.toString(), 350, tableY);
+                doc.text(`Rs.${order.price}`, 390, tableY);
+                doc.text(`Rs.${order.total}`, 470, tableY);
+
+                tableY += 20;
+            });
+
+            // Table footer line
+            doc.moveTo(50, tableY).lineTo(545, tableY).strokeColor('#e5e7eb').lineWidth(1).stroke();
+        }
+
+        // Footer
+        const footerY = orderDetails.length > 0 ? (doc.y > 720 ? 750 : 750) : 750;
+        doc.fontSize(9).fillColor('#cccccc').font('Helvetica')
+            .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, footerY, { align: 'center', width: 495 });
 
         doc.end();
     } catch (err) {
@@ -1378,12 +2003,46 @@ app.post("/seller/product/add", verifyAuth, async (req, res) => {
             return res.status(400).json({ success: false, message: "Missing data" });
         }
 
+        const price = Number(productData.price);
+        if (isNaN(price) || price <= 0) {
+            return res.status(400).json({ success: false, message: "Price must be a positive number" });
+        }
+
         const newProduct = {
-            ...productData,
+            title: productData.title || productData.name,
+            name: productData.title || productData.name,
+            price: price,
+            discountPrice: productData.discountPrice || null,
+            category: productData.category,
+            description: productData.description || "",
+            image: productData.image || "",
+            imageUrl: productData.image || productData.imageUrl || "",
+            stock: Number(productData.stock) || 0,
             sellerId,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: "Active" // Default status
+            status: "Active"
         };
+
+        // Dynamic fields: sizes, colors, variants, specifications
+        if (productData.sizes && Array.isArray(productData.sizes) && productData.sizes.length > 0) {
+            newProduct.sizes = productData.sizes;
+            newProduct.pricingType = productData.pricingType || "same";
+            if (productData.pricingType === "varied" && productData.sizePrices) {
+                newProduct.sizePrices = productData.sizePrices;
+            }
+        }
+        if (productData.colors && Array.isArray(productData.colors) && productData.colors.length > 0) {
+            newProduct.colors = productData.colors;
+        }
+        const VARIANT_KEYS = ["storage", "memory", "weight"];
+        for (const vk of VARIANT_KEYS) {
+            if (productData[vk] && Array.isArray(productData[vk]) && productData[vk].length > 0) {
+                newProduct[vk] = productData[vk];
+            }
+        }
+        if (productData.specifications && typeof productData.specifications === "object" && Object.keys(productData.specifications).length > 0) {
+            newProduct.specifications = productData.specifications;
+        }
 
         const docRef = await db.collection("products").add(newProduct);
 
@@ -1440,7 +2099,7 @@ app.get("/seller/:uid/orders", verifyAuth, async (req, res) => {
                     items: sellerItems, // Only show items relevant to this seller
                     total: sellerItems.reduce((acc, item) => acc + (item.price * item.quantity), 0),
                     status: order.status,
-                    date: order.createdAt?.toDate().toISOString().split('T')[0] || new Date().toISOString().split('T')[0]
+                    date: formatDateDDMMYYYY(order.createdAt)
                 });
             }
         });
@@ -1526,16 +2185,7 @@ app.get("/seller/:uid/dashboard-data", verifyAuth, async (req, res) => {
                 if (order.status === 'Processing') newOrdersCount++;
                 if (order.status === 'Pending') pendingOrdersCount++;;
 
-                let orderDate = new Date().toISOString().split('T')[0];
-                try {
-                    if (order.createdAt && typeof order.createdAt.toDate === 'function') {
-                        orderDate = order.createdAt.toDate().toISOString().split('T')[0];
-                    } else if (order.createdAt && order.createdAt._seconds) {
-                        orderDate = new Date(order.createdAt._seconds * 1000).toISOString().split('T')[0];
-                    }
-                } catch (e) {
-                    console.error("Error parsing order date:", e);
-                }
+                let orderDate = formatDateDDMMYYYY(order.createdAt);
 
                 sellerOrders.push({
                     id: doc.id,
@@ -1585,7 +2235,7 @@ app.get("/seller/:uid/dashboard-data", verifyAuth, async (req, res) => {
                 profile: { shopName: "Demo Shop", name: "Demo Seller", status: "APPROVED" },
                 stats: { totalSales: 15000, totalProducts: 2, newOrders: 1, pendingOrders: 0 },
                 products: [{ id: 'mock1', title: 'Sample Product', price: 999, stock: 10, category: 'Electronics' }],
-                orders: [{ id: 'mock-o1', orderId: 'OD123', customer: 'Demo Customer', total: 999, status: 'Processing', date: new Date().toISOString().split('T')[0] }]
+                orders: [{ id: 'mock-o1', orderId: 'OD123', customer: 'Demo Customer', total: 999, status: 'Processing', date: formatDateDDMMYYYY(new Date()) }]
             });
         }
 
@@ -2123,7 +2773,7 @@ app.post("/payment/verify", async (req, res) => {
                 }
             }
 
-            return res.status(200).json({ success: true, orderId: orderRef.id });
+            return res.status(200).json({ success: true, orderId: orderData.orderId, documentId: orderRef.id });
         } else {
             return res.status(400).json({ success: false, message: "Invalid signature" });
         }
@@ -2248,7 +2898,7 @@ app.post("/payment/cod-order", verifyAuth, async (req, res) => {
             }
         }
 
-        return res.status(200).json({ success: true, orderId: orderRef.id });
+        return res.status(200).json({ success: true, orderId: orderData.orderId, documentId: orderRef.id });
     } catch (error) {
         console.error("COD ERROR:", error);
         return res.status(500).json({ success: false, message: "COD placement failed" });
@@ -2302,13 +2952,17 @@ app.post("/seller/pickup-address", verifyAuth, async (req, res) => {
     }
 });
 
-// POST /api/orders/:orderId/cancel - Cancel order and shipment
+// POST /api/orders/:orderId/cancel - Cancel order and initiate refund
 app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
     try {
         const { orderId } = req.params;
+        const userId = req.user.uid;
+
+        console.log('[CANCEL ORDER] Request from user:', userId, 'for order:', orderId);
 
         // Find order by document ID or orderId field
         let orderDoc = await db.collection("orders").doc(orderId).get();
+        let orderDocId = orderId;
 
         if (!orderDoc.exists) {
             const query = await db.collection("orders").where("orderId", "==", orderId).get();
@@ -2319,44 +2973,100 @@ app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
                 });
             }
             orderDoc = query.docs[0];
+            orderDocId = orderDoc.id;
         }
 
         const orderData = orderDoc.data();
 
-        // Check if order has a shipment ID
-        if (!orderData.shipmentId) {
-            return res.status(400).json({
+        console.log('[CANCEL ORDER] Order data:', {
+            orderUserId: orderData.userId,
+            orderUid: orderData.uid,
+            requestUserId: userId,
+            status: orderData.status
+        });
+
+        // Verify user owns this order (check both userId and uid fields)
+        const isOwner = orderData.userId === userId ||
+            orderData.uid === userId ||
+            orderData.userId === req.user.email ||
+            orderData.uid === req.user.email;
+
+        if (!isOwner) {
+            console.log('[CANCEL ORDER] Authorization failed - user does not own order');
+            return res.status(403).json({
                 success: false,
-                message: "Order does not have a shipment ID"
+                message: "You are not authorized to cancel this order"
             });
         }
 
-        // Cancel shipment in Shiprocket
-        const cancelResult = await shiprocketService.cancelOrder(
-            orderData.shipmentId,
-            orderData.orderId || orderId
-        );
-
-        if (cancelResult.success) {
-            // Update order status in database
-            await orderDoc.ref.update({
-                status: "Cancelled",
-                shippingStatus: "CANCELLED",
-                cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-                cancellationReason: "Customer requested cancellation"
-            });
-
-            return res.status(200).json({
-                success: true,
-                message: "Order cancelled successfully"
-            });
-        } else {
+        // Check if order can be cancelled
+        const cancellableStatuses = ['Order Placed', 'Placed', 'Processing', 'Pending'];
+        if (!cancellableStatuses.includes(orderData.status)) {
             return res.status(400).json({
                 success: false,
-                message: cancelResult.error,
-                details: cancelResult.details
+                message: `Order cannot be cancelled. Current status: ${orderData.status}`
             });
         }
+
+        // Check if already cancelled
+        if (orderData.status === 'Cancelled') {
+            return res.status(400).json({
+                success: false,
+                message: "Order is already cancelled"
+            });
+        }
+
+        console.log('[CANCEL ORDER] Proceeding with cancellation...');
+
+        // Cancel shipment in Shiprocket if shipment ID exists
+        let shipmentCancelled = false;
+        if (orderData.shipmentId) {
+            try {
+                const cancelResult = await shiprocketService.cancelOrder(
+                    orderData.shipmentId,
+                    orderData.orderId || orderId
+                );
+                shipmentCancelled = cancelResult.success;
+            } catch (error) {
+                console.error("Shiprocket cancellation error:", error);
+                // Continue with order cancellation even if Shiprocket fails
+            }
+        }
+
+        // Calculate refund amount
+        const refundAmount = orderData.total || 0;
+        const paymentMethod = orderData.paymentMethod || 'COD';
+
+        // Update order status in database
+        const updateData = {
+            status: "Cancelled",
+            shippingStatus: "CANCELLED",
+            cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+            cancellationReason: "Customer requested cancellation",
+            refundStatus: paymentMethod === 'COD' ? 'Not Applicable' : 'Pending',
+            refundAmount: paymentMethod === 'COD' ? 0 : refundAmount,
+            refundMethod: paymentMethod === 'COD' ? 'N/A' : 'Original Payment Method',
+            refundProcessingTime: paymentMethod === 'COD' ? 'N/A' : '5-7 business days'
+        };
+
+        await db.collection("orders").doc(orderDocId).update(updateData);
+
+        // Send cancellation email (optional)
+        // TODO: Implement email notification
+
+        return res.status(200).json({
+            success: true,
+            message: "Order cancelled successfully",
+            refundInfo: {
+                refundAmount: paymentMethod === 'COD' ? 0 : refundAmount,
+                refundStatus: paymentMethod === 'COD' ? 'Not Applicable' : 'Pending',
+                refundMethod: paymentMethod === 'COD' ? 'N/A' : 'Original Payment Method',
+                processingTime: paymentMethod === 'COD' ? 'N/A' : '5-7 business days',
+                message: paymentMethod === 'COD'
+                    ? 'No refund applicable for Cash on Delivery orders'
+                    : 'Refund will be processed to your original payment method within 5-7 business days'
+            }
+        });
     } catch (error) {
         console.error("CANCEL ORDER ERROR:", error);
         return res.status(500).json({
@@ -2537,6 +3247,144 @@ app.post("/webhook/shiprocket", async (req, res) => {
     }
 });
 
+// Cart API Routes
+app.get("/api/user/:uid/cart", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+
+        // Verify user can only access their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const cartData = userDoc.data().cart || [];
+        res.json({ success: true, cart: cartData });
+    } catch (error) {
+        console.error("Error fetching cart:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch cart" });
+    }
+});
+
+app.post("/api/user/:uid/cart/add", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const { cartItem, clearCart } = req.body;
+
+        // Verify user can only modify their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userRef = db.collection('users').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        let updatedCart;
+
+        if (clearCart) {
+            // Clear cart functionality
+            updatedCart = [];
+        } else if (cartItem) {
+            // Add item functionality
+            const currentCart = userDoc.data().cart || [];
+            const existingItemIndex = currentCart.findIndex(item => item.id === cartItem.id);
+
+            if (existingItemIndex > -1) {
+                // Update existing item quantity
+                currentCart[existingItemIndex].quantity += cartItem.quantity || 1;
+            } else {
+                // Add new item
+                currentCart.push({
+                    ...cartItem,
+                    quantity: cartItem.quantity || 1,
+                    addedAt: new Date().toISOString()
+                });
+            }
+            updatedCart = currentCart;
+        } else {
+            return res.status(400).json({ success: false, message: "Invalid request" });
+        }
+
+        await userRef.update({ cart: updatedCart });
+
+        res.json({ success: true, message: clearCart ? "Cart cleared" : "Item added to cart", cart: updatedCart });
+    } catch (error) {
+        console.error("Error adding to cart:", error);
+        res.status(500).json({ success: false, message: "Failed to add to cart" });
+    }
+});
+
+app.delete("/api/user/:uid/cart/:itemId", verifyAuth, async (req, res) => {
+    try {
+        const { uid, itemId } = req.params;
+
+        // Verify user can only modify their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userRef = db.collection('users').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const currentCart = userDoc.data().cart || [];
+        const updatedCart = currentCart.filter(item => item.id !== itemId);
+
+        await userRef.update({ cart: updatedCart });
+
+        res.json({ success: true, message: "Item removed from cart", cart: updatedCart });
+    } catch (error) {
+        console.error("Error removing from cart:", error);
+        res.status(500).json({ success: false, message: "Failed to remove from cart" });
+    }
+});
+
+app.put("/api/user/:uid/cart/:itemId", verifyAuth, async (req, res) => {
+    try {
+        const { uid, itemId } = req.params;
+        const { quantity } = req.body;
+
+        // Verify user can only modify their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userRef = db.collection('users').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const currentCart = userDoc.data().cart || [];
+        const itemIndex = currentCart.findIndex(item => item.id === itemId);
+
+        if (itemIndex === -1) {
+            return res.status(404).json({ success: false, message: "Item not found in cart" });
+        }
+
+        currentCart[itemIndex].quantity = quantity;
+
+        await userRef.update({ cart: currentCart });
+
+        res.json({ success: true, message: "Cart updated", cart: currentCart });
+    } catch (error) {
+        console.error("Error updating cart:", error);
+        res.status(500).json({ success: false, message: "Failed to update cart" });
+    }
+});
+
 // Wishlist remove endpoint
 app.post("/api/user/:uid/wishlist/remove", verifyAuth, async (req, res) => {
     try {
@@ -2572,20 +3420,38 @@ app.post("/api/user/:uid/address/save", verifyAuth, async (req, res) => {
         const doc = await userRef.get();
 
         if (!doc.exists) {
+            // First address, set as default if not specified
+            if (address.isDefault === undefined) {
+                address.isDefault = true;
+            }
             await userRef.set({
                 uid,
                 addresses: [address],
                 createdAt: new Date()
             });
         } else {
-            const currentAddresses = doc.data().addresses || [];
+            let currentAddresses = doc.data().addresses || [];
+
+            // If this address is being set as default, unset all others
+            if (address.isDefault === true) {
+                currentAddresses = currentAddresses.map(addr => ({
+                    ...addr,
+                    isDefault: false
+                }));
+            }
+
             if (address.id !== undefined) {
                 // Update existing address
                 currentAddresses[address.id] = address;
             } else {
                 // Add new address
+                // If this is the first address, set as default
+                if (currentAddresses.length === 0 && address.isDefault === undefined) {
+                    address.isDefault = true;
+                }
                 currentAddresses.push(address);
             }
+
             await userRef.update({
                 addresses: currentAddresses,
                 updatedAt: new Date()
@@ -2611,7 +3477,15 @@ app.post("/api/user/:uid/address/delete", verifyAuth, async (req, res) => {
 
         if (doc.exists) {
             const currentAddresses = doc.data().addresses || [];
+            const wasDefault = currentAddresses[addressId]?.isDefault;
+
             currentAddresses.splice(addressId, 1);
+
+            // If deleted address was default and there are remaining addresses, set first one as default
+            if (wasDefault && currentAddresses.length > 0) {
+                currentAddresses[0].isDefault = true;
+            }
+
             await userRef.update({
                 addresses: currentAddresses,
                 updatedAt: new Date()
@@ -2622,6 +3496,52 @@ app.post("/api/user/:uid/address/delete", verifyAuth, async (req, res) => {
     } catch (error) {
         console.error("ADDRESS DELETE ERROR:", error);
         return res.status(500).json({ success: false, message: "Failed to delete address" });
+    }
+});
+
+// Get all addresses for a user
+app.get("/api/user/:uid/addresses", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        if (req.user.uid !== uid) return res.status(403).json({ success: false, message: "Access denied" });
+
+        const userRef = db.collection("users").doc(uid);
+        const doc = await userRef.get();
+
+        if (doc.exists) {
+            const addresses = doc.data().addresses || [];
+            return res.status(200).json({ success: true, addresses });
+        }
+
+        return res.status(200).json({ success: true, addresses: [] });
+    } catch (error) {
+        console.error("GET ADDRESSES ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch addresses" });
+    }
+});
+
+// Get default address for a user
+app.get("/api/user/:uid/address/default", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        if (req.user.uid !== uid) return res.status(403).json({ success: false, message: "Access denied" });
+
+        const userRef = db.collection("users").doc(uid);
+        const doc = await userRef.get();
+
+        if (doc.exists) {
+            const addresses = doc.data().addresses || [];
+            const defaultAddress = addresses.find(addr => addr.isDefault === true);
+
+            if (defaultAddress) {
+                return res.status(200).json({ success: true, address: defaultAddress });
+            }
+        }
+
+        return res.status(200).json({ success: true, address: null });
+    } catch (error) {
+        console.error("GET DEFAULT ADDRESS ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch default address" });
     }
 });
 

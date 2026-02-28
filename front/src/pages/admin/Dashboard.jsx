@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, Users, Box, ShoppingCart, Truck, Check, X, AlertOctagon, Loader, Home, Mail, DollarSign, FileText, CreditCard, User, Store, MapPin, Package, TrendingUp, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { authFetch } from '../../utils/api';
+import SellerAnalyticsModal from '../../components/admin/SellerAnalyticsModal';
+import SellerInvoiceModal from '../../components/admin/SellerInvoiceModal';
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState('home');
@@ -35,6 +37,20 @@ export default function AdminDashboard() {
     // Fetch all data on component mount
     useEffect(() => {
         fetchAllData();
+    }, []);
+
+    // Auto-refresh every 2 minutes
+    useEffect(() => {
+        const autoRefreshInterval = setInterval(() => {
+            console.log('[AUTO-REFRESH] Refreshing admin dashboard data...');
+            fetchAllData();
+        }, 2 * 60 * 1000); // 2 minutes in milliseconds
+
+        // Cleanup interval on component unmount
+        return () => {
+            clearInterval(autoRefreshInterval);
+            console.log('[AUTO-REFRESH] Cleanup: Stopped auto-refresh');
+        };
     }, []);
 
     // Helper: fetch with a timeout so a dead endpoint never hangs forever
@@ -95,12 +111,30 @@ export default function AdminDashboard() {
             }
 
             // ── All sellers (same sellers collection as stats — always consistent) ──
+            let updatedSellers = [];
             if (allSellersResult.status === 'fulfilled' && allSellersResult.value.ok) {
                 const d = await allSellersResult.value.json();
                 console.log('[DEBUG] all-sellers response:', d.success, 'count:', d.sellers?.length);
                 if (d.success) {
+                    updatedSellers = d.sellers;
                     setAllSellers(d.sellers);
-                    // Keep allSellers stat in sync with actual data (don't override stats.totalSellers here)
+
+                    // Update selected invoice seller if it's open
+                    if (selectedInvoiceSeller) {
+                        const updatedSeller = d.sellers.find(s => s.uid === selectedInvoiceSeller.uid);
+                        if (updatedSeller) {
+                            console.log('[DEBUG] Updating selected invoice seller:', updatedSeller.shopName, 'Products:', updatedSeller.financials?.totalProducts);
+                            setSelectedInvoiceSeller(updatedSeller);
+                        }
+                    }
+
+                    // Update selected analytics seller if it's open
+                    if (selectedAnalyticsSeller) {
+                        const updatedSeller = d.sellers.find(s => s.uid === selectedAnalyticsSeller.uid);
+                        if (updatedSeller) {
+                            setSelectedAnalyticsSeller(updatedSeller);
+                        }
+                    }
                 }
             } else {
                 const failInfo = allSellersResult.status === 'fulfilled'
@@ -284,6 +318,7 @@ export default function AdminDashboard() {
 
     const [payoutSearch, setPayoutSearch] = useState('');
     const [payoutCategory, setPayoutCategory] = useState('');
+    const [payoutDate, setPayoutDate] = useState('');
     const [invoiceSearch, setInvoiceSearch] = useState('');
     const [invoiceCategory, setInvoiceCategory] = useState('');
     const [invoiceDate, setInvoiceDate] = useState('');
@@ -830,6 +865,13 @@ export default function AdminDashboard() {
     };
 
     const renderProductsTable = () => {
+        // Helper to convert dd/mm/yyyy to Date for comparison
+        const parseDDMMYYYY = (dateStr) => {
+            if (!dateStr) return null;
+            const [day, month, year] = dateStr.split('/');
+            return new Date(year, month - 1, day);
+        };
+
         // Filter products by search term, category, and date
         const filteredProductsList = products.filter(p => {
             const matchesSearch = searchTerm === '' ||
@@ -1031,24 +1073,26 @@ export default function AdminDashboard() {
                         </button>
                     </div>
                 </div>
-                {filteredOrdersList.length === 0 ? (
-                    <div className="glass-card text-center p-8 text-muted">
-                        {searchTerm || selectedDate ? 'No orders found matching your search criteria.' : 'No orders found.'}
-                    </div>
-                ) : (
-                    <div className="glass-card" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead style={{ background: 'var(--surface)', textAlign: 'left' }}>
-                                <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Order ID</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customer</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
+                <div className="glass-card" style={{ padding: 0, overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead style={{ background: 'var(--surface)', textAlign: 'left' }}>
+                            <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Order ID</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customer</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredOrdersList.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        {searchTerm || selectedDate ? 'No orders found matching your search criteria.' : 'No orders yet. Orders will appear here once customers place orders.'}
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {filteredOrdersList.map(o => {
+                            ) : (
+                                filteredOrdersList.map(o => {
                                     // Normalize status - convert "Placed" to "Order Placed"
                                     const normalizedStatus = o.status === 'Placed' ? 'Order Placed' : o.status;
 
@@ -1071,13 +1115,15 @@ export default function AdminDashboard() {
                                             <td style={{ padding: '1.25rem 1.5rem' }}>
                                                 <span style={{
                                                     background: normalizedStatus === 'Delivered' ? 'rgba(var(--success-rgb), 0.1)' :
-                                                        normalizedStatus === 'Processing' ? 'rgba(var(--primary-rgb), 0.1)' :
-                                                            normalizedStatus === 'Shipped' ? 'rgba(var(--accent-rgb), 0.1)' :
-                                                                'rgba(var(--warning-rgb), 0.1)',
+                                                        normalizedStatus === 'Cancelled' ? 'rgba(239, 68, 68, 0.1)' :
+                                                            normalizedStatus === 'Processing' ? 'rgba(var(--primary-rgb), 0.1)' :
+                                                                normalizedStatus === 'Shipped' ? 'rgba(var(--accent-rgb), 0.1)' :
+                                                                    'rgba(var(--warning-rgb), 0.1)',
                                                     color: normalizedStatus === 'Delivered' ? 'var(--success)' :
-                                                        normalizedStatus === 'Processing' ? 'var(--primary)' :
-                                                            normalizedStatus === 'Shipped' ? 'var(--accent)' :
-                                                                'var(--warning)',
+                                                        normalizedStatus === 'Cancelled' ? '#ef4444' :
+                                                            normalizedStatus === 'Processing' ? 'var(--primary)' :
+                                                                normalizedStatus === 'Shipped' ? 'var(--accent)' :
+                                                                    'var(--warning)',
                                                     padding: '6px 12px',
                                                     borderRadius: '6px',
                                                     fontSize: '0.8rem',
@@ -1091,11 +1137,11 @@ export default function AdminDashboard() {
                                             </td>
                                         </tr>
                                     );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         );
     };
@@ -1174,25 +1220,27 @@ export default function AdminDashboard() {
                     </div>
                 </div>
 
-                {filteredReviews.length === 0 ? (
-                    <div className="glass-card text-center p-8 text-muted">
-                        {feedbackSearch ? 'No feedback found matching your search.' : 'No customer feedback yet.'}
-                    </div>
-                ) : (
-                    <div className="glass-card" style={{ padding: 0, overflowX: 'auto', border: '1px solid var(--border)' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
-                            <thead style={{ background: 'var(--surface)', textAlign: 'left' }}>
-                                <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Product Details</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customer</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rating</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Review</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
-                                    <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Actions</th>
+                <div className="glass-card" style={{ padding: 0, overflowX: 'auto', border: '1px solid var(--border)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+                        <thead style={{ background: 'var(--surface)', textAlign: 'left' }}>
+                            <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Product Details</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customer</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rating</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Review</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredReviews.length === 0 ? (
+                                <tr>
+                                    <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        {feedbackSearch || selectedFeedbackDate ? 'No feedback found matching your search criteria.' : 'No customer feedback yet. Reviews will appear here once customers submit feedback.'}
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {filteredReviews.map(r => (
+                            ) : (
+                                filteredReviews.map(r => (
                                     <tr
                                         key={r.id}
                                         style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}
@@ -1222,7 +1270,26 @@ export default function AdminDashboard() {
                                         </td>
                                         <td style={{ padding: '1.25rem 1.5rem' }}>
                                             <div className="flex flex-col">
-                                                <span style={{ fontWeight: 600 }}>{r.customerName}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span style={{ fontWeight: 600 }}>{r.customerName}</span>
+                                                    {r.verified && (
+                                                        <span
+                                                            title="Verified Purchase"
+                                                            style={{
+                                                                color: '#10b981',
+                                                                background: '#10b98115',
+                                                                padding: '2px 6px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.65rem',
+                                                                fontWeight: 800,
+                                                                textTransform: 'uppercase',
+                                                                letterSpacing: '0.05em'
+                                                            }}
+                                                        >
+                                                            Verified
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <span className="text-muted" style={{ fontSize: '0.75rem' }}>ID: {r.customerId?.substring(0, 8)}</span>
                                             </div>
                                         </td>
@@ -1268,11 +1335,11 @@ export default function AdminDashboard() {
                                             </button>
                                         </td>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         );
     };
@@ -1300,18 +1367,34 @@ export default function AdminDashboard() {
                                 <option key={cat} value={cat}>{cat}</option>
                             ))}
                         </select>
+                        <input
+                            type="date"
+                            value={payoutDate}
+                            onChange={(e) => setPayoutDate(e.target.value)}
+                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)' }}
+                            title="Filter by listing date"
+                        />
+                        <button
+                            className="btn btn-secondary"
+                            onClick={() => { setPayoutSearch(''); setPayoutCategory(''); setPayoutDate(''); }}
+                            style={{ padding: '0.5rem 1rem' }}
+                        >
+                            Clear
+                        </button>
                         <button className="btn btn-secondary" onClick={fetchAllData}>Refresh</button>
                     </div>
                 </div>
 
                 <div className="glass-card" style={{ padding: 0, overflowX: 'auto', border: '1px solid var(--border)' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                         <thead style={{ background: 'var(--surface)', textAlign: 'left' }}>
                             <tr style={{ borderBottom: '2px solid var(--border)' }}>
                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shop Overview</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Date Listed</th>
                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Inventory (Stock)</th>
                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Units Sold</th>
                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Gross Payout</th>
+                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1320,38 +1403,83 @@ export default function AdminDashboard() {
                                     (s.shopName || '').toLowerCase().includes(payoutSearch.toLowerCase()) ||
                                     (s.email || '').toLowerCase().includes(payoutSearch.toLowerCase());
                                 const matchesCategory = payoutCategory === '' || s.category === payoutCategory;
-                                return matchesSearch && matchesCategory;
-                            }).map(s => (
-                                <tr
-                                    key={s.uid}
-                                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                                    onClick={() => setSelectedAnalyticsSeller(s)}
-                                    onMouseOver={(e) => e.currentTarget.style.background = 'var(--surface)'}
-                                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                                >
-                                    <td style={{ padding: '1.25rem 1.5rem' }}>
-                                        <div className="flex flex-col">
-                                            <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>{s.shopName}</span>
-                                            <span className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>{s.category} | {s.email}</span>
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
-                                        <div className="flex flex-col items-center">
-                                            <Package size={18} className="text-muted mb-1" />
-                                            <span style={{ fontWeight: 600 }}>{s.metrics.totalStockLeft}</span>
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
-                                        <div className="flex flex-col items-center">
-                                            <TrendingUp size={18} className="text-primary mb-1" />
-                                            <span style={{ fontWeight: 600 }}>{s.metrics.unitsSold}</span>
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
-                                        <span style={{ fontWeight: 800, color: 'var(--success)', fontSize: '1.1rem' }}>₹{s.metrics.grossRevenue.toLocaleString()}</span>
-                                    </td>
-                                </tr>
-                            ))}
+
+                                // Date filter
+                                let matchesDate = true;
+                                if (payoutDate && s.createdAt) {
+                                    // Convert input date (YYYY-MM-DD) to dd/mm/yyyy for comparison
+                                    const inputDate = new Date(payoutDate);
+                                    const inputDDMMYYYY = `${String(inputDate.getDate()).padStart(2, '0')}/${String(inputDate.getMonth() + 1).padStart(2, '0')}/${inputDate.getFullYear()}`;
+                                    matchesDate = s.joined === inputDDMMYYYY;
+                                }
+
+                                return matchesSearch && matchesCategory && matchesDate;
+                            }).map(s => {
+                                // Format date as dd/mm/yyyy
+                                const formatDate = (dateString) => {
+                                    if (!dateString) return 'N/A';
+                                    const date = new Date(dateString);
+                                    const day = String(date.getDate()).padStart(2, '0');
+                                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                                    const year = date.getFullYear();
+                                    return `${day}/${month}/${year}`;
+                                };
+
+                                return (
+                                    <tr
+                                        key={s.uid}
+                                        style={{ borderBottom: '1px solid var(--border)' }}
+                                        onMouseOver={(e) => e.currentTarget.style.background = 'var(--surface)'}
+                                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                        <td style={{ padding: '1.25rem 1.5rem' }}>
+                                            <div className="flex flex-col">
+                                                <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>{s.shopName}</span>
+                                                <span className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>{s.category} | {s.email}</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
+                                            <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{formatDate(s.createdAt)}</span>
+                                        </td>
+                                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
+                                            <div className="flex flex-col items-center">
+                                                <Package size={18} className="text-muted mb-1" />
+                                                <span style={{ fontWeight: 600 }}>{s.metrics.totalStockLeft}</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
+                                            <div className="flex flex-col items-center">
+                                                <TrendingUp size={18} className="text-primary mb-1" />
+                                                <span style={{ fontWeight: 600 }}>{s.metrics.unitsSold}</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
+                                            <span style={{ fontWeight: 800, color: 'var(--success)', fontSize: '1.1rem' }}>₹{s.metrics.grossRevenue.toLocaleString()}</span>
+                                        </td>
+                                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
+                                            <div className="flex gap-2 justify-center">
+                                                <button
+                                                    className="btn btn-secondary"
+                                                    onClick={() => setSelectedAnalyticsSeller(s)}
+                                                    style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600 }}
+                                                >
+                                                    View
+                                                </button>
+                                                <button
+                                                    className="btn btn-primary"
+                                                    onClick={() => handleDownloadPDF(`/admin/seller/${s.uid}/analytics-pdf`, `analytics_${(s.shopName || 'seller').replace(/\s+/g, '_')}.pdf`)}
+                                                    disabled={isDownloadingPDF}
+                                                    style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                    title="Download PDF"
+                                                >
+                                                    {isDownloadingPDF ? <Loader size={16} className="animate-spin" /> : <Download size={16} />}
+                                                    PDF
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -1386,6 +1514,17 @@ export default function AdminDashboard() {
 
     const renderSellerInvoiceTable = () => {
         const approvedSellers = allSellers.filter(s => s.status === 'APPROVED');
+
+        // Format date as dd/mm/yyyy
+        const formatDate = (dateString) => {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        };
+
         return (
             <div className="animate-fade-in flex flex-col gap-6">
                 <div className="flex justify-between items-center">
@@ -1393,41 +1532,56 @@ export default function AdminDashboard() {
                     <div className="flex gap-2">
                         <input
                             type="text"
-                            placeholder="Name, Email, or Phone..."
+                            placeholder="Search Seller"
                             value={invoiceSearch}
                             onChange={(e) => setInvoiceSearch(e.target.value)}
-                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)', minWidth: '200px' }}
+                            style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border)', minWidth: '250px' }}
+                        />
+                        <input
+                            type="date"
+                            value={invoiceDate}
+                            onChange={(e) => setInvoiceDate(e.target.value)}
+                            style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border)' }}
+                            title="Filter by Registration Date"
+                            placeholder="Filter by Registration Date"
                         />
                         <select
                             value={invoiceCategory}
                             onChange={(e) => setInvoiceCategory(e.target.value)}
-                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)' }}
+                            style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border)', minWidth: '180px' }}
                         >
                             <option value="">All Categories</option>
                             {[...new Set(approvedSellers.map(s => s.category))].sort().map(cat => (
                                 <option key={cat} value={cat}>{cat}</option>
                             ))}
                         </select>
-                        <input
-                            type="date"
-                            value={invoiceDate}
-                            onChange={(e) => setInvoiceDate(e.target.value)}
-                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)' }}
-                            title="Filter by join date"
-                        />
-                        <button className="btn btn-secondary" onClick={() => { setInvoiceSearch(''); setInvoiceCategory(''); setInvoiceDate(''); }}>Clear</button>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={() => { setInvoiceSearch(''); setInvoiceCategory(''); setInvoiceDate(''); }}
+                            style={{ padding: '0.5rem 1rem' }}
+                        >
+                            Clear
+                        </button>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={fetchAllData}
+                            style={{ padding: '0.5rem 1rem' }}
+                        >
+                            Refresh
+                        </button>
                     </div>
                 </div>
 
                 <div className="glass-card" style={{ padding: 0, overflowX: 'auto', border: '1px solid var(--border)' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
                         <thead style={{ background: 'var(--surface)', textAlign: 'left' }}>
                             <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shop Detail</th>
-                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Category/Contact</th>
-                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Registration Date</th>
-                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
-                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
+                                <th style={{ padding: '1rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shop Name</th>
+                                <th style={{ padding: '1rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Category</th>
+                                <th style={{ padding: '1rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Contact</th>
+                                <th style={{ padding: '1rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Date</th>
+                                <th style={{ padding: '1rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
+                                <th style={{ padding: '1rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1437,41 +1591,100 @@ export default function AdminDashboard() {
                                     (s.email || '').toLowerCase().includes(invoiceSearch.toLowerCase()) ||
                                     (s.phone || '').includes(invoiceSearch);
                                 const matchesCategory = invoiceCategory === '' || s.category === invoiceCategory;
-                                const matchesDate = invoiceDate === '' || s.joined === (() => {
-                                    const date = new Date(invoiceDate);
-                                    const day = String(date.getDate()).padStart(2, '0');
-                                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                                    const year = date.getFullYear();
-                                    return `${day}/${month}/${year}`;
-                                })();
+
+                                // Date filter
+                                let matchesDate = true;
+                                if (invoiceDate && s.createdAt) {
+                                    // Convert input date (YYYY-MM-DD) to dd/mm/yyyy for comparison
+                                    const inputDate = new Date(invoiceDate);
+                                    const inputDDMMYYYY = `${String(inputDate.getDate()).padStart(2, '0')}/${String(inputDate.getMonth() + 1).padStart(2, '0')}/${inputDate.getFullYear()}`;
+                                    matchesDate = s.joined === inputDDMMYYYY;
+                                }
+
                                 return matchesSearch && matchesCategory && matchesDate;
-                            }).map(s => (
-                                <tr key={s.uid} style={{ borderBottom: '1px solid var(--border)' }} onMouseOver={(e) => e.currentTarget.style.background = 'var(--surface)'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
-                                    <td style={{ padding: '1.25rem 1.5rem' }}>
-                                        <div className="flex flex-col">
-                                            <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>{s.shopName}</span>
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '1.25rem 1.5rem' }}>
-                                        <div className="flex flex-col gap-1">
-                                            <span style={{ width: 'fit-content', padding: '2px 8px', background: 'var(--glass)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>{s.category}</span>
-                                            <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>{s.email}</span>
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '1.25rem 1.5rem' }}>
-                                        <span className="text-muted" style={{ fontSize: '0.85rem' }}>{s.joined}</span>
-                                    </td>
-                                    <td style={{ padding: '1.25rem 1.5rem' }}>
-                                        <span style={{ padding: '4px 10px', background: 'rgba(var(--success-rgb), 0.1)', color: 'var(--success)', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>ACTIVE</span>
-                                    </td>
-                                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
-                                        <div className="flex gap-2 justify-end">
-                                            <button className="btn btn-secondary shadow-sm" onClick={() => setSelectedInvoiceSeller(s)} style={{ padding: '6px 10px', fontSize: '0.8rem', fontWeight: 700, borderRadius: '6px' }}>View Details</button>
-                                            <button className="btn btn-primary" onClick={() => handleDownloadPDF(`/admin/seller/${s.uid}/pdf`, `invoice_${(s.shopName || 'seller').replace(/\s+/g, '_')}.pdf`)} disabled={isDownloadingPDF} style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 700, borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}><FileText size={14} /> Quick PDF</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                            }).map(s => {
+                                // Determine status badge
+                                let statusBadge = { text: 'APPROVED', color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' };
+                                if (s.status === 'PENDING') {
+                                    statusBadge = { text: 'PENDING', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' };
+                                } else if (s.status === 'REJECTED') {
+                                    statusBadge = { text: 'REJECTED', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' };
+                                }
+
+                                return (
+                                    <tr
+                                        key={s.uid}
+                                        style={{ borderBottom: '1px solid var(--border)' }}
+                                        onMouseOver={(e) => e.currentTarget.style.background = 'var(--surface)'}
+                                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                        <td style={{ padding: '1rem 1.5rem' }}>
+                                            <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{s.shopName}</span>
+                                        </td>
+                                        <td style={{ padding: '1rem 1.5rem' }}>
+                                            <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{s.category}</span>
+                                        </td>
+                                        <td style={{ padding: '1rem 1.5rem' }}>
+                                            <div className="flex flex-col" style={{ gap: '2px' }}>
+                                                {s.phone && <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{s.phone}</span>}
+                                                {s.email && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{s.email}</span>}
+                                                {!s.phone && !s.email && <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>N/A</span>}
+                                            </div>
+                                        </td>
+                                        <td style={{ padding: '1rem 1.5rem' }}>
+                                            <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{formatDate(s.createdAt)}</span>
+                                        </td>
+                                        <td style={{ padding: '1rem 1.5rem' }}>
+                                            <span style={{
+                                                padding: '0.35rem 0.75rem',
+                                                background: statusBadge.bg,
+                                                color: statusBadge.color,
+                                                borderRadius: '12px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 700,
+                                                textTransform: 'uppercase'
+                                            }}>
+                                                {statusBadge.text}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>
+                                            <div className="flex gap-2 justify-center">
+                                                <button
+                                                    className="btn btn-secondary"
+                                                    onClick={() => setSelectedInvoiceSeller(s)}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 600,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    <User size={14} />
+                                                    View Details
+                                                </button>
+                                                <button
+                                                    className="btn btn-primary"
+                                                    onClick={() => handleDownloadPDF(`/admin/seller/${s.uid}/pdf`, `invoice_${(s.shopName || 'seller').replace(/\s+/g, '_')}.pdf`)}
+                                                    disabled={isDownloadingPDF}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 600,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    {isDownloadingPDF ? <Loader size={14} className="animate-spin" /> : <Download size={14} />}
+                                                    PDF
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -1495,128 +1708,154 @@ export default function AdminDashboard() {
 
     return (
         <div className="flex" style={{ minHeight: 'calc(100vh - 80px)', width: '100%', gap: '2rem', padding: '2rem' }}>
-            {/* Sidebar */}
-            <aside className="glass-card flex flex-col justify-between" style={{ width: '280px', height: 'calc(100vh - 120px)', padding: '1.5rem', position: 'sticky', top: '2rem' }}>
-                <div>
-                    <div className="flex items-center gap-2" style={{ marginBottom: '2rem', color: 'var(--primary)', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
-                        <ShieldCheck size={28} />
-                        <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Admin Panel</h3>
-                    </div>
-                    <nav className="flex flex-col gap-2">
-                        <button
-                            className={`btn ${activeTab === 'home' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                width: '100%',
-                                justifyContent: 'flex-start',
-                                padding: '1rem',
-                                fontSize: '1rem'
-                            }}
-                            onClick={() => { setActiveTab('home'); setSearchTerm(''); }}
-                        >
-                            <Home size={20} /> Home
-                        </button>
-                        <button
-                            className={`btn ${activeTab === 'sellers' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                width: '100%',
-                                justifyContent: 'flex-start',
-                                padding: '1rem',
-                                fontSize: '1rem'
-                            }}
-                            onClick={() => { setActiveTab('sellers'); setSearchTerm(''); }}
-                        >
-                            <Users size={20} /> Seller Mgmt
-                        </button>
-                        <button
-                            className={`btn ${activeTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                width: '100%',
-                                justifyContent: 'flex-start',
-                                padding: '1rem',
-                                fontSize: '1rem'
-                            }}
-                            onClick={() => { setActiveTab('products'); setSearchTerm(''); }}
-                        >
-                            <Box size={20} /> Product Review
-                        </button>
-                        <button
-                            className={`btn ${activeTab === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                width: '100%',
-                                justifyContent: 'flex-start',
-                                padding: '1rem',
-                                fontSize: '1rem'
-                            }}
-                            onClick={() => { setActiveTab('orders'); setSearchTerm(''); }}
-                        >
-                            <Truck size={20} /> Global Orders
-                        </button>
-                        <button
-                            className={`btn ${activeTab === 'feedback' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                width: '100%',
-                                justifyContent: 'flex-start',
-                                padding: '1rem',
-                                fontSize: '1rem'
-                            }}
-                            onClick={() => { setActiveTab('feedback'); setSearchTerm(''); }}
-                        >
-                            <Mail size={20} /> Customer Feedback
-                        </button>
-                        <button
-                            className={`btn ${activeTab === 'payout' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                width: '100%',
-                                justifyContent: 'flex-start',
-                                padding: '1rem',
-                                fontSize: '1rem'
-                            }}
-                            onClick={() => { setActiveTab('payout'); setSearchTerm(''); }}
-                        >
-                            <DollarSign size={20} /> Payout
-                        </button>
-                        <button
-                            className={`btn ${activeTab === 'invoice' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                width: '100%',
-                                justifyContent: 'flex-start',
-                                padding: '1rem',
-                                fontSize: '1rem'
-                            }}
-                            onClick={() => { setActiveTab('invoice'); setSearchTerm(''); }}
-                        >
-                            <FileText size={20} /> Seller Invoice
-                        </button>
-                    </nav>
-                </div>
-
-                <div style={{ marginTop: 'auto', padding: '1rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)' }}>
-                    <small className="text-muted">System Status</small>
-                    <div className="flex items-center gap-2" style={{ marginTop: '0.5rem', color: 'var(--success)', fontSize: '0.9rem' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)' }}></div>
-                        Online
-                    </div>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col" style={{ height: '100%', gap: '2rem' }}>
-                {loading ? (
-                    <div className="flex justify-center p-12 glass-card flex-1"><Loader className="animate-spin" /></div>
-                ) : (
-                    <div className="glass-card flex-1" style={{ padding: activeTab === 'home' ? '2rem' : '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <div style={{ padding: activeTab === 'home' ? '0' : '1.5rem', borderBottom: activeTab === 'home' ? 'none' : '1px solid var(--border)' }}>
-                            {activeTab === 'home' && renderHomeDashboard()}
-                            {activeTab === 'sellers' && renderSellersTable()}
-                            {activeTab === 'products' && renderProductsTable()}
-                            {activeTab === 'orders' && renderOrdersTable()}
-                            {activeTab === 'feedback' && renderFeedbackTable()}
-                            {activeTab === 'payout' && renderPayoutTable()}
-                            {activeTab === 'invoice' && renderSellerInvoiceTable()}
+            {selectedAnalyticsSeller ? (
+                /* Full Page Analytics View */
+                <SellerAnalyticsModal
+                    seller={selectedAnalyticsSeller}
+                    onClose={() => setSelectedAnalyticsSeller(null)}
+                    onDownloadPDF={handleDownloadPDF}
+                    isDownloading={isDownloadingPDF}
+                    onRefresh={fetchAllData}
+                />
+            ) : selectedInvoiceSeller ? (
+                /* Full Page Invoice View */
+                <SellerInvoiceModal
+                    seller={selectedInvoiceSeller}
+                    onClose={() => setSelectedInvoiceSeller(null)}
+                    onDownloadPDF={handleDownloadPDF}
+                    isDownloading={isDownloadingPDF}
+                    onRefresh={fetchAllData}
+                    invoiceFilterDateFrom={invoiceFilterDateFrom}
+                    setInvoiceFilterDateFrom={setInvoiceFilterDateFrom}
+                    invoiceFilterDateTo={invoiceFilterDateTo}
+                    setInvoiceFilterDateTo={setInvoiceFilterDateTo}
+                />
+            ) : (
+                <>
+                    {/* Sidebar */}
+                    <aside className="glass-card flex flex-col justify-between" style={{ width: '280px', height: 'calc(100vh - 120px)', padding: '1.5rem', position: 'sticky', top: '2rem' }}>
+                        <div>
+                            <div className="flex items-center gap-2" style={{ marginBottom: '2rem', color: 'var(--primary)', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+                                <ShieldCheck size={28} />
+                                <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Admin Panel</h3>
+                            </div>
+                            <nav className="flex flex-col gap-2">
+                                <button
+                                    className={`btn ${activeTab === 'home' ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '1rem',
+                                        fontSize: '1rem'
+                                    }}
+                                    onClick={() => { setActiveTab('home'); setSearchTerm(''); }}
+                                >
+                                    <Home size={20} /> Home
+                                </button>
+                                <button
+                                    className={`btn ${activeTab === 'sellers' ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '1rem',
+                                        fontSize: '1rem'
+                                    }}
+                                    onClick={() => { setActiveTab('sellers'); setSearchTerm(''); }}
+                                >
+                                    <Users size={20} /> Seller Mgmt
+                                </button>
+                                <button
+                                    className={`btn ${activeTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '1rem',
+                                        fontSize: '1rem'
+                                    }}
+                                    onClick={() => { setActiveTab('products'); setSearchTerm(''); }}
+                                >
+                                    <Box size={20} /> Product Review
+                                </button>
+                                <button
+                                    className={`btn ${activeTab === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '1rem',
+                                        fontSize: '1rem'
+                                    }}
+                                    onClick={() => { setActiveTab('orders'); setSearchTerm(''); }}
+                                >
+                                    <Truck size={20} /> Global Orders
+                                </button>
+                                <button
+                                    className={`btn ${activeTab === 'feedback' ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '1rem',
+                                        fontSize: '1rem'
+                                    }}
+                                    onClick={() => { setActiveTab('feedback'); setSearchTerm(''); }}
+                                >
+                                    <Mail size={20} /> Customer Feedback
+                                </button>
+                                <button
+                                    className={`btn ${activeTab === 'payout' ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '1rem',
+                                        fontSize: '1rem'
+                                    }}
+                                    onClick={() => { setActiveTab('payout'); setSearchTerm(''); }}
+                                >
+                                    <DollarSign size={20} /> Payout
+                                </button>
+                                <button
+                                    className={`btn ${activeTab === 'invoice' ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '1rem',
+                                        fontSize: '1rem'
+                                    }}
+                                    onClick={() => { setActiveTab('invoice'); setSearchTerm(''); }}
+                                >
+                                    <FileText size={20} /> Seller Invoice
+                                </button>
+                            </nav>
                         </div>
+
+                        <div style={{ marginTop: 'auto', padding: '1rem', background: 'var(--surface)', borderRadius: 'var(--radius-md)' }}>
+                            <small className="text-muted">System Status</small>
+                            <div className="flex items-center gap-2" style={{ marginTop: '0.5rem', color: 'var(--success)', fontSize: '0.9rem' }}>
+                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)' }}></div>
+                                Online
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex flex-col" style={{ height: '100%', gap: '2rem' }}>
+                        {loading ? (
+                            <div className="flex justify-center p-12 glass-card flex-1"><Loader className="animate-spin" /></div>
+                        ) : (
+                            <div className="glass-card flex-1" style={{ padding: activeTab === 'home' ? '2rem' : '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                <div style={{ padding: activeTab === 'home' ? '0' : '1.5rem', borderBottom: activeTab === 'home' ? 'none' : '1px solid var(--border)' }}>
+                                    {activeTab === 'home' && renderHomeDashboard()}
+                                    {activeTab === 'sellers' && renderSellersTable()}
+                                    {activeTab === 'products' && renderProductsTable()}
+                                    {activeTab === 'orders' && renderOrdersTable()}
+                                    {activeTab === 'feedback' && renderFeedbackTable()}
+                                    {activeTab === 'payout' && renderPayoutTable()}
+                                    {activeTab === 'invoice' && renderSellerInvoiceTable()}
+                                </div>
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
+                </>
+            )}
             {/* PREMIUM DATA RETRIEVAL MODAL - ORGANIZED (v2.9) */}
             {selectedSeller && (
                 <div
@@ -1830,201 +2069,6 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* ── Analytics Detailed Modal ── */}
-            {selectedAnalyticsSeller && (
-                <div
-                    className="modal-overlay flex items-center justify-center p-4 lg:p-8"
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', zIndex: 10000, overflowY: 'auto' }}
-                    onClick={(e) => e.target === e.currentTarget && setSelectedAnalyticsSeller(null)}
-                >
-                    <div className="glass-card animate-scale-in flex flex-col w-full" style={{ maxWidth: '1000px', background: 'var(--background)', borderRadius: '1.5rem', maxHeight: '90vh', overflow: 'hidden', padding: 0 }}>
-                        <div className="flex justify-between items-center" style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-                            <div>
-                                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>
-                                    Analytics: {selectedAnalyticsSeller.shopName}
-                                </h2>
-                                <p className="text-muted" style={{ fontSize: '0.9rem' }}>{selectedAnalyticsSeller.email} | {selectedAnalyticsSeller.category}</p>
-                            </div>
-                            <button
-                                onClick={() => setSelectedAnalyticsSeller(null)}
-                                style={{ background: 'var(--glass)', border: '1px solid var(--border)', borderRadius: '50%', padding: '0.5rem', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                onMouseOver={(e) => e.currentTarget.style.background = 'var(--surface)'}
-                                onMouseOut={(e) => e.currentTarget.style.background = 'var(--glass)'}
-                            >
-                                <X size={20} className="text-muted" />
-                            </button>
-                        </div>
-
-                        <div style={{ padding: '2rem', overflowY: 'auto', flex: 1 }}>
-                            <div className="grid-responsive" style={{ marginBottom: '2rem', '--grid-min': '200px' }}>
-                                <StatCard icon={Box} title="Portfolio" value={selectedAnalyticsSeller.metrics.totalProducts} color="var(--primary)" subtitle="Active Products" />
-                                <StatCard icon={TrendingUp} title="Sales" value={selectedAnalyticsSeller.metrics.unitsSold} color="var(--success)" subtitle="Items Sold" />
-                                <StatCard icon={Package} title="Inventory" value={selectedAnalyticsSeller.metrics.totalStockLeft} color="var(--warning)" subtitle="Remaining Stock" />
-                                <StatCard icon={DollarSign} title="Payout" value={`₹${selectedAnalyticsSeller.metrics.grossRevenue.toLocaleString()}`} color="var(--error)" subtitle="Gross Revenue" />
-                            </div>
-
-                            <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid var(--border)' }}>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1.5rem' }}>Revenue vs Units Sold</h3>
-                                <div style={{ width: '100%', height: 300 }}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={selectedAnalyticsSeller.productMatrix.slice(0, 10)}>
-                                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                                            <XAxis dataKey="name" tick={{ fontSize: 10 }} tickFormatter={(val) => val.substring(0, 10) + '...'} />
-                                            <YAxis yAxisId="left" orientation="left" stroke="var(--primary)" />
-                                            <YAxis yAxisId="right" orientation="right" stroke="var(--success)" />
-                                            <RechartsTooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px' }} />
-                                            <Bar yAxisId="left" dataKey="sold" name="Units Sold" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-                                            <Bar yAxisId="right" dataKey="revenue" name="Revenue (₹)" fill="var(--success)" radius={[4, 4, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-
-                            <div className="glass-card" style={{ padding: 0, overflowX: 'auto', border: '1px solid var(--border)' }}>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, padding: '1.5rem', borderBottom: '1px solid var(--border)', margin: 0 }}>Product Inventory Matrix</h3>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
-                                    <thead style={{ background: 'var(--surface)' }}>
-                                        <tr>
-                                            <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Product Name</th>
-                                            <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Price</th>
-                                            <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Stock</th>
-                                            <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Units Sold</th>
-                                            <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Revenue</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {selectedAnalyticsSeller.productMatrix.map(p => (
-                                            <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
-                                                <td style={{ padding: '1rem', fontWeight: 500 }}>{p.name}</td>
-                                                <td style={{ padding: '1rem', textAlign: 'right' }}>₹{p.price.toLocaleString()}</td>
-                                                <td style={{ padding: '1rem', textAlign: 'right', color: p.stock < 5 ? 'var(--error)' : 'inherit' }}>{p.stock}</td>
-                                                <td style={{ padding: '1rem', textAlign: 'right', color: 'var(--primary)', fontWeight: 600 }}>{p.sold}</td>
-                                                <td style={{ padding: '1rem', textAlign: 'right', color: 'var(--success)', fontWeight: 700 }}>₹{p.revenue.toLocaleString()}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div style={{ padding: '1.5rem 2rem', background: 'var(--surface)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-                            <button
-                                onClick={() => handleDownloadPDF(`/admin/seller/${selectedAnalyticsSeller.uid}/analytics-pdf`, `analytics_${(selectedAnalyticsSeller.shopName || 'seller').replace(/\s+/g, '_')}.pdf`)}
-                                className="btn btn-primary"
-                                disabled={isDownloadingPDF}
-                                style={{ padding: '0.75rem 1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}
-                            >
-                                {isDownloadingPDF ? <Loader size={18} className="animate-spin" /> : <Download size={18} />}
-                                Export PDF Report
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ── Premium Invoice Modal ── */}
-            {selectedInvoiceSeller && (
-                <div
-                    className="modal-overlay flex items-center justify-center p-4 lg:p-8"
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', zIndex: 10000, overflowY: 'auto' }}
-                    onClick={(e) => e.target === e.currentTarget && setSelectedInvoiceSeller(null)}
-                >
-                    <div className="glass-card animate-scale-in flex flex-col w-full" style={{ maxWidth: '800px', background: 'var(--background)', borderRadius: '1.5rem', maxHeight: '90vh', overflow: 'hidden', padding: 0 }}>
-                        <div className="flex justify-between items-center" style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-                            <div>
-                                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>
-                                    Financial Detail: {selectedInvoiceSeller.shopName}
-                                </h2>
-                                <p className="text-muted" style={{ fontSize: '0.9rem' }}>Business Overview & Settlements</p>
-                            </div>
-                            <button
-                                onClick={() => setSelectedInvoiceSeller(null)}
-                                style={{ background: 'var(--glass)', border: '1px solid var(--border)', borderRadius: '50%', padding: '0.5rem', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            >
-                                <X size={20} className="text-muted" />
-                            </button>
-                        </div>
-
-                        <div style={{ padding: '2rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                            {/* Seller Identity & Profile section */}
-                            <div className="grid-responsive" style={{ '--grid-min': '300px' }}>
-                                <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid var(--border)' }}>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <User size={18} /> Personal Identity
-                                    </h3>
-                                    <div className="flex flex-col gap-2">
-                                        <p><span className="text-muted">Owner Name:</span> <span style={{ fontWeight: 600 }}>{selectedInvoiceSeller.extractedName || selectedInvoiceSeller.name || 'Not Available'}</span></p>
-                                        <p><span className="text-muted">Age / Gender:</span> <span style={{ fontWeight: 500 }}>{selectedInvoiceSeller.age || 'N/A'}</span></p>
-                                        <p><span className="text-muted">Aadhaar:</span> <span style={{ fontWeight: 500 }}>{selectedInvoiceSeller.aadhaarNumber ? `xxxx-xxxx-${String(selectedInvoiceSeller.aadhaarNumber).slice(-4)}` : 'N/A'}</span></p>
-                                    </div>
-                                </div>
-                                <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid var(--border)' }}>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <Store size={18} /> Store Profile
-                                    </h3>
-                                    <div className="flex flex-col gap-2">
-                                        <p><span className="text-muted">Shop Name:</span> <span style={{ fontWeight: 600 }}>{selectedInvoiceSeller.shopName}</span></p>
-                                        <p><span className="text-muted">Category:</span> <span style={{ fontWeight: 500 }}>{selectedInvoiceSeller.category}</span></p>
-                                        <p><span className="text-muted">Address:</span> <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{selectedInvoiceSeller.address}</span></p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Financial Summaries */}
-                            <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid var(--border)' }}>
-                                <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>All-Time Financial Settlement</h3>
-                                <div className="grid-responsive" style={{ '--grid-min': '150px' }}>
-                                    <div style={{ padding: '1rem', background: 'var(--surface)', borderRadius: '12px', textAlign: 'center' }}>
-                                        <p className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Items Delivered</p>
-                                        <p style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)', marginTop: '4px' }}>{selectedInvoiceSeller.financials?.deliveredCount || 0}</p>
-                                    </div>
-                                    <div style={{ padding: '1rem', background: 'var(--surface)', borderRadius: '12px', textAlign: 'center' }}>
-                                        <p className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Gross Revenue</p>
-                                        <p style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)', marginTop: '4px' }}>₹{(selectedInvoiceSeller.financials?.totalRevenue || 0).toLocaleString()}</p>
-                                    </div>
-                                    <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                                        <p style={{ color: 'var(--error)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Platform Fee (10%)</p>
-                                        <p style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--error)', marginTop: '4px' }}>₹{((selectedInvoiceSeller.financials?.totalRevenue || 0) * 0.1).toLocaleString()}</p>
-                                    </div>
-                                    <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '12px', textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                                        <p style={{ color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Net Payout</p>
-                                        <p style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>₹{((selectedInvoiceSeller.financials?.totalRevenue || 0) * 0.9).toLocaleString()}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Download Section */}
-                            <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid var(--border)', background: 'var(--surface)' }}>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <FileText size={20} className="text-primary" /> Download Settlement Invoice
-                                </h3>
-                                <div className="flex flex-col md:flex-row gap-4 items-end">
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: 600 }}>From Date</label>
-                                        <input type="date" value={invoiceFilterDateFrom} onChange={(e) => setInvoiceFilterDateFrom(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }} />
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: 600 }}>To Date</label>
-                                        <input type="date" value={invoiceFilterDateTo} onChange={(e) => setInvoiceFilterDateTo(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }} />
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <button
-                                            onClick={() => handleDownloadPDF(`/admin/seller/${selectedInvoiceSeller.uid}/pdf?fromDate=${invoiceFilterDateFrom}&toDate=${invoiceFilterDateTo}`, `invoice_${(selectedInvoiceSeller.shopName || 'seller').replace(/\s+/g, '_')}.pdf`)}
-                                            className="btn btn-primary"
-                                            disabled={isDownloadingPDF}
-                                            style={{ width: '100%', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', height: '100%' }}
-                                        >
-                                            {isDownloadingPDF ? <Loader size={18} className="animate-spin" /> : <Download size={18} />}
-                                            Download Invoice PDF
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Shield, ArrowRight } from 'lucide-react';
-// import { db } from '../../config/firebase';
-// import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { auth } from '../../config/firebase';
+import { authFetch } from '../../utils/api';
 
-export default function ReviewModal({ isOpen, onClose, productId, productName }) {
+export default function ReviewModal({ isOpen, onClose, productId, productName, orderId }) {
     const [rating, setRating] = useState(5);
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
@@ -12,46 +12,52 @@ export default function ReviewModal({ isOpen, onClose, productId, productName })
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!title || !body) return;
+        if (!title || !body) {
+            alert('Please fill in all fields');
+            return;
+        }
         if (!productId) {
             alert('Error: Product ID is missing. Please try again.');
             console.error("Missing productId for review submission");
             return;
         }
+
+        const user = auth.currentUser;
+        if (!user) {
+            alert('Please login to submit a review');
+            return;
+        }
+
         setSubmitting(true);
         try {
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
-            const newReviewData = {
-                id: Date.now().toString(),
-                productId: productId,
-                rating: rating,
-                title: title,
-                body: body,
-                author: user.fullName || 'Anonymous',
-                createdAt: { seconds: Math.floor(Date.now() / 1000) },
-                verified: true
-            };
+            const response = await authFetch('/api/reviews', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    productId,
+                    orderId: orderId || null,
+                    rating,
+                    title,
+                    body
+                })
+            });
 
-            // Get existing reviews from localStorage
-            const allReviews = JSON.parse(localStorage.getItem('sellsathi_reviews') || '[]');
-            allReviews.push(newReviewData);
+            const data = await response.json();
 
-            // Save back to localStorage
-            localStorage.setItem('sellsathi_reviews', JSON.stringify(allReviews));
-
-            // Small delay to simulate async network
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            alert('Review submitted successfully (Saved Locally)!');
-            onClose();
-            setTitle('');
-            setBody('');
-            setRating(5);
-            // Dispatch event for real-time update in ProductDetail
-            window.dispatchEvent(new Event('reviewsUpdate'));
+            if (data.success) {
+                alert('Review submitted successfully!');
+                onClose();
+                setTitle('');
+                setBody('');
+                setRating(5);
+                // Dispatch event for real-time update
+                window.dispatchEvent(new Event('reviewsUpdate'));
+            } else {
+                alert('Failed to submit review: ' + (data.message || 'Unknown error'));
+            }
         } catch (err) {
-            console.error("Error saving review:", err);
-            alert('Failed to save review locally: ' + err.message);
+            console.error("Error submitting review:", err);
+            alert('Failed to submit review. Please try again.');
         } finally {
             setSubmitting(false);
         }
