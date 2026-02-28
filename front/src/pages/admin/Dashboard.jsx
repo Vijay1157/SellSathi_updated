@@ -118,7 +118,7 @@ export default function AdminDashboard() {
                 if (d.success) {
                     updatedSellers = d.sellers;
                     setAllSellers(d.sellers);
-                    
+
                     // Update selected invoice seller if it's open
                     if (selectedInvoiceSeller) {
                         const updatedSeller = d.sellers.find(s => s.uid === selectedInvoiceSeller.uid);
@@ -127,7 +127,7 @@ export default function AdminDashboard() {
                             setSelectedInvoiceSeller(updatedSeller);
                         }
                     }
-                    
+
                     // Update selected analytics seller if it's open
                     if (selectedAnalyticsSeller) {
                         const updatedSeller = d.sellers.find(s => s.uid === selectedAnalyticsSeller.uid);
@@ -1116,14 +1116,14 @@ export default function AdminDashboard() {
                                                 <span style={{
                                                     background: normalizedStatus === 'Delivered' ? 'rgba(var(--success-rgb), 0.1)' :
                                                         normalizedStatus === 'Cancelled' ? 'rgba(239, 68, 68, 0.1)' :
-                                                        normalizedStatus === 'Processing' ? 'rgba(var(--primary-rgb), 0.1)' :
-                                                            normalizedStatus === 'Shipped' ? 'rgba(var(--accent-rgb), 0.1)' :
-                                                                'rgba(var(--warning-rgb), 0.1)',
+                                                            normalizedStatus === 'Processing' ? 'rgba(var(--primary-rgb), 0.1)' :
+                                                                normalizedStatus === 'Shipped' ? 'rgba(var(--accent-rgb), 0.1)' :
+                                                                    'rgba(var(--warning-rgb), 0.1)',
                                                     color: normalizedStatus === 'Delivered' ? 'var(--success)' :
                                                         normalizedStatus === 'Cancelled' ? '#ef4444' :
-                                                        normalizedStatus === 'Processing' ? 'var(--primary)' :
-                                                            normalizedStatus === 'Shipped' ? 'var(--accent)' :
-                                                                'var(--warning)',
+                                                            normalizedStatus === 'Processing' ? 'var(--primary)' :
+                                                                normalizedStatus === 'Shipped' ? 'var(--accent)' :
+                                                                    'var(--warning)',
                                                     padding: '6px 12px',
                                                     borderRadius: '6px',
                                                     fontSize: '0.8rem',
@@ -1270,7 +1270,26 @@ export default function AdminDashboard() {
                                         </td>
                                         <td style={{ padding: '1.25rem 1.5rem' }}>
                                             <div className="flex flex-col">
-                                                <span style={{ fontWeight: 600 }}>{r.customerName}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span style={{ fontWeight: 600 }}>{r.customerName}</span>
+                                                    {r.verified && (
+                                                        <span
+                                                            title="Verified Purchase"
+                                                            style={{
+                                                                color: '#10b981',
+                                                                background: '#10b98115',
+                                                                padding: '2px 6px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.65rem',
+                                                                fontWeight: 800,
+                                                                textTransform: 'uppercase',
+                                                                letterSpacing: '0.05em'
+                                                            }}
+                                                        >
+                                                            Verified
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <span className="text-muted" style={{ fontSize: '0.75rem' }}>ID: {r.customerId?.substring(0, 8)}</span>
                                             </div>
                                         </td>
@@ -1355,8 +1374,8 @@ export default function AdminDashboard() {
                             style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)' }}
                             title="Filter by listing date"
                         />
-                        <button 
-                            className="btn btn-secondary" 
+                        <button
+                            className="btn btn-secondary"
                             onClick={() => { setPayoutSearch(''); setPayoutCategory(''); setPayoutDate(''); }}
                             style={{ padding: '0.5rem 1rem' }}
                         >
@@ -1384,7 +1403,7 @@ export default function AdminDashboard() {
                                     (s.shopName || '').toLowerCase().includes(payoutSearch.toLowerCase()) ||
                                     (s.email || '').toLowerCase().includes(payoutSearch.toLowerCase());
                                 const matchesCategory = payoutCategory === '' || s.category === payoutCategory;
-                                
+
                                 // Date filter
                                 let matchesDate = true;
                                 if (payoutDate && s.createdAt) {
@@ -1393,7 +1412,7 @@ export default function AdminDashboard() {
                                     const inputDDMMYYYY = `${String(inputDate.getDate()).padStart(2, '0')}/${String(inputDate.getMonth() + 1).padStart(2, '0')}/${inputDate.getFullYear()}`;
                                     matchesDate = s.joined === inputDDMMYYYY;
                                 }
-                                
+
                                 return matchesSearch && matchesCategory && matchesDate;
                             }).map(s => {
                                 // Format date as dd/mm/yyyy
@@ -1495,7 +1514,7 @@ export default function AdminDashboard() {
 
     const renderSellerInvoiceTable = () => {
         const approvedSellers = allSellers.filter(s => s.status === 'APPROVED');
-        
+
         // Format date as dd/mm/yyyy
         const formatDate = (dateString) => {
             if (!dateString) return 'N/A';
@@ -1536,15 +1555,15 @@ export default function AdminDashboard() {
                                 <option key={cat} value={cat}>{cat}</option>
                             ))}
                         </select>
-                        <button 
-                            className="btn btn-secondary" 
+                        <button
+                            className="btn btn-secondary"
                             onClick={() => { setInvoiceSearch(''); setInvoiceCategory(''); setInvoiceDate(''); }}
                             style={{ padding: '0.5rem 1rem' }}
                         >
                             Clear
                         </button>
-                        <button 
-                            className="btn btn-secondary" 
+                        <button
+                            className="btn btn-secondary"
                             onClick={fetchAllData}
                             style={{ padding: '0.5rem 1rem' }}
                         >
@@ -1572,7 +1591,7 @@ export default function AdminDashboard() {
                                     (s.email || '').toLowerCase().includes(invoiceSearch.toLowerCase()) ||
                                     (s.phone || '').includes(invoiceSearch);
                                 const matchesCategory = invoiceCategory === '' || s.category === invoiceCategory;
-                                
+
                                 // Date filter
                                 let matchesDate = true;
                                 if (invoiceDate && s.createdAt) {
@@ -1581,7 +1600,7 @@ export default function AdminDashboard() {
                                     const inputDDMMYYYY = `${String(inputDate.getDate()).padStart(2, '0')}/${String(inputDate.getMonth() + 1).padStart(2, '0')}/${inputDate.getFullYear()}`;
                                     matchesDate = s.joined === inputDDMMYYYY;
                                 }
-                                
+
                                 return matchesSearch && matchesCategory && matchesDate;
                             }).map(s => {
                                 // Determine status badge
@@ -1593,9 +1612,9 @@ export default function AdminDashboard() {
                                 }
 
                                 return (
-                                    <tr 
-                                        key={s.uid} 
-                                        style={{ borderBottom: '1px solid var(--border)' }} 
+                                    <tr
+                                        key={s.uid}
+                                        style={{ borderBottom: '1px solid var(--border)' }}
                                         onMouseOver={(e) => e.currentTarget.style.background = 'var(--surface)'}
                                         onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                                     >
@@ -1616,12 +1635,12 @@ export default function AdminDashboard() {
                                             <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{formatDate(s.createdAt)}</span>
                                         </td>
                                         <td style={{ padding: '1rem 1.5rem' }}>
-                                            <span style={{ 
-                                                padding: '0.35rem 0.75rem', 
-                                                background: statusBadge.bg, 
-                                                color: statusBadge.color, 
-                                                borderRadius: '12px', 
-                                                fontSize: '0.75rem', 
+                                            <span style={{
+                                                padding: '0.35rem 0.75rem',
+                                                background: statusBadge.bg,
+                                                color: statusBadge.color,
+                                                borderRadius: '12px',
+                                                fontSize: '0.75rem',
                                                 fontWeight: 700,
                                                 textTransform: 'uppercase'
                                             }}>
@@ -1630,12 +1649,12 @@ export default function AdminDashboard() {
                                         </td>
                                         <td style={{ padding: '1rem 1.5rem', textAlign: 'center' }}>
                                             <div className="flex gap-2 justify-center">
-                                                <button 
-                                                    className="btn btn-secondary" 
-                                                    onClick={() => setSelectedInvoiceSeller(s)} 
-                                                    style={{ 
-                                                        padding: '0.5rem 1rem', 
-                                                        fontSize: '0.85rem', 
+                                                <button
+                                                    className="btn btn-secondary"
+                                                    onClick={() => setSelectedInvoiceSeller(s)}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        fontSize: '0.85rem',
                                                         fontWeight: 600,
                                                         display: 'flex',
                                                         alignItems: 'center',
@@ -1645,17 +1664,17 @@ export default function AdminDashboard() {
                                                     <User size={14} />
                                                     View Details
                                                 </button>
-                                                <button 
-                                                    className="btn btn-primary" 
-                                                    onClick={() => handleDownloadPDF(`/admin/seller/${s.uid}/pdf`, `invoice_${(s.shopName || 'seller').replace(/\s+/g, '_')}.pdf`)} 
-                                                    disabled={isDownloadingPDF} 
-                                                    style={{ 
-                                                        padding: '0.5rem 1rem', 
-                                                        fontSize: '0.85rem', 
-                                                        fontWeight: 600, 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '4px' 
+                                                <button
+                                                    className="btn btn-primary"
+                                                    onClick={() => handleDownloadPDF(`/admin/seller/${s.uid}/pdf`, `invoice_${(s.shopName || 'seller').replace(/\s+/g, '_')}.pdf`)}
+                                                    disabled={isDownloadingPDF}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 600,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
                                                     }}
                                                 >
                                                     {isDownloadingPDF ? <Loader size={14} className="animate-spin" /> : <Download size={14} />}

@@ -127,14 +127,14 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                                             onClick={() => setPurchaseOption('standard')}
                                         >
                                             <span className="p">₹{(product.price || 0).toLocaleString()}</span>
-                                            <span className="l">Standard</span>
+                                            <span className="l">Buy without exchange</span>
                                         </div>
                                         <div
                                             className={`qv-opt-card ${purchaseOption === 'exchange' ? 'active' : ''}`}
                                             onClick={() => setPurchaseOption('exchange')}
                                         >
                                             <span className="p">₹{((product.price || 0) * 0.9).toLocaleString()}</span>
-                                            <span className="l">Exchange</span>
+                                            <span className="l">Buy with exchange</span>
                                         </div>
                                     </div>
                                 </div>

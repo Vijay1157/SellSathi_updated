@@ -76,7 +76,7 @@ const orderController = require("./controllers/orderController");
 // Helper function to format dates as dd/mm/yyyy
 const formatDateDDMMYYYY = (date) => {
     if (!date) return new Date().toLocaleDateString('en-GB');
-    
+
     let dateObj;
     if (typeof date.toDate === 'function') {
         dateObj = date.toDate();
@@ -87,7 +87,7 @@ const formatDateDDMMYYYY = (date) => {
     } else {
         dateObj = new Date(date);
     }
-    
+
     const day = String(dateObj.getDate()).padStart(2, '0');
     const month = String(dateObj.getMonth() + 1).padStart(2, '0');
     const year = dateObj.getFullYear();
@@ -845,7 +845,7 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
             // Get product count for this seller
             const productsSnap = await db.collection("products").where("sellerId", "==", doc.id).get();
             const totalProducts = productsSnap.size;
-            
+
             // Debug logging for specific seller
             if (sellerData.shopName && sellerData.shopName.toLowerCase().includes('rahul')) {
                 console.log(`[ALL-SELLERS] Seller: ${sellerData.shopName}, UID: ${doc.id}, Products: ${totalProducts}`);
@@ -899,7 +899,7 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 }
             });
         }
-        
+
         console.log(`[ALL-SELLERS] Total sellers returned: ${sellers.length}`);
         return res.status(200).json({ success: true, sellers });
     } catch (error) {
@@ -934,11 +934,11 @@ app.post("/admin/seller/:uid/block", verifyAuth, verifyAdmin, async (req, res) =
 app.get("/admin/debug/seller/:uid/products", verifyAuth, verifyAdmin, async (req, res) => {
     try {
         const { uid } = req.params;
-        
+
         // Get seller info
         const sellerSnap = await db.collection("sellers").doc(uid).get();
         const sellerData = sellerSnap.exists ? sellerSnap.data() : null;
-        
+
         // Get products
         const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
         const products = [];
@@ -953,7 +953,7 @@ app.get("/admin/debug/seller/:uid/products", verifyAuth, verifyAdmin, async (req
                 status: data.status
             });
         });
-        
+
         return res.status(200).json({
             success: true,
             seller: {
@@ -1065,11 +1065,10 @@ app.get("/admin/reviews", verifyAuth, verifyAdmin, async (req, res) => {
     try {
         const reviewsSnap = await db.collection("reviews")
             .where("status", "==", "active")
-            .orderBy("createdAt", "desc")
             .get();
 
         const reviews = [];
-        
+
         // Get all products and calculate their ratings
         const productsSnap = await db.collection("products").get();
         const productMap = {};
@@ -1096,8 +1095,16 @@ app.get("/admin/reviews", verifyAuth, verifyAdmin, async (req, res) => {
             }
         });
 
+        // Sort in memory by date (descending)
+        const reviewsDocs = reviewsSnap.docs;
+        reviewsDocs.sort((a, b) => {
+            const ta = a.data().createdAt?.toMillis() || 0;
+            const tb = b.data().createdAt?.toMillis() || 0;
+            return tb - ta;
+        });
+
         // Build review list with enriched data
-        reviewsSnap.forEach(doc => {
+        reviewsDocs.forEach(doc => {
             const reviewData = doc.data();
             const productId = reviewData.productId;
             const productInfo = productMap[productId] || { category: "Uncategorized", brand: "Unknown", title: reviewData.productName || "Unknown Product" };
@@ -1168,11 +1175,18 @@ app.get("/api/products/:productId/reviews", async (req, res) => {
         const reviewsSnap = await db.collection("reviews")
             .where("productId", "==", productId)
             .where("status", "==", "active")
-            .orderBy("createdAt", "desc")
             .get();
 
+        // Sort in memory (descending)
+        const reviewsDocs = reviewsSnap.docs;
+        reviewsDocs.sort((a, b) => {
+            const ta = a.data().createdAt?.toMillis() || 0;
+            const tb = b.data().createdAt?.toMillis() || 0;
+            return tb - ta;
+        });
+
         const reviews = [];
-        reviewsSnap.forEach(doc => {
+        reviewsDocs.forEach(doc => {
             const reviewData = doc.data();
             reviews.push({
                 id: doc.id,
@@ -1203,7 +1217,7 @@ app.get("/api/products/:productId/reviews", async (req, res) => {
 app.get("/api/user/:uid/reviewable-orders", verifyAuth, async (req, res) => {
     try {
         const { uid } = req.params;
-        
+
         if (req.user.uid !== uid) {
             return res.status(403).json({ success: false, message: "Access denied" });
         }
@@ -1377,12 +1391,12 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
             const discountedPrice = prod.discountedPrice || price;
             totalStockLeft += stock;
             totalInventoryValue += (discountedPrice * stock);
-            productStats[p.id] = { 
-                name: prod.title, 
+            productStats[p.id] = {
+                name: prod.title,
                 price: price,
                 discountedPrice: prod.discountedPrice || null,
-                stock: stock, 
-                sold: 0, 
+                stock: stock,
+                sold: 0,
                 revenue: 0,
                 worth: discountedPrice * stock
             };
@@ -1420,30 +1434,30 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         // Header Section
         doc.fontSize(24).fillColor('#6366f1').text('SELLSATHI', 50, 50);
         doc.fontSize(9).fillColor('#666666')
-           .text('Your Trusted E-Commerce Platform', 50, 78)
-           .text('Empowering Sellers, Delighting Customers', 50, 90)
-           .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 102);
+            .text('Your Trusted E-Commerce Platform', 50, 78)
+            .text('Empowering Sellers, Delighting Customers', 50, 90)
+            .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 102);
 
         // Report Date (top right)
         const reportDate = new Date().toLocaleDateString('en-GB');
         doc.fontSize(9).fillColor('#666666')
-           .text('Report Date:', 450, 50)
-           .fontSize(10).fillColor('#000000')
-           .text(reportDate, 450, 62);
+            .text('Report Date:', 450, 50)
+            .fontSize(10).fillColor('#000000')
+            .text(reportDate, 450, 62);
 
         // Horizontal line
         doc.moveTo(50, 125).lineTo(545, 125).strokeColor('#6366f1').lineWidth(2).stroke();
 
         // Title
         doc.fontSize(18).fillColor('#000000').font('Helvetica-Bold')
-           .text('SELLER ANALYTICS REPORT', 50, 145, { align: 'center' });
+            .text('SELLER ANALYTICS REPORT', 50, 145, { align: 'center' });
         doc.fontSize(11).fillColor('#666666').font('Helvetica')
-           .text('Comprehensive Performance & Inventory Analysis', 50, 168, { align: 'center' });
+            .text('Comprehensive Performance & Inventory Analysis', 50, 168, { align: 'center' });
 
         // Seller Information Section
         doc.rect(50, 195, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
-           .text('SELLER INFORMATION', 55, 200);
+            .text('SELLER INFORMATION', 55, 200);
 
         doc.fontSize(10).font('Helvetica').fillColor('#000000');
         doc.text('Shop Name:', 55, 225);
@@ -1462,7 +1476,7 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         // Performance Summary Section
         doc.rect(50, 295, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
-           .text('PERFORMANCE SUMMARY', 55, 300);
+            .text('PERFORMANCE SUMMARY', 55, 300);
 
         // Four colored boxes - All Blue for formal look
         const boxY = 330;
@@ -1473,30 +1487,30 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         // Total Products (Blue)
         doc.rect(50, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
         doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
-           .text('Total Products', 55, boxY + 10, { width: boxWidth - 10, align: 'center' });
+            .text('Total Products', 55, boxY + 10, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(totalProducts.toString(), 55, boxY + 28, { width: boxWidth - 10, align: 'center' });
+            .text(totalProducts.toString(), 55, boxY + 28, { width: boxWidth - 10, align: 'center' });
 
         // Units Sold (Blue)
         doc.rect(50 + boxWidth + boxGap, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
         doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
-           .text('Units Sold', 50 + boxWidth + boxGap + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+            .text('Units Sold', 50 + boxWidth + boxGap + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(unitsSold.toString(), 50 + boxWidth + boxGap + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+            .text(unitsSold.toString(), 50 + boxWidth + boxGap + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
 
         // Stock Left (Blue)
         doc.rect(50 + (boxWidth + boxGap) * 2, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
         doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
-           .text('Stock Left', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+            .text('Stock Left', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(totalStockLeft.toString(), 50 + (boxWidth + boxGap) * 2 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+            .text(totalStockLeft.toString(), 50 + (boxWidth + boxGap) * 2 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
 
         // Total Revenue (Blue)
         doc.rect(50 + (boxWidth + boxGap) * 3, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
         doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
-           .text('Total Revenue', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+            .text('Total Revenue', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(20).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(`Rs.${grossRevenue}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+            .text(`Rs.${grossRevenue}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
 
         // Additional metrics
         doc.fontSize(10).fillColor('#000000').font('Helvetica');
@@ -1508,7 +1522,7 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         // Product Inventory & Sales Details Section
         doc.rect(50, boxY + boxHeight + 50, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
-           .text('PRODUCT INVENTORY & SALES DETAILS', 55, boxY + boxHeight + 55);
+            .text('PRODUCT INVENTORY & SALES DETAILS', 55, boxY + boxHeight + 55);
 
         // Table Header
         const tableTop = boxY + boxHeight + 85;
@@ -1529,8 +1543,8 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         const sortedProducts = Object.values(productStats).sort((a, b) => b.revenue - a.revenue);
 
         sortedProducts.forEach((p, index) => {
-            if (y > 720) { 
-                doc.addPage(); 
+            if (y > 720) {
+                doc.addPage();
                 y = 50;
                 // Redraw header on new page
                 doc.rect(50, y, 495, 20).fillAndStroke('#6366f1', '#6366f1');
@@ -1554,7 +1568,7 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
             doc.text(p.sold.toString(), 340, y);
             doc.text(`Rs.${p.revenue}`, 385, y);
             doc.text(`Rs.${p.worth}`, 450, y);
-            
+
             const margin = p.discountedPrice ? Math.round(((p.price - p.discountedPrice) / p.price) * 100) : 0;
             doc.text(margin > 0 ? `${100 - margin}%` : '0%', 505, y);
 
@@ -1564,7 +1578,7 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
 
         // Footer
         doc.fontSize(8).fillColor('#999999').font('Helvetica')
-           .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, 770, { align: 'center' });
+            .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, 770, { align: 'center' });
         doc.text('Page 1 of 1', 50, 785, { align: 'center' });
 
         doc.end();
@@ -1593,9 +1607,9 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         // Get Products count
         const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
         const totalProducts = productsSnap.size;
-        
+
         console.log(`[INVOICE PDF] Seller ${uid}: Found ${totalProducts} products`);
-        
+
         // Debug: Log first few product IDs
         if (productsSnap.size > 0) {
             const productIds = productsSnap.docs.slice(0, 3).map(d => d.id);
@@ -1632,7 +1646,7 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
                         const rev = (item.price || 0) * (item.quantity || 1);
                         totalRevenue += rev;
                         deliveredCount++;
-                        
+
                         // Store order details
                         orderDetails.push({
                             orderId: o.id,
@@ -1659,24 +1673,24 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         // Header Section
         doc.fontSize(28).fillColor('#6366f1').font('Helvetica-Bold').text('SELLSATHI', 50, 50);
         doc.fontSize(10).fillColor('#999999').font('Helvetica')
-           .text('Your Trusted E-Commerce Platform', 50, 82)
-           .text('Empowering Sellers, Delighting Customers', 50, 96)
-           .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 110);
+            .text('Your Trusted E-Commerce Platform', 50, 82)
+            .text('Empowering Sellers, Delighting Customers', 50, 96)
+            .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 110);
 
         // Report Date (top right)
         const reportDate = new Date().toLocaleDateString('en-GB');
         doc.fontSize(10).fillColor('#666666').font('Helvetica')
-           .text('Report Date:', 450, 50)
-           .fontSize(11).fillColor('#000000').font('Helvetica-Bold')
-           .text(reportDate, 450, 65);
+            .text('Report Date:', 450, 50)
+            .fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text(reportDate, 450, 65);
 
         // Horizontal line
         doc.moveTo(50, 135).lineTo(545, 135).strokeColor('#6366f1').lineWidth(2).stroke();
 
         // Title
         doc.fontSize(20).fillColor('#000000').font('Helvetica-Bold')
-           .text('SELLER INVOICE REPORT', 50, 155, { align: 'center' });
-        
+            .text('SELLER INVOICE REPORT', 50, 155, { align: 'center' });
+
         // Period subtitle
         let periodText = 'Complete Invoice History';
         if (fromDate && toDate) {
@@ -1688,17 +1702,17 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         } else if (toDate) {
             periodText = `Until: ${new Date(toDate).toLocaleDateString('en-GB')}`;
         }
-        
+
         doc.fontSize(12).fillColor('#999999').font('Helvetica')
-           .text(periodText, 50, 180, { align: 'center' });
+            .text(periodText, 50, 180, { align: 'center' });
 
         // Seller Information Section
         doc.rect(50, 210, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
-           .text('SELLER INFORMATION', 55, 216);
+            .text('SELLER INFORMATION', 55, 216);
 
         doc.fontSize(11).font('Helvetica').fillColor('#000000');
-        
+
         // Two column layout for seller info
         doc.text('Shop Name:', 55, 245);
         doc.text(sellerData.shopName || 'N/A', 180, 245);
@@ -1716,7 +1730,7 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         // Invoice Summary Section
         doc.rect(50, 315, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
-           .text('INVOICE SUMMARY', 55, 321);
+            .text('INVOICE SUMMARY', 55, 321);
 
         // Four colored boxes - All Blue for formal look
         const boxY = 355;
@@ -1727,47 +1741,47 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         // Total Products Listed (Blue)
         doc.rect(50, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
         doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
-           .text('Total Products', 55, boxY + 12, { width: boxWidth - 10, align: 'center' });
+            .text('Total Products', 55, boxY + 12, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(9).fillColor('#6366f1')
-           .text('Listed', 55, boxY + 26, { width: boxWidth - 10, align: 'center' });
+            .text('Listed', 55, boxY + 26, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(28).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(totalProducts.toString(), 55, boxY + 38, { width: boxWidth - 10, align: 'center' });
+            .text(totalProducts.toString(), 55, boxY + 38, { width: boxWidth - 10, align: 'center' });
 
         // Total Revenue Earned (Blue)
         doc.rect(50 + boxWidth + boxGap, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
         doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
-           .text('Total Revenue', 50 + boxWidth + boxGap + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+            .text('Total Revenue', 50 + boxWidth + boxGap + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(9).fillColor('#6366f1')
-           .text('Earned', 50 + boxWidth + boxGap + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+            .text('Earned', 50 + boxWidth + boxGap + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(`Rs.${totalRevenue}`, 50 + boxWidth + boxGap + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+            .text(`Rs.${totalRevenue}`, 50 + boxWidth + boxGap + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
 
         // Platform Charges (Blue)
         doc.rect(50 + (boxWidth + boxGap) * 2, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
         doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
-           .text('Platform Charges', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+            .text('Platform Charges', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(9).fillColor('#6366f1')
-           .text('(10%)', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+            .text('(10%)', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(`Rs.${platformCharges.toFixed(2)}`, 50 + (boxWidth + boxGap) * 2 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+            .text(`Rs.${platformCharges.toFixed(2)}`, 50 + (boxWidth + boxGap) * 2 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
 
         // Amount to Receive (Blue)
         doc.rect(50 + (boxWidth + boxGap) * 3, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#6366f1');
         doc.fontSize(10).fillColor('#6366f1').font('Helvetica')
-           .text('Amount to', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
+            .text('Amount to', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 12, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(9).fillColor('#6366f1')
-           .text('Receive', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
+            .text('Receive', 50 + (boxWidth + boxGap) * 3 + 5, boxY + 26, { width: boxWidth - 10, align: 'center' });
         doc.fontSize(22).fillColor('#4f46e5').font('Helvetica-Bold')
-           .text(`Rs.${amountToReceive.toFixed(2)}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
+            .text(`Rs.${amountToReceive.toFixed(2)}`, 50 + (boxWidth + boxGap) * 3 + 5, boxY + 38, { width: boxWidth - 10, align: 'center' });
 
         // Based on text
         doc.fontSize(10).fillColor('#999999').font('Helvetica')
-           .text(`Based on ${deliveredCount} delivered orders`, 50, boxY + boxHeight + 15, { align: 'center', width: 495 });
+            .text(`Based on ${deliveredCount} delivered orders`, 50, boxY + boxHeight + 15, { align: 'center', width: 495 });
 
         // Order Details Table (if there are orders)
         if (orderDetails.length > 0) {
             let tableY = boxY + boxHeight + 50;
-            
+
             // Check if we need a new page
             if (tableY > 650) {
                 doc.addPage();
@@ -1777,7 +1791,7 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
             // Table Header
             doc.rect(50, tableY, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
             doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
-               .text('ORDER DETAILS', 55, tableY + 6);
+                .text('ORDER DETAILS', 55, tableY + 6);
 
             tableY += 30;
 
@@ -1797,13 +1811,13 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
 
             // Table Rows
             doc.fontSize(8).fillColor('#000000').font('Helvetica');
-            
+
             orderDetails.forEach((order, index) => {
                 // Check if we need a new page
                 if (tableY > 720) {
                     doc.addPage();
                     tableY = 50;
-                    
+
                     // Repeat headers on new page
                     doc.fontSize(9).fillColor('#666666').font('Helvetica-Bold');
                     doc.text('Date', 55, tableY);
@@ -1812,7 +1826,7 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
                     doc.text('Qty', 350, tableY);
                     doc.text('Price', 390, tableY);
                     doc.text('Total', 470, tableY);
-                    
+
                     doc.moveTo(50, tableY + 15).lineTo(545, tableY + 15).strokeColor('#e5e7eb').lineWidth(1).stroke();
                     tableY += 25;
                     doc.fontSize(8).fillColor('#000000').font('Helvetica');
@@ -1840,7 +1854,7 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         // Footer
         const footerY = orderDetails.length > 0 ? (doc.y > 720 ? 750 : 750) : 750;
         doc.fontSize(9).fillColor('#cccccc').font('Helvetica')
-           .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, footerY, { align: 'center', width: 495 });
+            .text(`Generated by SellSathi Admin Panel | ${reportDate} | Confidential Document`, 50, footerY, { align: 'center', width: 495 });
 
         doc.end();
     } catch (err) {
@@ -2963,7 +2977,7 @@ app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
         }
 
         const orderData = orderDoc.data();
-        
+
         console.log('[CANCEL ORDER] Order data:', {
             orderUserId: orderData.userId,
             orderUid: orderData.uid,
@@ -2972,11 +2986,11 @@ app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
         });
 
         // Verify user owns this order (check both userId and uid fields)
-        const isOwner = orderData.userId === userId || 
-                       orderData.uid === userId || 
-                       orderData.userId === req.user.email ||
-                       orderData.uid === req.user.email;
-        
+        const isOwner = orderData.userId === userId ||
+            orderData.uid === userId ||
+            orderData.userId === req.user.email ||
+            orderData.uid === req.user.email;
+
         if (!isOwner) {
             console.log('[CANCEL ORDER] Authorization failed - user does not own order');
             return res.status(403).json({
@@ -3048,8 +3062,8 @@ app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
                 refundStatus: paymentMethod === 'COD' ? 'Not Applicable' : 'Pending',
                 refundMethod: paymentMethod === 'COD' ? 'N/A' : 'Original Payment Method',
                 processingTime: paymentMethod === 'COD' ? 'N/A' : '5-7 business days',
-                message: paymentMethod === 'COD' 
-                    ? 'No refund applicable for Cash on Delivery orders' 
+                message: paymentMethod === 'COD'
+                    ? 'No refund applicable for Cash on Delivery orders'
                     : 'Refund will be processed to your original payment method within 5-7 business days'
             }
         });
@@ -3233,6 +3247,144 @@ app.post("/webhook/shiprocket", async (req, res) => {
     }
 });
 
+// Cart API Routes
+app.get("/api/user/:uid/cart", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+
+        // Verify user can only access their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const cartData = userDoc.data().cart || [];
+        res.json({ success: true, cart: cartData });
+    } catch (error) {
+        console.error("Error fetching cart:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch cart" });
+    }
+});
+
+app.post("/api/user/:uid/cart/add", verifyAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const { cartItem, clearCart } = req.body;
+
+        // Verify user can only modify their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userRef = db.collection('users').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        let updatedCart;
+
+        if (clearCart) {
+            // Clear cart functionality
+            updatedCart = [];
+        } else if (cartItem) {
+            // Add item functionality
+            const currentCart = userDoc.data().cart || [];
+            const existingItemIndex = currentCart.findIndex(item => item.id === cartItem.id);
+
+            if (existingItemIndex > -1) {
+                // Update existing item quantity
+                currentCart[existingItemIndex].quantity += cartItem.quantity || 1;
+            } else {
+                // Add new item
+                currentCart.push({
+                    ...cartItem,
+                    quantity: cartItem.quantity || 1,
+                    addedAt: new Date().toISOString()
+                });
+            }
+            updatedCart = currentCart;
+        } else {
+            return res.status(400).json({ success: false, message: "Invalid request" });
+        }
+
+        await userRef.update({ cart: updatedCart });
+
+        res.json({ success: true, message: clearCart ? "Cart cleared" : "Item added to cart", cart: updatedCart });
+    } catch (error) {
+        console.error("Error adding to cart:", error);
+        res.status(500).json({ success: false, message: "Failed to add to cart" });
+    }
+});
+
+app.delete("/api/user/:uid/cart/:itemId", verifyAuth, async (req, res) => {
+    try {
+        const { uid, itemId } = req.params;
+
+        // Verify user can only modify their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userRef = db.collection('users').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const currentCart = userDoc.data().cart || [];
+        const updatedCart = currentCart.filter(item => item.id !== itemId);
+
+        await userRef.update({ cart: updatedCart });
+
+        res.json({ success: true, message: "Item removed from cart", cart: updatedCart });
+    } catch (error) {
+        console.error("Error removing from cart:", error);
+        res.status(500).json({ success: false, message: "Failed to remove from cart" });
+    }
+});
+
+app.put("/api/user/:uid/cart/:itemId", verifyAuth, async (req, res) => {
+    try {
+        const { uid, itemId } = req.params;
+        const { quantity } = req.body;
+
+        // Verify user can only modify their own cart
+        if (req.user.uid !== uid && !req.user.isAdmin) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        const userRef = db.collection('users').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const currentCart = userDoc.data().cart || [];
+        const itemIndex = currentCart.findIndex(item => item.id === itemId);
+
+        if (itemIndex === -1) {
+            return res.status(404).json({ success: false, message: "Item not found in cart" });
+        }
+
+        currentCart[itemIndex].quantity = quantity;
+
+        await userRef.update({ cart: currentCart });
+
+        res.json({ success: true, message: "Cart updated", cart: currentCart });
+    } catch (error) {
+        console.error("Error updating cart:", error);
+        res.status(500).json({ success: false, message: "Failed to update cart" });
+    }
+});
+
 // Wishlist remove endpoint
 app.post("/api/user/:uid/wishlist/remove", verifyAuth, async (req, res) => {
     try {
@@ -3279,7 +3431,7 @@ app.post("/api/user/:uid/address/save", verifyAuth, async (req, res) => {
             });
         } else {
             let currentAddresses = doc.data().addresses || [];
-            
+
             // If this address is being set as default, unset all others
             if (address.isDefault === true) {
                 currentAddresses = currentAddresses.map(addr => ({
@@ -3287,7 +3439,7 @@ app.post("/api/user/:uid/address/save", verifyAuth, async (req, res) => {
                     isDefault: false
                 }));
             }
-            
+
             if (address.id !== undefined) {
                 // Update existing address
                 currentAddresses[address.id] = address;
@@ -3299,7 +3451,7 @@ app.post("/api/user/:uid/address/save", verifyAuth, async (req, res) => {
                 }
                 currentAddresses.push(address);
             }
-            
+
             await userRef.update({
                 addresses: currentAddresses,
                 updatedAt: new Date()
@@ -3326,14 +3478,14 @@ app.post("/api/user/:uid/address/delete", verifyAuth, async (req, res) => {
         if (doc.exists) {
             const currentAddresses = doc.data().addresses || [];
             const wasDefault = currentAddresses[addressId]?.isDefault;
-            
+
             currentAddresses.splice(addressId, 1);
-            
+
             // If deleted address was default and there are remaining addresses, set first one as default
             if (wasDefault && currentAddresses.length > 0) {
                 currentAddresses[0].isDefault = true;
             }
-            
+
             await userRef.update({
                 addresses: currentAddresses,
                 updatedAt: new Date()
@@ -3380,7 +3532,7 @@ app.get("/api/user/:uid/address/default", verifyAuth, async (req, res) => {
         if (doc.exists) {
             const addresses = doc.data().addresses || [];
             const defaultAddress = addresses.find(addr => addr.isDefault === true);
-            
+
             if (defaultAddress) {
                 return res.status(200).json({ success: true, address: defaultAddress });
             }

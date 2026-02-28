@@ -57,7 +57,10 @@ export default function Navbar() {
                         { id: 'e2', name: 'Noise Buds', price: 2999, category: 'Electronics', subCategory: 'Audio', tags: ['Music'], image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df' },
                         { id: 'm1', name: 'Classic Polo', price: 1499, category: "Men's Fashion", subCategory: 'Apparel', tags: ['Summer'], image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518' },
                         { id: 'w1', name: 'Silk Saree', price: 4999, category: "Women's Fashion", subCategory: 'Traditional', tags: ['Ethnic'], image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c' },
-                        { id: 'h1', name: 'Wall Art', price: 899, category: 'Home & Living', subCategory: 'Decor', tags: ['Home'], image: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38' }
+                        { id: 'h1', name: 'Wall Art', price: 899, category: 'Home & Living', subCategory: 'Decor', tags: ['Home'], image: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38' },
+                        { id: 'b1', name: 'Face Cream', price: 599, category: 'Beauty', subCategory: 'Skincare', tags: ['Beauty'], image: 'https://images.unsplash.com/photo-1596462502278-27e329d6b32f' },
+                        { id: 's1', name: 'Running Shoes', price: 2999, category: 'Sports', subCategory: 'Footwear', tags: ['Fitness'], image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff' },
+                        { id: 'a1', name: 'Leather Wallet', price: 1299, category: 'Accessories', subCategory: 'Men Accessories', tags: ['Fashion'], image: 'https://images.unsplash.com/photo-1627123426583-215d7b5cf6e5' }
                     ];
                     products = [...products, ...demoItems];
                 }
@@ -71,7 +74,72 @@ export default function Navbar() {
                         catProducts = [...products].reverse().slice(0, 10);
                     } else if (cat === "Trending") {
                         catProducts = products.filter(p => (p.rating || 0) >= 4.5 || p.id === 'e1');
+                    } else if (cat === "Men's Fashion") {
+                        catProducts = products.filter(p => 
+                            p.category === "Men's Fashion" || 
+                            p.category === "Fashion" || 
+                            p.category === "Mens Fashion" ||
+                            p.category === "Men Fashion" ||
+                            p.subCategory?.toLowerCase().includes('men') ||
+                            p.name?.toLowerCase().includes('men')
+                        );
+                    } else if (cat === "Women's Fashion") {
+                        catProducts = products.filter(p => 
+                            p.category === "Women's Fashion" || 
+                            p.category === "Fashion" || 
+                            p.category === "Womens Fashion" ||
+                            p.category === "Women Fashion" ||
+                            p.subCategory?.toLowerCase().includes('women') ||
+                            p.name?.toLowerCase().includes('women')
+                        );
+                    } else if (cat === "Electronics") {
+                        catProducts = products.filter(p => 
+                            p.category === "Electronics" || 
+                            p.category === "Electronic" ||
+                            p.subCategory?.toLowerCase().includes('electronic') ||
+                            p.name?.toLowerCase().includes('phone') ||
+                            p.name?.toLowerCase().includes('laptop') ||
+                            p.name?.toLowerCase().includes('watch') ||
+                            p.name?.toLowerCase().includes('headphone')
+                        );
+                    } else if (cat === "Home & Living") {
+                        catProducts = products.filter(p => 
+                            p.category === "Home & Living" || 
+                            p.category === "Home" ||
+                            p.category === "Home & Kitchen" ||
+                            p.category === "Living" ||
+                            p.subCategory?.toLowerCase().includes('home') ||
+                            p.subCategory?.toLowerCase().includes('kitchen') ||
+                            p.name?.toLowerCase().includes('home')
+                        );
+                    } else if (cat === "Beauty") {
+                        catProducts = products.filter(p => 
+                            p.category === "Beauty" || 
+                            p.category === "Cosmetics" ||
+                            p.subCategory?.toLowerCase().includes('beauty') ||
+                            p.subCategory?.toLowerCase().includes('cosmetic') ||
+                            p.name?.toLowerCase().includes('cream') ||
+                            p.name?.toLowerCase().includes('makeup')
+                        );
+                    } else if (cat === "Sports") {
+                        catProducts = products.filter(p => 
+                            p.category === "Sports" || 
+                            p.category === "Sport" ||
+                            p.subCategory?.toLowerCase().includes('sport') ||
+                            p.name?.toLowerCase().includes('sport') ||
+                            p.name?.toLowerCase().includes('fitness')
+                        );
+                    } else if (cat === "Accessories") {
+                        catProducts = products.filter(p => 
+                            p.category === "Accessories" || 
+                            p.category === "Accessory" ||
+                            p.subCategory?.toLowerCase().includes('accessor') ||
+                            p.name?.toLowerCase().includes('bag') ||
+                            p.name?.toLowerCase().includes('watch') ||
+                            p.name?.toLowerCase().includes('jewel')
+                        );
                     } else {
+                        // Fallback to exact match
                         catProducts = products.filter(p => p.category === cat);
                     }
 
@@ -82,6 +150,7 @@ export default function Navbar() {
                         subGroups[sub].push(p);
                     });
 
+                    // Always create mega menu data for all categories, even if no products
                     if (catProducts.length > 0) {
                         mega[cat] = {
                             categories: Object.keys(subGroups).map(sub => ({
@@ -90,6 +159,19 @@ export default function Navbar() {
                                 items: subGroups[sub].slice(0, 4)
                             })),
                             popular: Array.from(new Set(catProducts.flatMap(p => p.tags || []))).slice(0, 4)
+                        };
+                    } else {
+                        // Create fallback mega menu data with general products for categories with no specific matches
+                        const fallbackProducts = products.slice(0, 4); // Show first 4 available products
+                        mega[cat] = {
+                            categories: [
+                                {
+                                    id: 'featured',
+                                    name: 'Featured',
+                                    items: fallbackProducts
+                                }
+                            ],
+                            popular: ['Popular', 'Trending', 'New', 'Best Sellers']
                         };
                     }
                 });
@@ -365,23 +447,35 @@ export default function Navbar() {
                                                 <div className="mega-title-row">
                                                     <h4>{dynamicMegaData[activeMegaMenu].categories[activeSubCategory].name}</h4>
                                                 </div>
-                                                <div className="mega-grid">
-                                                    {dynamicMegaData[activeMegaMenu].categories[activeSubCategory].items.map((item, idx) => (
-                                                        <div
-                                                            key={item.id}
-                                                            className="mega-item-card"
-                                                            onClick={() => { navigate(`/product/${item.id}`); setActiveMegaMenu(null); }}
+                                                {dynamicMegaData[activeMegaMenu].categories[activeSubCategory].items.length > 0 ? (
+                                                    <div className="mega-grid">
+                                                        {dynamicMegaData[activeMegaMenu].categories[activeSubCategory].items.map((item, idx) => (
+                                                            <div
+                                                                key={item.id}
+                                                                className="mega-item-card"
+                                                                onClick={() => { navigate(`/product/${item.id}`); setActiveMegaMenu(null); }}
+                                                            >
+                                                                <div className="img-box">
+                                                                    <img src={item.images?.[0] || item.image || item.imageUrl} alt={item.name} />
+                                                                </div>
+                                                                <div className="item-info">
+                                                                    <h5>{item.name}</h5>
+                                                                    <p>₹{item.price?.toLocaleString()}</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="mega-empty-state">
+                                                        <p>Showing popular products</p>
+                                                        <button 
+                                                            className="btn btn-primary"
+                                                            onClick={() => { navigate(`/products?category=${activeMegaMenu}`); setActiveMegaMenu(null); }}
                                                         >
-                                                            <div className="img-box">
-                                                                <img src={item.images?.[0] || item.image || item.imageUrl} alt={item.name} />
-                                                            </div>
-                                                            <div className="item-info">
-                                                                <h5>{item.name}</h5>
-                                                                <p>₹{item.price?.toLocaleString()}</p>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                                            Browse All {activeMegaMenu}
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </>
                                         )}
 
@@ -855,6 +949,39 @@ const navStyles = `
 .nav-actions { display: flex; gap: 0.75rem; align-items: center; }
 .icon-btn { width: 42px; height: 42px; padding: 0; border-radius: 50%; }
 .profile-dropdown-container { position: relative; }
+
+/* Mega Menu Empty State */
+.mega-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    text-align: center;
+    flex: 1;
+}
+
+.mega-empty-state p {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+}
+
+.mega-empty-state .btn-primary {
+    background: var(--primary);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.mega-empty-state .btn-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+}
 .profile-trigger { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; border-radius: 99px; }
 .user-name { font-size: 0.9rem; font-weight: 600; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-menu { position: absolute; top: calc(100% + 10px); right: 0; width: 280px; padding: 0.5rem; z-index: 1001; animation: navFadeIn 0.2s ease-out; }

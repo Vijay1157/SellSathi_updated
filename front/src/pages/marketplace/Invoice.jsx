@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import html2pdf from 'html2pdf.js';
 
 export default function Invoice() {
     const navigate = useNavigate();
@@ -71,13 +72,8 @@ export default function Invoice() {
             jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
         };
 
-        if (window.html2pdf) {
-            window.html2pdf().from(element).set(opt).save();
-        } else {
-            console.error('html2pdf not loaded');
-            // Fallback to print if library fails
-            window.print();
-        }
+        // Use imported html2pdf instead of window.html2pdf
+        html2pdf().from(element).set(opt).save();
     };
 
     if (loading) {

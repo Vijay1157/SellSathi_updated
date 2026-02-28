@@ -1,12 +1,34 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../../config/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db, auth } from '../../config/firebase';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { addToCart } from '../../utils/cartUtils';
-import { Ruler, ShoppingCart, Heart, Shield, Truck, RotateCcw, ArrowLeft, ArrowRight, Star, Share2, ZoomIn, ChevronLeft, ChevronRight, Bookmark } from 'lucide-react';
+import { authFetch, API_BASE } from '../../utils/api';
+import { addToWishlist, removeFromWishlist, isInWishlist, listenToWishlist } from '../../utils/wishlistUtils';
+import { Ruler, ShoppingCart, Heart, Shield, Truck, RotateCcw, ArrowLeft, ArrowRight, Star, Share2, ZoomIn, ChevronLeft, ChevronRight, Bookmark, Image as ImageIcon, Plus, Minus, Send, Upload, X, MessageCircle, Facebook, Twitter, Mail, Rss, AlertOctagon, ShieldCheck, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import ReviewModal from '../../components/common/ReviewModal';
 import SizeChartModal from '../../components/common/SizeChartModal';
+
+const ExpandableText = ({ text, maxLength = 180 }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    if (!text || text.length <= maxLength) {
+        return <p className="rb">{text}</p>;
+    }
+
+    return (
+        <p className="rb">
+            {isExpanded ? text : `${text.slice(0, maxLength)}...`}
+            <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="show-more-btn-text"
+            >
+                {isExpanded ? 'Show less' : 'Show more'}
+            </button>
+        </p>
+    );
+};
 
 export default function ProductDetail() {
     const { id } = useParams();
@@ -25,25 +47,79 @@ export default function ProductDetail() {
     const [recentlyViewed, setRecentlyViewed] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
     const [reviews, setReviews] = useState([]);
     const [reviewStats, setReviewStats] = useState({ average: 0, total: 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } });
     const [copyStatus, setCopyStatus] = useState('Copy Link');
+    const [reviewsLimit, setReviewsLimit] = useState(2);
+    const [newReview, setNewReview] = useState({ rating: 5, title: '', body: '', images: [] });
+    const [uploading, setUploading] = useState(false);
+    const [seller, setSeller] = useState(null);
+    const [isEligibleForReview, setIsEligibleForReview] = useState(false);
+    const [eligibleOrder, setEligibleOrder] = useState(null);
     const images = product?.images || [product?.image || product?.imageUrl];
 
     const nextImage = () => setActiveImageIndex((prev) => (prev + 1) % images.length);
     const prevImage = () => setActiveImageIndex((prev) => (prev - 1 + images.length) % images.length);
 
     useEffect(() => {
+        let unsubscribeSeller = null;
+        let unsubscribeUser = null;
+
+        const setupSellerListener = (sellerId) => {
+            if (!sellerId) {
+                setSeller({
+                    name: "SellSathi Verified Hub",
+                    shopName: "SellSathi Official Store",
+                    companyName: "Antigravity Solutions Pvt Ltd",
+                    city: "New Delhi, India",
+                    category: "Verified Retailer",
+                    joinedAt: new Date('2023-01-01')
+                });
+                return;
+            }
+
+            unsubscribeSeller = onSnapshot(doc(db, "sellers", sellerId), (sSnap) => {
+                if (sSnap.exists()) {
+                    const sData = sSnap.data();
+
+                    unsubscribeUser = onSnapshot(doc(db, "users", sellerId), (uSnap) => {
+                        const uData = uSnap.exists() ? uSnap.data() : {};
+
+                        let city = "N/A";
+                        if (sData.address) {
+                            const parts = sData.address.split(',');
+                            city = parts.length > 1 ? parts[parts.length - 2].trim() : parts[0].trim();
+                        }
+
+                        setSeller({
+                            name: uData.fullName || sData.extractedName || "Professional Seller",
+                            shopName: sData.shopName || "SellSathi Partner",
+                            companyName: sData.shopName || "SellSathi Registered Hub",
+                            city: city,
+                            category: sData.category || "General",
+                            joinedAt: sData.appliedAt ? (sData.appliedAt.toDate ? sData.appliedAt.toDate() : new Date(sData.appliedAt._seconds * 1000)) : null
+                        });
+                    });
+                } else {
+                    setSeller({
+                        name: "SellSathi Verified Hub",
+                        shopName: "SellSathi Official Store",
+                        companyName: "Antigravity Solutions Pvt Ltd",
+                        city: "New Delhi, India",
+                        category: "Verified Retailer",
+                        joinedAt: new Date('2023-01-01')
+                    });
+                }
+            });
+        };
+
         const fetchProduct = async () => {
             try {
-
                 const docRef = doc(db, "products", id);
                 const docSnap = await getDoc(docRef);
                 let data = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
 
-                // Merge or fallback to mock data
                 const mock = deals[id] || (id.includes('fashion') ? deals["fashion-1"] : (id.includes('deal') ? deals["deal-1"] : deals["generic"]));
                 if (mock) {
                     data = {
@@ -58,12 +134,14 @@ export default function ProductDetail() {
                 }
 
                 if (data) {
+                    data.id = data.id || id;
                     setProduct(data);
                     if (data.colors && data.colors.length > 0) setSelectedColor(data.colors[0]);
                     if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[1] || data.sizes[0]);
                     if (data.storage && data.storage.length > 0) setSelectedStorage(data.storage[0]);
                     if (data.memory && data.memory.length > 0) setSelectedMemory(data.memory[0]);
                     updateRecentlyViewed(data);
+                    setupSellerListener(data.sellerId);
                 }
                 setLoading(false);
             } catch (err) {
@@ -71,30 +149,94 @@ export default function ProductDetail() {
                 setLoading(false);
             }
         };
-        let unsubscribeReviews = null;
-        const setupReviewsListener = () => {
-            const loadReviews = () => {
-                const allReviews = JSON.parse(localStorage.getItem('sellsathi_reviews') || '[]');
-                const filteredRevs = allReviews
-                    .filter(r => r.productId === id)
-                    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
-                setReviews(filteredRevs);
-                calculateStats(filteredRevs);
+        const setupReviewsListener = () => {
+            const loadReviews = async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/products/${id}/reviews`);
+                    const data = await res.json();
+                    if (data.success) {
+                        setReviews(data.reviews);
+                        calculateStats(data.reviews);
+                    }
+                } catch (err) {
+                    console.error("Failed to load reviews:", err);
+                }
+            };
+
+            const checkEligibility = async (retryCount = 0) => {
+                let currentUid = auth.currentUser?.uid;
+
+                if (!currentUid) {
+                    try {
+                        const localUser = JSON.parse(localStorage.getItem('user'));
+                        currentUid = localUser?.uid;
+                    } catch (e) { }
+                }
+
+                if (!currentUid) {
+                    // If no user yet, retry in 1s (Firebase auth might still be initializing)
+                    if (retryCount < 3) {
+                        setTimeout(() => checkEligibility(retryCount + 1), 1000);
+                    }
+                    return;
+                }
+
+                try {
+                    const res = await authFetch(`/api/user/${currentUid}/reviewable-orders`);
+                    if (!res.ok) throw new Error('Failed to fetch eligibility');
+
+                    const data = await res.json();
+                    if (data.success && data.orders) {
+                        // Match by ID or ProductID, trimmed and case-insensitive
+                        const order = data.orders.find(o =>
+                            String(o.productId).trim().toLowerCase() === String(id).trim().toLowerCase()
+                        );
+
+                        if (order) {
+                            setIsEligibleForReview(true);
+                            setEligibleOrder(order);
+                            return; // Success
+                        }
+                    }
+                    setIsEligibleForReview(false);
+                    setEligibleOrder(null);
+                } catch (err) {
+                    console.error("Eligibility check error:", err);
+                    // Silently ignore, but maybe retry once
+                    if (retryCount < 1) {
+                        setTimeout(() => checkEligibility(retryCount + 1), 2000);
+                    }
+                }
             };
 
             loadReviews();
+            checkEligibility();
+
+            const handleUserChange = () => checkEligibility();
+            window.addEventListener('userDataChanged', handleUserChange);
             window.addEventListener('reviewsUpdate', loadReviews);
-            return () => window.removeEventListener('reviewsUpdate', loadReviews);
+
+            return () => {
+                window.removeEventListener('reviewsUpdate', loadReviews);
+                window.removeEventListener('userDataChanged', handleUserChange);
+            };
         };
 
         fetchProduct();
         loadRecentlyViewed();
-        checkWishlist();
+        // Sync wishlist status
+        const unsubscribeWishlist = listenToWishlist((items) => {
+            const saved = items.some(item => String(item.id).trim().toLowerCase() === String(id).trim().toLowerCase());
+            setIsSaved(saved);
+        });
         const cleanupReviews = setupReviewsListener();
         window.scrollTo(0, 0);
         return () => {
             if (cleanupReviews) cleanupReviews();
+            if (unsubscribeSeller) unsubscribeSeller();
+            if (unsubscribeUser) unsubscribeUser();
+            if (unsubscribeWishlist) unsubscribeWishlist();
         };
     }, [id]);
 
@@ -112,23 +254,92 @@ export default function ProductDetail() {
     };
 
 
-    const checkWishlist = () => {
-        const wishlist = JSON.parse(localStorage.getItem('wishlist') || '[]');
-        setIsSaved(wishlist.some(item => item.id === id));
+    const toggleWishlist = async () => {
+        if (!product) return;
+        try {
+            if (isSaved) {
+                const res = await removeFromWishlist(id);
+                if (res.success) {
+                    setIsSaved(false);
+                } else {
+                    alert('Wishlist error: ' + (res.message || 'Failed to remove'));
+                }
+            } else {
+                const res = await addToWishlist(product);
+                if (res.success) {
+                    setIsSaved(true);
+                } else {
+                    alert('Wishlist error: ' + (res.message || 'Failed to add'));
+                }
+            }
+        } catch (err) {
+            alert('Wishlist connection error. Please ensure the backend is running.');
+        }
     };
 
-    const toggleWishlist = () => {
-        const wishlist = JSON.parse(localStorage.getItem('wishlist') || '[]');
-        if (isSaved) {
-            const updated = wishlist.filter(item => item.id !== id);
-            localStorage.setItem('wishlist', JSON.stringify(updated));
-            setIsSaved(false);
-        } else {
-            const updated = [...wishlist, product];
-            localStorage.setItem('wishlist', JSON.stringify(updated));
-            setIsSaved(true);
+    const handleReviewSubmit = async (e) => {
+        e.preventDefault();
+        if (!newReview.title || !newReview.body) return;
+        if (!isEligibleForReview) {
+            alert('❌ You can only review products that have been delivered to you.');
+            return;
         }
-        window.dispatchEvent(new CustomEvent('wishlistUpdated'));
+
+        try {
+            const response = await authFetch('/api/reviews', {
+                method: 'POST',
+                body: JSON.stringify({
+                    productId: id,
+                    orderId: eligibleOrder?.orderId,
+                    rating: newReview.rating,
+                    title: newReview.title,
+                    body: newReview.body,
+                    images: newReview.images
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setNewReview({ rating: 5, title: '', body: '', images: [] });
+                setIsEligibleForReview(false); // Can't review twice for same order
+                setEligibleOrder(null);
+                window.dispatchEvent(new Event('reviewsUpdate'));
+                alert('✅ Review submitted successfully! It will be visible after a short processing time.');
+            } else {
+                alert('❌ Failed to submit review: ' + data.message);
+            }
+        } catch (err) {
+            alert('❌ Connection error. Failed to submit review.');
+        }
+    };
+
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (newReview.images.length >= 4) {
+            alert('Maximum 4 images allowed');
+            return;
+        }
+
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            const res = await authFetch('/seller/upload-image', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                setNewReview(prev => ({ ...prev, images: [...prev.images, data.url] }));
+            }
+        } catch (err) {
+            // console.error(err);
+        } finally {
+            setUploading(false);
+        }
     };
 
     const handleShare = async () => {
@@ -179,14 +390,13 @@ export default function ProductDetail() {
             memory: selectedMemory,
             purchaseOption: purchaseOption
         };
-        const res = await addToCart(product, selections);
+        const productWithNumPrice = { ...product, price: Number(product.price) };
+        const res = await addToCart(productWithNumPrice, selections);
         if (res.success) {
-            // Show success message instead of redirecting
             alert('✅ Product added to cart successfully!');
-            // Optionally update cart count in navbar
             window.dispatchEvent(new Event('cartUpdate'));
         } else {
-            alert('❌ Failed to add product to cart. Please try again.');
+            alert('❌ Failed to add product to cart: ' + (res.message || 'Please try again.'));
         }
     };
 
@@ -202,9 +412,9 @@ export default function ProductDetail() {
             memory: selectedMemory,
             purchaseOption: purchaseOption
         };
-        const res = await addToCart(product, selections);
+        const productWithNumPrice = { ...product, price: Number(product.price) };
+        const res = await addToCart(productWithNumPrice, selections);
         if (res.success) {
-            // Redirect to checkout for Buy Now
             navigate('/checkout');
         } else {
             alert('❌ Failed to process. Please try again.');
@@ -293,6 +503,35 @@ export default function ProductDetail() {
             stock: 0, status: 'Out of Stock',
             colors: ['Maroon', 'Teal'], materials: ['Cotton Silk'], types: ['Anarkali'],
             sizes: ['S', 'M', 'L', 'XL']
+        },
+        "e1": { id: "e1", name: "Smart Watch X", price: 12999, category: "Electronics", image: "https://images.unsplash.com/photo-1546868871-70ca48370731", rating: 4.5, reviews: 88, description: "Advanced smart watch with health tracking.", specifications: { "Screen": "OLED", "Battery": "48 Hours" } },
+        "e2": { id: "e2", name: "Noise Buds", price: 2999, category: "Electronics", image: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df", rating: 4.2, reviews: 156, description: "High-quality wireless earbuds." },
+        "e3": { id: "e3", name: "Elite Laptop", price: 89999, category: "Electronics", image: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853", rating: 4.9, reviews: 42, description: "Powerful laptop for professionals." },
+        "m1": { id: "m1", name: "Classic Polo", price: 1499, category: "Men's Fashion", image: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518", rating: 4.3, reviews: 210, description: "Comfortable cotton polo shirt." },
+        "m2": { id: "m2", name: "Denim Jacket", price: 3999, category: "Men's Fashion", image: "https://images.unsplash.com/photo-1523205771623-e0faa4d2813d", rating: 4.6, reviews: 75 },
+        "m3": { id: "m3", name: "Slim Fit Chinos", price: 2499, category: "Men's Fashion", image: "https://images.unsplash.com/photo-1473966968600-fa801b869a1a", rating: 4.4, reviews: 112 },
+        "w1": { id: "w1", name: "Silk Saree", price: 4999, category: "Women's Fashion", image: "https://images.unsplash.com/photo-1610030469983-98e550d6193c", rating: 4.8, reviews: 94 },
+        "w2": { id: "w2", name: "Floral Maxi Dress", price: 2999, category: "Women's Fashion", image: "https://images.unsplash.com/photo-1496747611176-843222e1e57c", rating: 4.7, reviews: 63 },
+        "w3": { id: "w3", name: "Silver Handbag", price: 1599, category: "Women's Fashion", image: "https://images.unsplash.com/photo-1584917865442-de89df76afd3", rating: 4.5, reviews: 48 },
+        "h1": { id: "h1", name: "Wall Art", price: 899, category: "Home & Living", image: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38", rating: 4.1, reviews: 35 },
+        "h2": { id: "h2", name: "Velvet Cushion", price: 499, category: "Home & Living", image: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7", rating: 4.4, reviews: 120 },
+        "h3": { id: "h3", name: "Ceramic Vase", price: 1299, category: "Home & Living", image: "https://images.unsplash.com/photo-1578500494198-246f612d3b3d", rating: 4.6, reviews: 28 },
+        "b1": { id: "b1", name: "Matte Lipstick", price: 799, category: "Beauty", image: "https://images.unsplash.com/photo-1586773860418-d37222d8fce3", rating: 4.5, reviews: 200 },
+        "b2": { id: "b2", name: "Night Cream", price: 1499, category: "Beauty", image: "https://images.unsplash.com/photo-1556228720-195a672e8a03", rating: 4.7, reviews: 85 },
+        "b3": { id: "b3", name: "Perfume Gold", price: 3499, category: "Beauty", image: "https://images.unsplash.com/photo-1544467328-345179a4573b", rating: 4.9, reviews: 15 },
+        "s1": { id: "s1", name: "Yoga Mat", price: 999, category: "Sports", image: "https://images.unsplash.com/photo-1592431594448-ddc91c038f38", rating: 4.3, reviews: 310 },
+        "s2": { id: "s2", name: "Running Shoes", price: 4999, category: "Sports", image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff", rating: 4.8, reviews: 1500 },
+        "s3": { id: "s3", name: "Dumbbell Set", price: 2999, category: "Sports", image: "https://images.unsplash.com/photo-1586401100295-7a8096fd231a", rating: 4.6, reviews: 420 },
+        "a1": { id: "a1", name: "Leather Wallet", price: 1299, category: "Accessories", image: "https://images.unsplash.com/photo-1627123424574-724758594e93", rating: 4.4, reviews: 95 },
+        "a2": { id: "a2", name: "Sunglasses", price: 1999, category: "Accessories", image: "https://images.unsplash.com/photo-1572635196237-14b3f281503f", rating: 4.7, reviews: 120 },
+        "a3": { id: "a3", name: "Belt Black", price: 899, category: "Accessories", image: "https://images.unsplash.com/photo-1624222247344-550fb8ec505d", rating: 4.2, reviews: 55 },
+        "generic": { id: "generic", name: "Premium Product", price: 999, category: "Other", image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30", rating: 4.5, reviews: 10, description: "A high-quality product from Sellsathi." },
+        "deal-special": {
+            id: "deal-special", name: "Premium Ultra Pro Max Elite", price: 199999, oldPrice: 249999, rating: 5.0, reviews: 9999, category: "Electronics",
+            image: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=800", discount: "20%",
+            colors: ['Mystic Black', 'Phantom Silver', 'Nebula Blue'], materials: ['Aerospace Titanium', 'Sapphire Glass'], types: ['Standard', 'Luxury Edition'],
+            specifications: { "Processor": "Quantum X1 chip", "Memory": "128GB Unified Memory", "Storage": "4TB Superfast SSD", "Display": "8K Ultra Motion OLED", "Battery": "Up to 48 hours", "Weight": "1.2 kg" },
+            description: "The Premium Ultra Pro Max Elite is not just a device; it is a masterpiece of engineering and design. Crafted from aerospace-grade titanium and protected by sapphire glass, this flagship product redefines luxury and performance in the modern era. With the revolutionary Quantum X1 chip, it delivers speeds that were previously thought impossible, handling complex tasks with ease while maintaining exceptional battery efficiency. The 8K Ultra Motion OLED display provides a visual experience that is truly breathtaking, with colors so vibrant and blacks so deep that every frame feels alive. Whether you are a professional creator needing extreme power, a gaming enthusiast seeking the ultimate performance, or someone who simply appreciates the finest technology, the Ultra Pro Max Elite is the definitive choice. Its multi-layer secure communication system ensures your data stays private, while its integrated AI assistant learns your habits to make every interaction seamless. Experience the future today with the one device that truly has it all. This product includes worldwide express shipping, a lifetime warranty, and 24/7 dedicated concierge support to ensure your satisfaction is always guaranteed."
         }
     };
 
@@ -416,9 +655,9 @@ export default function ProductDetail() {
                             <h1 className="main-title">{product.name}</h1>
                             <div className="rating-row">
                                 <div className="stars">
-                                    {[...Array(5)].map((_, i) => <Star key={i} size={16} fill={i < Math.floor(product.rating || 4) ? "#FFB800" : "none"} color="#FFB800" />)}
+                                    {[...Array(5)].map((_, i) => <Star key={i} size={16} fill={i < Math.floor(product.rating || 4.5) ? "#FFB800" : "none"} color="#FFB800" />)}
                                 </div>
-                                <span className="review-meta">{product.rating || 4.8} ({product.reviews || '1,256'} reviews)</span>
+                                <span className="review-meta">{product.rating || 4.8} ({product.reviews || 0} reviews)</span>
                                 <div className="actions-meta">
                                     <button onClick={toggleWishlist} className={isSaved ? 'active' : ''}>
                                         <Heart size={18} fill={isSaved ? "#E11D48" : "none"} color={isSaved ? "#E11D48" : "currentColor"} />
@@ -428,7 +667,6 @@ export default function ProductDetail() {
                                 </div>
                             </div>
                         </div>
-
                         <div className="price-box glass-card">
                             <div className="price-row">
                                 <span className="final-price">
@@ -484,7 +722,7 @@ export default function ProductDetail() {
                                     onClick={() => setPurchaseOption('standard')}
                                 >
                                     <span className="p">₹{(product.price || 0).toLocaleString()}</span>
-                                    {product.oldPrice && <span className="l">₹{(product.oldPrice || 0).toLocaleString()}</span>}
+                                    <span className="l">Buy without exchange</span>
                                 </div>
                                 <div
                                     className={`opt-card ${purchaseOption === 'exchange' ? 'active' : ''}`}
@@ -603,125 +841,208 @@ export default function ProductDetail() {
                     </div>
                 </div>
 
-                {/* Tabs Section */}
-                <div className="pd-tabs-container">
-                    <div className="tabs-header">
-                        {['description', 'specifications', 'reviews'].map(t => (
-                            <button
-                                key={t}
-                                type="button"
-                                className={`tab-btn ${activeTab === t ? 'active' : ''}`}
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setActiveTab(t);
-                                }}
-                            >
-                                {t.charAt(0).toUpperCase() + t.slice(1)}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="tab-content glass-card">
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={activeTab}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                {activeTab === 'description' && (
-                                    <div className="desc-content">
-                                        <p>{product.description}</p>
+                {/* Details Section */}
+                <div className="pd-details-scroller">
+                    <section className="pd-desc-block">
+                        <div className="block-header">
+                            <h2>Description</h2>
+                        </div>
+                        <div className="desc-content-modern">
+                            <ExpandableText text={product.description} maxLength={150} />
+                        </div>
+                    </section>
+
+                    <section className="pd-reviews-block">
+                        <div className="block-header">
+                            <h2>Customer Reviews</h2>
+                            <div className="header-stats">
+                                <Star size={16} fill="#FFB800" color="#FFB800" />
+                                <span>{reviewStats.average} ({reviewStats.total} reviews)</span>
+                            </div>
+                        </div>
+
+                        {/* Review Input Box */}
+                        <div className="review-write-box glass-card">
+                            <div className="write-rev-header">
+                                <h3>Write a Review</h3>
+                                {!isEligibleForReview && (
+                                    <div className="review-eligibility-badge">
+                                        <AlertOctagon size={14} />
+                                        <span>Available only after delivery</span>
                                     </div>
                                 )}
-                                {activeTab === 'specifications' && (
-                                    <div className="specs-grid">
-                                        {product.specifications && typeof product.specifications === 'object' && Object.keys(product.specifications).length > 0 ? Object.entries(product.specifications).map(([key, val]) => (
-                                            <div key={key} className="spec-item">
-                                                <span className="spec-key">{key}</span>
-                                                <span className="spec-val">{val}</span>
+                            </div>
+
+                            {isEligibleForReview ? (
+                                <form onSubmit={handleReviewSubmit} className="rev-inline-form">
+                                    <div className="star-rating-input">
+                                        {[1, 2, 3, 4, 5].map(num => (
+                                            <button
+                                                key={num}
+                                                type="button"
+                                                className={newReview.rating >= num ? 'active' : ''}
+                                                onClick={() => setNewReview(prev => ({ ...prev, rating: num }))}
+                                            >
+                                                <Star size={24} fill={newReview.rating >= num ? "#FFB800" : "none"} color="#FFB800" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="input-group">
+                                        <input
+                                            type="text"
+                                            placeholder="Headline for your review"
+                                            value={newReview.title}
+                                            onChange={e => setNewReview(prev => ({ ...prev, title: e.target.value }))}
+                                            required
+                                        />
+                                        <textarea
+                                            placeholder="What did you like or dislike? How was the quality?"
+                                            value={newReview.body}
+                                            onChange={e => setNewReview(prev => ({ ...prev, body: e.target.value }))}
+                                            rows="3"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="rev-upload-section">
+                                        <div className="upload-meta">
+                                            <label className="image-upload-trigger">
+                                                <Upload size={18} />
+                                                <span>Add Photos</span>
+                                                <input type="file" accept="image/*" onChange={handleImageUpload} hidden disabled={uploading} />
+                                            </label>
+                                            <span className="upload-hint">Max 4 photos</span>
+                                        </div>
+                                        <div className="rev-preview-grid">
+                                            {newReview.images.map((img, idx) => (
+                                                <div key={idx} className="preview-item">
+                                                    <img src={img} alt="" />
+                                                    <button type="button" onClick={() => setNewReview(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== idx) }))}><X size={12} /></button>
+                                                </div>
+                                            ))}
+                                            {uploading && <div className="rev-loader"></div>}
+                                        </div>
+                                    </div>
+
+                                    <button type="submit" className="rev-submit-btn">Post Review</button>
+                                </form>
+                            ) : (
+                                <div className="not-eligible-msg">
+                                    <ShieldCheck size={40} className="text-muted mb-3" />
+                                    <h4>Have you bought this item?</h4>
+                                    <p>You can only write a review for this product after it has been delivered to you. This helps us maintain authentic, high-quality feedback from our community.</p>
+                                    <button className="btn-secondary mt-3" onClick={() => navigate('/consumer/dashboard')}>View My Orders</button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rev-list-modern">
+                            {reviews.length > 0 ? (
+                                <>
+                                    {reviews.slice(0, reviewsLimit).map((rev, i) => (
+                                        <div key={rev.id || i} className="rev-card-vertical">
+                                            <div className="rev-top">
+                                                <div className="rev-user-id">
+                                                    <div className="u-circ">{rev.author?.charAt(0)}</div>
+                                                    <div className="u-meta">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="un">{rev.author}</span>
+                                                            {rev.verified && (
+                                                                <span className="verified-badge" title="Verified Purchase">
+                                                                    <Check size={12} /> Verified
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="ud">
+                                                            {rev.createdAt ? (
+                                                                rev.createdAt._seconds
+                                                                    ? new Date(rev.createdAt._seconds * 1000).toLocaleDateString()
+                                                                    : (rev.createdAt.toDate ? rev.createdAt.toDate().toLocaleDateString() : new Date(rev.createdAt).toLocaleDateString())
+                                                            ) : 'Verified Purchase'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="rs">
+                                                    {[...Array(5)].map((_, j) => <Star key={j} size={14} fill={j < rev.rating ? "#FFB800" : "none"} color="#FFB800" />)}
+                                                </div>
                                             </div>
-                                        )) : (
-                                            <>
-                                                <div className="spec-item"><span className="spec-key">Category</span><span className="spec-val">{product.category || 'N/A'}</span></div>
-                                                <div className="spec-item"><span className="spec-key">Condition</span><span className="spec-val">Brand New</span></div>
-                                                <div className="spec-item"><span className="spec-key">Availability</span><span className="spec-val">In Stock</span></div>
-                                            </>
+                                            <h4 className="rt">{rev.title}</h4>
+                                            <ExpandableText text={rev.body} />
+                                            {rev.images && rev.images.length > 0 && (
+                                                <div className="ri">
+                                                    {rev.images.map((img, idx) => <img key={idx} src={img} alt="Review" onClick={() => window.open(img)} />)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <div className="reviews-expand-actions">
+                                        {reviews.length > reviewsLimit && (
+                                            <button className="show-more-reviews-blue-btn" onClick={() => setReviewsLimit(prev => prev + 5)}>
+                                                Show More Reviews
+                                            </button>
+                                        )}
+                                        {reviewsLimit > 2 && (
+                                            <button className="show-more-reviews-blue-btn show-less" onClick={() => setReviewsLimit(2)}>
+                                                Show Less Reviews
+                                            </button>
                                         )}
                                     </div>
-                                )}
-                                {activeTab === 'reviews' && (
-                                    <div className="reviews-tab-content">
-                                        <div className="ratings-overview">
-                                            <div className="summary-card">
-                                                <div className="big-rating">
-                                                    <span className="avg">{reviewStats.average}</span>
-                                                    <span className="max">/5</span>
-                                                </div>
-                                                <div className="stars-row">
-                                                    {[...Array(5)].map((_, i) => <Star key={i} size={20} fill={i < Math.floor(reviewStats.average) ? "#FFB800" : "none"} color="#FFB800" />)}
-                                                </div>
-                                                <p className="total-rev">{reviewStats.total} Ratings & {reviewStats.total} Reviews</p>
-                                            </div>
-                                            <div className="distribution-card">
-                                                {[5, 4, 3, 2, 1].map(num => (
-                                                    <div key={num} className="dist-row">
-                                                        <span className="num">{num}★</span>
-                                                        <div className="bar-bg">
-                                                            <div className="bar-fill" style={{ width: `${(reviewStats.distribution[num] / (reviewStats.total || 1)) * 100}%` }}></div>
-                                                        </div>
-                                                        <span className="count">{reviewStats.distribution[num]}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="review-prompt glass-card">
-                                            <h3>Review this product</h3>
-                                            <p>Share your thoughts with other customers</p>
-                                            <button className="write-review-btn-large" onClick={() => setIsReviewModalOpen(true)}>Write a Review</button>
-                                        </div>
-
-                                        <div className="customer-reviews-section">
-                                            <h3>Customer Reviews</h3>
-                                            <div className="reviews-list">
-                                                {reviews.length > 0 ? reviews.map((rev, i) => (
-                                                    <div key={rev.id || i} className="review-card-modern">
-                                                        <div className="rev-header">
-                                                            <div className="author-avatar">{rev.author?.charAt(0) || 'U'}</div>
-                                                            <div className="author-info">
-                                                                <span className="name">{rev.author || 'Anonymous'}</span>
-                                                                <div className="meta">
-                                                                    {rev.verified && <span className="verified-badge"><Shield size={12} /> Verified Purchase</span>}
-                                                                    <span className="date">{rev.createdAt?.seconds ? new Date(rev.createdAt.seconds * 1000).toLocaleDateString() : 'Just now'}</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="rev-content">
-                                                            <h4 className="rev-title">{rev.title}</h4>
-                                                            <div className="rev-rating">
-                                                                {[...Array(5)].map((_, j) => <Star key={j} size={14} fill={j < rev.rating ? "#FFB800" : "none"} color="#FFB800" />)}
-                                                            </div>
-                                                            <p className="rev-body">{rev.body}</p>
-                                                        </div>
-                                                        <div className="rev-actions">
-                                                            <button className="helpful-btn"><span className="icon">👍</span> Helpful (0)</button>
-                                                        </div>
-                                                    </div>
-                                                )) : (
-                                                    <div className="no-reviews">
-                                                        <p>No reviews yet. Be the first to review this product!</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </motion.div>
-                        </AnimatePresence>
-                    </div>
+                                </>
+                            ) : (
+                                <div className="no-rev-yet">
+                                    <p>No reviews yet. Share your experience with others!</p>
+                                </div>
+                            )}
+                        </div>
+                    </section>
                 </div>
+
+                {/* About the Seller */}
+                {seller && (
+                    <div className="about-seller-section">
+                        <div className="block-header">
+                            <h2>About the Seller</h2>
+                        </div>
+                        <div className="seller-card glass-card">
+                            <div className="seller-main-info">
+                                <div className="seller-avatar">
+                                    {seller.shopName?.charAt(0) || 'S'}
+                                </div>
+                                <div className="seller-text">
+                                    <h3 className="shop-name">{seller.shopName}</h3>
+                                    <div className="seller-badges">
+                                        <span className="badge-item verified">
+                                            <Shield size={14} fill="#22c55e" color="#22c55e" />
+                                            Verified Seller
+                                        </span>
+                                        <span className="badge-item category">{seller.category}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="seller-details-grid">
+                                <div className="detail-item">
+                                    <span className="label">Seller Name</span>
+                                    <span className="value">{seller.name}</span>
+                                </div>
+                                <div className="detail-item">
+                                    <span className="label">Company</span>
+                                    <span className="value">{seller.companyName}</span>
+                                </div>
+                                <div className="detail-item">
+                                    <span className="label">Location</span>
+                                    <span className="value">{seller.city}</span>
+                                </div>
+                                <div className="detail-item">
+                                    <span className="label">Member Since</span>
+                                    <span className="value">
+                                        {seller.joinedAt ? new Date(seller.joinedAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : '2023'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Frequently Bought Together */}
                 <div className="fbt-section">
@@ -836,26 +1157,26 @@ export default function ProductDetail() {
 
                             <div className="share-grid">
                                 <div className="share-option">
-                                    <div className="icon-box whatsapp"><i className="fab fa-whatsapp"></i></div>
+                                    <div className="icon-box whatsapp"><MessageCircle size={20} /></div>
                                     <span>WhatsApp</span>
                                 </div>
                                 <div className="share-option">
-                                    <div className="icon-box facebook"><i className="fab fa-facebook"></i></div>
+                                    <div className="icon-box facebook"><Facebook size={20} /></div>
                                     <span>Facebook</span>
                                 </div>
                                 <div className="share-option">
-                                    <div className="icon-box twitter"><i className="fab fa-twitter"></i></div>
+                                    <div className="icon-box twitter"><Twitter size={20} /></div>
                                     <span>X (Twitter)</span>
                                 </div>
                                 <div className="share-option">
-                                    <div className="icon-box email"><i className="far fa-envelope"></i></div>
+                                    <div className="icon-box email"><Mail size={20} /></div>
                                     <span>Email</span>
                                 </div>
                             </div>
 
                             <div className="share-footer">
                                 <button className="nearby-btn">
-                                    <div className="icon-box"><i className="fas fa-rss"></i></div>
+                                    <div className="icon-box"><Rss size={20} /></div>
                                     <span>Nearby Share</span>
                                 </button>
                             </div>
@@ -863,14 +1184,6 @@ export default function ProductDetail() {
                     </div>
                 )}
             </AnimatePresence>
-
-            {/* Review Modal */}
-            <ReviewModal
-                isOpen={isReviewModalOpen}
-                onClose={() => setIsReviewModalOpen(false)}
-                productId={id}
-                productName={product?.name}
-            />
 
             {/* Size Chart Modal */}
             <SizeChartModal
@@ -883,6 +1196,72 @@ export default function ProductDetail() {
 }
 
 const pdStyles = `
+.pd-details-scroller { display: flex; flex-direction: column; gap: 3rem; margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 3rem; }
+.block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+.block-header h2 { font-size: 1.8rem; font-weight: 800; }
+.header-stats { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 0.5rem 1rem; border-radius: 99px; }
+
+.desc-content-modern { position: relative; }
+.clamped-desc { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.show-more-blue-btn { color: #2563eb; font-weight: 700; font-size: 0.95rem; margin-top: 0.75rem; transition: 0.2s; background: none; border: none; cursor: pointer; padding: 0; }
+.show-more-blue-btn:hover { text-decoration: underline; color: #1d4ed8; }
+
+.review-write-box { padding: 2.5rem; border-radius: 24px; margin-bottom: 3rem; background: #fafafa; border: 1px solid #eee; }
+.rev-inline-form { display: flex; flex-direction: column; gap: 1.5rem; }
+.star-rating-input { display: flex; gap: 0.5rem; }
+.star-rating-input button { opacity: 0.3; transition: 0.2s; }
+.star-rating-input button.active { opacity: 1; transform: scale(1.1); }
+.rev-inline-form input, .rev-inline-form textarea { width: 100%; padding: 1rem; border-radius: 12px; border: 1px solid #ddd; background: white; font-size: 1rem; }
+.rev-upload-section { display: flex; flex-direction: column; gap: 1rem; }
+.image-upload-trigger { display: flex; align-items: center; gap: 0.5rem; color: #2563eb; font-weight: 700; cursor: pointer; width: fit-content; padding: 0.5rem 1rem; background: #eff6ff; border-radius: 8px; font-size: 0.9rem; }
+.rev-preview-grid { display: flex; gap: 1rem; flex-wrap: wrap; }
+.preview-item { width: 80px; height: 80px; border-radius: 8px; position: relative; border: 1px solid #ddd; }
+.preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.preview-item button { position: absolute; -10px; -10px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; }
+.rev-submit-btn { background: #1a1a1a; color: white; padding: 1.25rem; border-radius: 12px; font-weight: 800; font-size: 1.1rem; transition: 0.3s; }
+.rev-submit-btn:hover { background: #333; transform: translateY(-2px); }
+
+.rev-list-modern { display: flex; flex-direction: column; gap: 1.5rem; }
+.rev-card-vertical { padding: 2rem; background: white; border: 1px solid #f1f5f9; border-radius: 20px; }
+.rev-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+.rev-user-id { display: flex; align-items: center; gap: 1rem; }
+.u-circ { width: 44px; height: 44px; border-radius: 50%; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem; }
+.u-meta { display: flex; flex-direction: column; }
+.un { font-weight: 800; font-size: 1rem; }
+.ud { font-size: 0.8rem; color: #64748b; font-weight: 600; }
+.rt { font-size: 1.15rem; font-weight: 800; margin-bottom: 0.5rem; }
+.rb { color: #4b5563; line-height: 1.6; font-size: 1rem; position: relative; }
+.show-more-btn-text { color: #3b82f6; font-weight: 700; font-size: 0.9rem; background: none; border: none; padding: 0; cursor: pointer; margin-left: 5px; transition: 0.2s; }
+.show-more-btn-text:hover { color: #2563eb; text-decoration: underline; }
+.ri { display: flex; gap: 1rem; margin-top: 1.5rem; }
+.ri img { width: 120px; height: 120px; border-radius: 12px; object-fit: cover; cursor: pointer; border: 1px solid #eee; }
+.reviews-expand-actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+.show-more-reviews-blue-btn { flex: 1; padding: 1.25rem; background: #eff6ff; color: #2563eb; border: 2px dashed #bfdbfe; border-radius: 16px; font-weight: 800; transition: 0.2s; cursor: pointer; }
+.show-more-reviews-blue-btn:hover { background: #dbeafe; }
+.show-more-reviews-blue-btn.show-less { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
+.show-more-reviews-blue-btn.show-less:hover { background: #fee2e2; }
+.rev-loader { width: 30px; height: 30px; border: 3px solid #f3f3f3; border-top: 3px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; }
+
+.about-seller-section { margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 3rem; }
+.seller-card { padding: 2.5rem; border-radius: 24px; position: relative; overflow: hidden; }
+.seller-main-info { display: flex; align-items: center; gap: 2rem; margin-bottom: 2.5rem; }
+.seller-avatar { width: 80px; height: 80px; border-radius: 20px; background: linear-gradient(135deg, #4f46e5, #818cf8); color: white; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; box-shadow: 0 10px 20px rgba(79, 70, 229, 0.2); }
+.seller-text { flex: 1; }
+.shop-name { font-size: 1.8rem; font-weight: 850; margin-bottom: 0.5rem; color: #1a1a1a; }
+.seller-badges { display: flex; gap: 1rem; }
+.badge-item { padding: 0.4rem 0.8rem; border-radius: 99px; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; }
+.badge-item.verified { background: #ecfdf5; color: #059669; }
+.badge-item.category { background: #f1f5f9; color: #475569; }
+.visit-store-btn { padding: 1rem 1.8rem; background: #1a1a1a; color: white; border-radius: 12px; font-weight: 750; display: flex; align-items: center; gap: 0.75rem; transition: 0.3s; }
+.visit-store-btn:hover { background: #333; transform: translateX(5px); }
+
+.seller-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; border-top: 1px solid #f1f5f9; padding-top: 2rem; }
+.detail-item { display: flex; flex-direction: column; gap: 0.5rem; }
+.detail-item .label { font-size: 0.85rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.detail-item .value { font-size: 1.1rem; color: #1a1a1a; font-weight: 750; }
+
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
 .pd-wrapper { padding-bottom: 8rem; }
 .pd-breadcrumb { padding: 1.5rem 0; font-size: 0.9rem; color: var(--text-muted); display: flex; gap: 0.5rem; }
 .pd-breadcrumb button { color: var(--text-muted); transition: 0.2s; background: none; border: none; cursor: pointer; padding: 0; font-size: inherit; }

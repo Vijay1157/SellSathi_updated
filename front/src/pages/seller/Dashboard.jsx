@@ -35,11 +35,15 @@ export default function SellerDashboard() {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState(null);
     const [updateLoading, setUpdateLoading] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [quotaExceeded, setQuotaExceeded] = useState(false);
 
     // Track Order Modal
     const [showTrackModal, setShowTrackModal] = useState(false);
     const [trackingOrder, setTrackingOrder] = useState(null);
+
+    // Performance Analytics State
+    const [performanceYear, setPerformanceYear] = useState('This Year');
 
     useEffect(() => {
         const loadDashboard = async () => {
@@ -419,6 +423,8 @@ export default function SellerDashboard() {
                                     <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Annual Sales Growth</p>
                                 </div>
                                 <select
+                                    value={performanceYear}
+                                    onChange={(e) => setPerformanceYear(e.target.value)}
                                     style={{
                                         padding: '0.5rem 1rem',
                                         borderRadius: '8px',
@@ -428,30 +434,48 @@ export default function SellerDashboard() {
                                         color: '#64748b'
                                     }}
                                 >
-                                    <option>This Year</option>
-                                    <option>Last Year</option>
+                                    <option value="This Year">This Year</option>
+                                    <option value="Last Year">Last Year</option>
                                 </select>
                             </div>
 
                             <div style={{ width: '100%', height: 350 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height={350}>
                                     <AreaChart data={
                                         // Calculate monthly sales data dynamically from orders
                                         (() => {
+                                            console.log("Performance Analytics orders:", orders);
                                             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                                             const currentYear = new Date().getFullYear();
+                                            const targetYear = performanceYear === 'This Year' ? currentYear : currentYear - 1;
 
                                             // Initialize with 0
                                             const monthlyData = months.map(m => ({ name: m, sales: 0, orders: 0 }));
 
                                             orders.forEach(order => {
-                                                const orderDate = new Date(order.date);
-                                                if (orderDate.getFullYear() === currentYear) {
+                                                // Handle various date formats securely
+                                                let orderDate;
+                                                if (order.date) {
+                                                    orderDate = new Date(order.date);
+                                                } else if (order.createdAt) {
+                                                    orderDate = new Date(order.createdAt);
+                                                }
+
+                                                // If date is completely unparseable or missing, default to current Date (now)
+                                                if (!orderDate || isNaN(orderDate.getTime())) {
+                                                    orderDate = new Date();
+                                                }
+
+                                                const orderYear = orderDate.getFullYear();
+                                                // Default to current year if something extremely weird happens
+                                                const finalYear = isNaN(orderYear) ? currentYear : orderYear;
+
+                                                if (finalYear === targetYear) {
                                                     const monthIndex = orderDate.getMonth();
-                                                    if (monthIndex >= 0 && monthIndex < 12) {
-                                                        monthlyData[monthIndex].sales += Number(order.total);
-                                                        monthlyData[monthIndex].orders += 1;
-                                                    }
+                                                    // Ensure month is within 0-11 bounds
+                                                    const finalMonth = (isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) ? 0 : monthIndex;
+                                                    monthlyData[finalMonth].sales += Number(order.total) || 0;
+                                                    monthlyData[finalMonth].orders += 1;
                                                 }
                                             });
                                             return monthlyData;
@@ -784,15 +808,40 @@ export default function SellerDashboard() {
                                         {isEditing && (
                                             <div style={{ background: 'var(--surface)', padding: '1.25rem', borderRadius: '16px' }}>
                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                                                    <Upload size={14} /> Image URL:
+                                                    <Upload size={14} /> Update Product Image
                                                 </label>
-                                                <input
-                                                    type="text"
-                                                    value={editData.image}
-                                                    onChange={e => setEditData({ ...editData, image: e.target.value })}
-                                                    style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: '1px solid var(--border)' }}
-                                                    placeholder="Enter new image URL..."
-                                                />
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1.5rem', border: '2px dashed var(--border)', borderRadius: '10px', cursor: isUploading ? 'not-allowed' : 'pointer', background: 'white', transition: 'all 0.2s', textAlign: 'center' }}>
+                                                        {isUploading ? <Loader className="animate-spin" style={{ color: 'var(--primary)', marginBottom: '0.5rem' }} /> : <Upload style={{ color: '#94a3b8', marginBottom: '0.5rem' }} />}
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary)' }}>
+                                                            {isUploading ? "Uploading..." : "Click to Upload New Image"}
+                                                        </span>
+                                                        <span className="text-muted" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>Or input an image URL below</span>
+                                                        <input type="file" hidden accept="image/*" disabled={isUploading}
+                                                            onChange={async (e) => {
+                                                                const file = e.target.files[0];
+                                                                if (!file) return;
+                                                                setIsUploading(true);
+                                                                const formData = new FormData();
+                                                                formData.append('image', file);
+                                                                try {
+                                                                    const response = await authFetch('/seller/upload-image', { method: 'POST', body: formData });
+                                                                    const data = await response.json();
+                                                                    if (data.success) { setEditData({ ...editData, image: data.url }); }
+                                                                    else { alert('Upload failed: ' + data.message); }
+                                                                } catch (err) { console.error(err); alert('Upload error'); }
+                                                                finally { setIsUploading(false); }
+                                                            }}
+                                                        />
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={editData.image}
+                                                        onChange={e => setEditData({ ...editData, image: e.target.value })}
+                                                        style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: '1px solid var(--border)' }}
+                                                        placeholder="Or enter new image URL..."
+                                                    />
+                                                </div>
                                             </div>
                                         )}
 

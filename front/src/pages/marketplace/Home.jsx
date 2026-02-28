@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Star, Heart, Eye, ArrowRight, ChevronLeft, ChevronRight, Clock, Zap, TrendingUp, Sparkles, Award } from 'lucide-react';
@@ -75,7 +75,7 @@ const TODAY_DEALS = [
         price: 34999,
         oldPrice: 42999,
         discount: "18% OFF",
-        image: "https://images.unsplash.com/photo-1434494878577-86c23bddad0f?w=800",
+        image: "https://images.unsplash.com/photo-1542496658-e33a6d0d50f6?w=800",
         rating: 4.8,
         reviews: 567,
         timer: "3h 56m",
@@ -95,6 +95,19 @@ const TODAY_DEALS = [
         colors: ["#3D3D3F", "#E3E4E5"],
         stock: 0,
         status: 'Out of Stock'
+    },
+    {
+        id: "deal-special",
+        name: "Premium Ultra Pro Max Elite",
+        category: "Electronics",
+        price: 199999,
+        oldPrice: 249999,
+        discount: "20% OFF",
+        image: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=800",
+        rating: 5.0,
+        reviews: 9999,
+        timer: "24h 00m",
+        colors: ["#000000", "#C0C0C0", "#0000FF"]
     }
 ];
 
@@ -225,6 +238,38 @@ const homeStyles = `
     .section { padding: 5rem 0; }
     .section-header-compact { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3rem; }
     .title-modern { font-size: 2.5rem; font-weight: 900; }
+
+    .cat-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; }
+    .sub-category { font-size: 0.75rem; font-weight: 600; color: #64748b; }
+
+    .category-group-wrapper { margin-bottom: 4rem; }
+    .category-group-header { 
+        display: flex; 
+        align-items: center; 
+        gap: 1rem; 
+        margin-bottom: 2rem; 
+        padding-bottom: 0.5rem; 
+        border-bottom: 2px solid #f1f5f9;
+        width: 100%;
+    }
+    .category-group-header h3 { 
+        font-size: 1.25rem; 
+        font-weight: 850; 
+        color: #1e293b; 
+        letter-spacing: -0.5px;
+    }
+    .category-group-header .line { flex: 1; height: 1px; background: #e2e8f0; }
+    .category-group-header .view-more { 
+        font-size: 0.85rem; 
+        font-weight: 700; 
+        color: var(--primary); 
+        text-decoration: none; 
+        display: flex; 
+        align-items: center; 
+        gap: 0.4rem;
+        transition: 0.2s;
+    }
+    .category-group-header .view-more:hover { gap: 0.6rem; }
 `;
 
 export default function Home() {
@@ -237,10 +282,8 @@ export default function Home() {
     const [selectedQuickProduct, setSelectedQuickProduct] = useState(null);
     const navigate = useNavigate();
 
-    useEffect(() => {
-        const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
-        setWishlist(saved);
-    }, []);
+    // Initial wishlist load is handled by the listener below
+
 
     useEffect(() => {
         const fetchData = async () => {
@@ -269,7 +312,7 @@ export default function Home() {
                         },
                         {
                             id: "deal-3", name: "Apple Watch Series 8", price: 34999, oldPrice: 42999, rating: 4.8, reviews: 567, category: "Electronics",
-                            image: "https://images.unsplash.com/photo-1434494878577-86c23bddad0f?w=800", discount: "18% OFF",
+                            image: "https://images.unsplash.com/photo-1542496658-e33a6d0d50f6?w=800", discount: "18% OFF",
                             colors: ["#1C1C1C", "#E3E4E5", "#0F1626"]
                         },
                         {
@@ -321,35 +364,40 @@ export default function Home() {
             e.stopPropagation();
             e.preventDefault();
         }
-        
+
         console.log('🎯 toggleWishlist clicked for product:', product.id);
-        console.log('🎯 Current wishlist state:', wishlist.map(i => i.id));
-        
+
         const alreadySaved = wishlist.some(item => item.id === product.id);
-        console.log('🎯 Already in wishlist?', alreadySaved);
-        
+
         try {
             if (alreadySaved) {
-                console.log('🎯 Removing from wishlist...');
                 const result = await removeFromWishlist(product.id);
                 if (result.success) {
                     console.log('✅ Removed successfully');
-                } else {
-                    console.error('❌ Remove failed:', result.message);
                 }
             } else {
-                console.log('🎯 Adding to wishlist...');
                 const result = await addToWishlist(product);
                 if (result.success) {
                     console.log('✅ Added successfully');
-                } else {
-                    console.error('❌ Add failed:', result.message);
                 }
             }
         } catch (error) {
             console.error('❌ toggleWishlist error:', error);
         }
     };
+
+    const groupByCategory = (items) => {
+        return items.reduce((acc, p) => {
+            const cat = p.category || 'Other';
+            if (!acc[cat]) acc[cat] = [];
+            acc[cat].push(p);
+            return acc;
+        }, {});
+    };
+
+    const groupedDeals = useMemo(() => groupByCategory(TODAY_DEALS), [TODAY_DEALS]);
+    const groupedFeatured = useMemo(() => groupByCategory(featuredProducts), [featuredProducts]);
+    const groupedLatest = useMemo(() => groupByCategory(latestProducts), [latestProducts]);
 
     const openQuickView = (e, product) => {
         if (e) e.stopPropagation();
@@ -401,7 +449,10 @@ export default function Home() {
                     </div>
                 </div>
                 <div className="card-info">
-                    <span className="category">{product.category || 'Product'}</span>
+                    <div className="cat-row">
+                        <span className="category">{product.category || 'Product'}</span>
+                        {product.subCategory && <span className="sub-category">• {product.subCategory}</span>}
+                    </div>
                     <h3 className="title">{product.name}</h3>
 
                     <div className="rating-row">
@@ -510,22 +561,33 @@ export default function Home() {
                     <div className="section-header-compact">
                         <div className="header-info">
                             <h2 className="title-modern">Flash <span className="gradient-text">Deals</span></h2>
-                            <p>Grab them before they are gone!</p>
+                            <p>Exclusive limited-time offers grouped by category</p>
                         </div>
                     </div>
 
-                    <div className="product-uniform-grid">
-                        {TODAY_DEALS.map((deal, idx) => (
-                            <ProductCard key={deal.id} product={deal} index={idx} />
-                        ))}
-                    </div>
+                    {Object.entries(groupedDeals).map(([cat, items]) => (
+                        <div key={cat} className="category-group-wrapper">
+                            <div className="category-group-header">
+                                <h3>{cat}</h3>
+                                <div className="line" />
+                                <Link to={`/products?category=${cat}`} className="view-more">
+                                    Browse all <ArrowRight size={14} />
+                                </Link>
+                            </div>
+                            <div className="product-uniform-grid">
+                                {items.map((deal, idx) => (
+                                    <ProductCard key={deal.id} product={deal} index={idx} />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </section>
 
             {/* Product Sections */}
             {[
-                { title: "Featured Products", subtitle: "Our top picks for you", products: featuredProducts, bg: "bg-light", cat: "Electronics" },
-                { title: "Latest Releases", subtitle: "Stay ahead with the newest additions", products: latestProducts, bg: "bg-white", cat: "Fashion" }
+                { title: "Featured Products", subtitle: "Our top picks for you", groupedData: groupedFeatured, bg: "bg-light" },
+                { title: "Latest Releases", subtitle: "Stay ahead with the newest additions", groupedData: groupedLatest, bg: "bg-white" }
             ].map((sec, idx) => (
                 <section key={idx} className={"section " + sec.bg}>
                     <div className="container">
@@ -534,16 +596,28 @@ export default function Home() {
                                 <h2 className="title-modern">{sec.title.split(' ')[0]} <span className="gradient-text">{sec.title.split(' ').slice(1).join(' ')}</span></h2>
                                 <p>{sec.subtitle}</p>
                             </div>
-                            <Link to={"/products?category=" + sec.cat} className="view-all-btn">Browse All <ArrowRight size={18} /></Link>
                         </div>
 
-                        <div className="product-uniform-grid">
-                            {loading ? (
-                                [...Array(4)].map((_, i) => <div key={i} className="product-card skeleton" />)
-                            ) : (
-                                sec.products.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)
-                            )}
-                        </div>
+                        {loading ? (
+                            <div className="product-uniform-grid">
+                                {[...Array(4)].map((_, i) => <div key={i} className="product-card skeleton" />)}
+                            </div>
+                        ) : (
+                            Object.entries(sec.groupedData).map(([cat, items]) => (
+                                <div key={cat} className="category-group-wrapper">
+                                    <div className="category-group-header">
+                                        <h3>{cat}</h3>
+                                        <div className="line" />
+                                        <Link to={`/products?category=${cat}`} className="view-more">
+                                            View all {cat} <ArrowRight size={14} />
+                                        </Link>
+                                    </div>
+                                    <div className="product-uniform-grid">
+                                        {items.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </section>
             ))}
