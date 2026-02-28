@@ -72,11 +72,6 @@ app.use(cors({
     credentials: true
 }));
 app.use(bodyParser.json());
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
 
 const db = admin.firestore();
 const orderController = require("./controllers/orderController");
