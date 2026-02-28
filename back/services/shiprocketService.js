@@ -593,12 +593,12 @@ class ShiprocketService {
   }
 
   /**
-   * Cancel order and shipment in Shiprocket
-   * @param {string} shipmentId - Shiprocket shipment ID
-   * @param {string} orderId - Internal order ID for logging
+   * Cancel order in Shiprocket
+   * @param {string} shiprocketOrderId - Shiprocket order ID (NOT shipment ID — the cancel API expects order IDs)
+   * @param {string} internalOrderId - Internal order ID for logging
    * @returns {Promise<Object>} Cancellation response
    */
-  async cancelOrder(shipmentId, orderId) {
+  async cancelOrder(shiprocketOrderId, internalOrderId) {
     if (!this.enabled) {
       return {
         success: false,
@@ -607,24 +607,24 @@ class ShiprocketService {
     }
 
     try {
-      console.log(`❌ Cancelling shipment ${shipmentId} for order ${orderId}...`);
+      console.log(`❌ Cancelling Shiprocket order ${shiprocketOrderId} (internal: ${internalOrderId})...`);
 
       const data = await this.makeApiRequest(
         `${this.apiUrl}/orders/cancel`,
         {
-          ids: [shipmentId]
+          ids: [shiprocketOrderId]
         },
         {
           retries: 3,
           requiresAuth: true,
-          orderId: orderId
+          orderId: internalOrderId
         }
       );
 
       if (data) {
-        console.log('✅ Order cancelled successfully:', {
-          orderId,
-          shipmentId,
+        console.log('✅ Order cancelled successfully in Shiprocket:', {
+          internalOrderId,
+          shiprocketOrderId,
           response: data
         });
 
@@ -642,8 +642,8 @@ class ShiprocketService {
       }
     } catch (error) {
       console.error(`❌ Order cancellation error:`, {
-        orderId,
-        shipmentId,
+        internalOrderId,
+        shiprocketOrderId,
         error: error.message,
         status: error.response?.status
       });
@@ -726,9 +726,9 @@ class ShiprocketService {
     try {
       console.log(`🚚 Fetching couriers for order ${orderId}...`);
       const data = await this.makeApiRequest(
-        `${this.apiUrl}/courier/serviceability/`,
-        { order_id: orderId },
-        { retries: 3, requiresAuth: true, orderId }
+        `${this.apiUrl}/courier/serviceability/?order_id=${orderId}`,
+        null,
+        { retries: 3, requiresAuth: true, orderId, method: 'GET' }
       );
 
       if (data && data.data && data.data.available_courier_companies) {

@@ -42,3 +42,4 @@ back/invoices/*.pdf
 *.tmp
 *.temp
 CLEANUP_SUMMARY.md
+*.md

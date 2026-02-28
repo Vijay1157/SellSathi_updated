@@ -3018,19 +3018,22 @@ app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
 
         console.log('[CANCEL ORDER] Proceeding with cancellation...');
 
-        // Cancel shipment in Shiprocket if shipment ID exists
+        // Cancel order in Shiprocket if shiprocketOrderId exists
         let shipmentCancelled = false;
-        if (orderData.shipmentId) {
+        if (orderData.shiprocketOrderId) {
             try {
                 const cancelResult = await shiprocketService.cancelOrder(
-                    orderData.shipmentId,
+                    orderData.shiprocketOrderId,
                     orderData.orderId || orderId
                 );
                 shipmentCancelled = cancelResult.success;
+                console.log('[CANCEL ORDER] Shiprocket cancel result:', cancelResult.success);
             } catch (error) {
                 console.error("Shiprocket cancellation error:", error);
                 // Continue with order cancellation even if Shiprocket fails
             }
+        } else {
+            console.warn('[CANCEL ORDER] No shiprocketOrderId found - skipping Shiprocket cancel');
         }
 
         // Calculate refund amount
@@ -3073,6 +3076,49 @@ app.post("/api/orders/:orderId/cancel", verifyAuth, async (req, res) => {
             success: false,
             message: "Failed to cancel order"
         });
+    }
+});
+
+// GET /api/orders/:orderId/label - Download shipping label for an order
+app.get("/api/orders/:orderId/label", verifyAuth, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        console.log(`[LABEL] Fetching shipping label for order: ${orderId}`);
+
+        const orderDoc = await db.collection("orders").doc(orderId).get();
+        if (!orderDoc.exists) {
+            return res.status(404).json({ success: false, message: "Order not found" });
+        }
+
+        const orderData = orderDoc.data();
+
+        if (!orderData.shipmentId) {
+            return res.status(400).json({
+                success: false,
+                message: "Shipment not yet created for this order. AWB must be generated first."
+            });
+        }
+
+        // Return cached label URL if already fetched
+        if (orderData.labelUrl) {
+            return res.status(200).json({ success: true, labelUrl: orderData.labelUrl });
+        }
+
+        const labelResult = await shiprocketService.getShippingLabel([orderData.shipmentId]);
+
+        if (labelResult.success && labelResult.labelUrl) {
+            // Cache result in Firestore
+            await db.collection("orders").doc(orderId).update({ labelUrl: labelResult.labelUrl });
+            return res.status(200).json({ success: true, labelUrl: labelResult.labelUrl });
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: labelResult.error || "Failed to generate shipping label"
+            });
+        }
+    } catch (error) {
+        console.error("[LABEL] Error:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch shipping label" });
     }
 });
 
