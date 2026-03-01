@@ -159,6 +159,8 @@ export default function AddProduct() {
     const [newSpecKey, setNewSpecKey] = useState('');
     const [newSpecVal, setNewSpecVal] = useState('');
 
+    const [variantImages, setVariantImages] = useState({});
+
     const config = CATEGORY_CONFIG[product.category] || null;
 
     // ─── Size Handlers ───────────────────────────────────────────────────
@@ -256,6 +258,20 @@ export default function AddProduct() {
     // ─── Submit Handler ──────────────────────────────────────────────────
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (!product.image) {
+            alert('Main Product Image is compulsory. Please upload it.');
+            return;
+        }
+
+        let basePrice = parseFloat(product.price);
+        if (selectedSizes.length > 0 && pricingType === 'varied') {
+            const prices = Object.values(sizePrices).map(p => parseFloat(p)).filter(p => !isNaN(p) && p > 0);
+            if (prices.length > 0) {
+                basePrice = Math.min(...prices);
+            }
+        }
+
         const user = auth.currentUser;
         let sellerId = user?.uid || null;
         if (!sellerId) {
@@ -266,13 +282,17 @@ export default function AddProduct() {
         // Build the full product data with dynamic fields
         const fullProduct = {
             title: product.name,
-            price: parseFloat(product.price),
+            price: basePrice,
             discountPrice: product.discountPrice ? parseFloat(product.discountPrice) : null,
             category: product.category,
             stock: parseInt(product.stock),
             description: product.description,
             image: product.image,
         };
+
+        if (Object.keys(variantImages).length > 0) {
+            fullProduct.variantImages = variantImages;
+        }
 
         // Add sizes if selected
         if (selectedSizes.length > 0) {
@@ -732,6 +752,63 @@ export default function AddProduct() {
                                 </div>
                             </div>
 
+                            {/* Variant Images Upload */}
+                            {(() => {
+                                const allVariantLabels = [
+                                    ...selectedColors,
+                                    ...Object.values(variants).flat().map(v => v.label)
+                                ];
+                                if (allVariantLabels.length === 0) return null;
+                                return (
+                                    <div style={sty.card}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                                            <div style={sty.sectionIcon('#3b82f6')}><ImageIcon size={20} /></div>
+                                            <div>
+                                                <h3 style={{ margin: 0 }}>Variant Images</h3>
+                                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>(Optional) Upload images for specific colors or variants.</p>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                            {allVariantLabels.map(label => (
+                                                <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#f8fafc' }}>
+                                                    <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#334155' }}>{label}</span>
+                                                    <div>
+                                                        {variantImages[label] ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                <img src={variantImages[label]} alt={label} style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                                                                <button type="button" onClick={() => {
+                                                                    const updated = { ...variantImages };
+                                                                    delete updated[label];
+                                                                    setVariantImages(updated);
+                                                                }} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', padding: '0.35rem', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', padding: '0.4rem 0.8rem', background: 'var(--primary)', color: 'white', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                                <Upload size={14} />
+                                                                Upload
+                                                                <input type="file" accept="image/*" hidden
+                                                                    onChange={async (e) => {
+                                                                        const file = e.target.files[0];
+                                                                        if (!file) return;
+                                                                        const formData = new FormData();
+                                                                        formData.append('image', file);
+                                                                        try {
+                                                                            const response = await authFetch('/seller/upload-image', { method: 'POST', body: formData });
+                                                                            const data = await response.json();
+                                                                            if (data.success) { setVariantImages(prev => ({ ...prev, [label]: data.url })); }
+                                                                            else { alert('Upload failed: ' + data.message); }
+                                                                        } catch (err) { console.error(err); alert('Upload error'); }
+                                                                    }} />
+                                                            </label>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* Summary Preview */}
                             {product.category && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={sty.card}>
@@ -746,6 +823,9 @@ export default function AddProduct() {
                                         {Object.entries(variants).map(([k, v]) => v.length > 0 && (
                                             <div key={k}><strong>{k}:</strong> {v.map(i => i.label).join(', ')}</div>
                                         ))}
+                                        {Object.keys(variantImages).length > 0 && (
+                                            <div><strong>Variant Images:</strong> {Object.keys(variantImages).length} uploaded</div>
+                                        )}
                                         {specifications.filter(s => s.value).length > 0 && (
                                             <div><strong>Specs:</strong> {specifications.filter(s => s.value).length} defined</div>
                                         )}

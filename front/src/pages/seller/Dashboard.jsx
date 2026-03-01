@@ -91,7 +91,8 @@ export default function SellerDashboard() {
             storage: product.storage || [],
             memory: product.memory || [],
             weight: product.weight || [],
-            specifications: product.specifications || {}
+            specifications: product.specifications || {},
+            variantImages: product.variantImages || {}
         });
         setIsEditing(false);
         setShowViewModal(true);
@@ -102,13 +103,28 @@ export default function SellerDashboard() {
         const uid = sellerUid || getUserUid();
         if (!uid) return;
 
+        if (!editData.image) {
+            alert('Main Product Image is compulsory. Please upload or provide a URL.');
+            return;
+        }
+
+        let finalBasePrice = parseFloat(editData.price);
+        if (editData.sizes?.length > 0 && editData.pricingType === 'varied') {
+            const sizePricesArr = Object.values(editData.sizePrices || {}).map(p => parseFloat(p)).filter(p => !isNaN(p) && p > 0);
+            if (sizePricesArr.length > 0) {
+                finalBasePrice = Math.min(...sizePricesArr);
+            }
+        }
+
+        const payloadData = { ...editData, price: finalBasePrice };
+
         setUpdateLoading(true);
         try {
             const response = await authFetch(`/seller/product/update/${selectedProduct.id}`, {
                 method: 'PUT',
                 body: JSON.stringify({
                     sellerId: uid,
-                    productData: editData
+                    productData: payloadData
                 })
             });
 
@@ -116,9 +132,9 @@ export default function SellerDashboard() {
             if (data.success) {
                 alert("Product updated successfully!");
                 setIsEditing(false);
-                setSelectedProduct({ ...editData });
+                setSelectedProduct({ ...payloadData });
                 // Refresh list
-                setProducts(products.map(p => p.id === selectedProduct.id ? { ...editData, id: p.id } : p));
+                setProducts(products.map(p => p.id === selectedProduct.id ? { ...payloadData, id: p.id } : p));
             } else {
                 alert("Failed to update: " + data.message);
             }
@@ -542,6 +558,7 @@ export default function SellerDashboard() {
                                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Product Details</th>
                                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Category</th>
                                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Price</th>
+                                                <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Discount Price</th>
                                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Stock</th>
                                                 <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Actions</th>
                                             </tr>
@@ -580,6 +597,9 @@ export default function SellerDashboard() {
                                                     </td>
                                                     <td style={{ padding: '1.25rem 1.5rem', fontWeight: 700, color: '#1e293b', fontSize: '1rem', whiteSpace: 'nowrap' }}>
                                                         ₹{Number(p.price).toLocaleString('en-IN')}
+                                                    </td>
+                                                    <td style={{ padding: '1.25rem 1.5rem', fontWeight: 700, color: '#22c55e', fontSize: '1rem', whiteSpace: 'nowrap' }}>
+                                                        {p.discountPrice ? `₹${Number(p.discountPrice).toLocaleString('en-IN')}` : '-'}
                                                     </td>
                                                     <td style={{ padding: '1.25rem 1.5rem' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -853,7 +873,7 @@ export default function SellerDashboard() {
                                                 </div>
                                                 <div style={{ background: 'var(--surface)', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
                                                     <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '0.25rem' }}>Views:</p>
-                                                    <p style={{ fontWeight: 600 }}>248</p>
+                                                    <p style={{ fontWeight: 600 }}>{selectedProduct.views || 0}</p>
                                                 </div>
                                             </div>
                                         )}
@@ -1200,6 +1220,64 @@ export default function SellerDashboard() {
                                                 )}
                                             </div>
                                         )}
+
+                                        {/* VARIANT IMAGES */}
+                                        {(() => {
+                                            const data = isEditing ? editData : selectedProduct;
+                                            const allVariantLabels = [
+                                                ...(data.colors || []),
+                                                ...(data.storage || []).map(v => v.label || v),
+                                                ...(data.memory || []).map(v => v.label || v),
+                                                ...(data.weight || []).map(v => v.label || v)
+                                            ];
+                                            if (allVariantLabels.length === 0) return null;
+
+                                            return (
+                                                <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontWeight: 600, color: '#3b82f6', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                        <Upload size={14} /> Variant Images
+                                                    </label>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                        {allVariantLabels.map(label => (
+                                                            <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                                                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{label}</span>
+                                                                {((isEditing ? editData.variantImages : selectedProduct.variantImages) || {})[label] ? (
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                        <img src={((isEditing ? editData.variantImages : selectedProduct.variantImages) || {})[label]} alt={label} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                                                                        {isEditing && (
+                                                                            <button type="button" onClick={() => {
+                                                                                const updated = { ...editData.variantImages };
+                                                                                delete updated[label];
+                                                                                setEditData({ ...editData, variantImages: updated });
+                                                                            }} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', padding: '0.3rem', cursor: 'pointer' }}><Trash2 size={12} /></button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    isEditing ? (
+                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', padding: '0.3rem 0.6rem', background: 'var(--primary)', color: 'white', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 600 }}>
+                                                                            <Upload size={12} /> Upload
+                                                                            <input type="file" accept="image/*" hidden onChange={async (e) => {
+                                                                                const file = e.target.files[0];
+                                                                                if (!file) return;
+                                                                                const formData = new FormData();
+                                                                                formData.append('image', file);
+                                                                                try {
+                                                                                    const response = await authFetch('/seller/upload-image', { method: 'POST', body: formData });
+                                                                                    const resData = await response.json();
+                                                                                    if (resData.success) { setEditData(prev => ({ ...prev, variantImages: { ...(prev.variantImages || {}), [label]: resData.url } })); }
+                                                                                } catch (err) { console.error(err); alert('Upload error'); }
+                                                                            }} />
+                                                                        </label>
+                                                                    ) : (
+                                                                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>None</span>
+                                                                    )
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
 
                                         <div style={{ display: 'none' }}>{/* spacer */}</div>
 
