@@ -8,6 +8,8 @@ import { addToWishlist, removeFromWishlist, isInWishlist, listenToWishlist } fro
 import { Ruler, ShoppingCart, Heart, Shield, Truck, RotateCcw, ArrowLeft, ArrowRight, Star, Share2, ZoomIn, ChevronLeft, ChevronRight, Bookmark, Image as ImageIcon, Plus, Minus, Send, Upload, X, MessageCircle, Facebook, Twitter, Mail, Rss, AlertOctagon, ShieldCheck, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SizeChartModal from '../../components/common/SizeChartModal';
+import Rating from '../../components/common/Rating';
+import { fetchProductReviews, calculateRatingStats, clearProductReviewCache } from '../../utils/reviewUtils';
 
 const ExpandableText = ({ text, maxLength = 180 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -153,12 +155,9 @@ export default function ProductDetail() {
         const setupReviewsListener = () => {
             const loadReviews = async () => {
                 try {
-                    const res = await fetch(`${API_BASE}/api/products/${id}/reviews`);
-                    const data = await res.json();
-                    if (data.success) {
-                        setReviews(data.reviews);
-                        calculateStats(data.reviews);
-                    }
+                    const { reviews, stats } = await fetchProductReviews(id);
+                    setReviews(reviews);
+                    setReviewStats(stats);
                 } catch (err) {
                     console.error("Failed to load reviews:", err);
                 }
@@ -242,15 +241,12 @@ export default function ProductDetail() {
 
 
     const calculateStats = (revs) => {
-        if (revs.length === 0) {
-            setReviewStats({ average: product?.rating || 0, total: product?.reviews || 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } });
-            return;
-        }
-        const total = revs.length;
-        const sum = revs.reduce((acc, r) => acc + r.rating, 0);
-        const dist = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-        revs.forEach(r => { if (dist[r.rating] !== undefined) dist[r.rating]++; });
-        setReviewStats({ average: (sum / total).toFixed(1), total, distribution: dist });
+        const stats = calculateRatingStats(revs);
+        setReviewStats({
+            average: stats.averageRating,
+            total: stats.totalReviews,
+            distribution: stats.distribution
+        });
     };
 
 
@@ -304,7 +300,15 @@ export default function ProductDetail() {
                 setNewReview({ rating: 5, title: '', body: '', images: [] });
                 setIsEligibleForReview(false); // Can't review twice for same order
                 setEligibleOrder(null);
-                window.dispatchEvent(new Event('reviewsUpdate'));
+                
+                // Clear cache for this product to force refresh
+                clearProductReviewCache(id);
+                
+                // Dispatch event to update UI across components
+                window.dispatchEvent(new CustomEvent('reviewsUpdate', { 
+                    detail: { productId: id, review: data.review } 
+                }));
+                
                 alert('✅ Review submitted successfully! It will be visible after a short processing time.');
             } else {
                 alert('❌ Failed to submit review: ' + data.message);
@@ -654,10 +658,13 @@ export default function ProductDetail() {
                         <div className="info-header">
                             <h1 className="main-title">{product.name}</h1>
                             <div className="rating-row">
-                                <div className="stars">
-                                    {[...Array(5)].map((_, i) => <Star key={i} size={16} fill={i < Math.floor(product.rating || 4.5) ? "#FFB800" : "none"} color="#FFB800" />)}
-                                </div>
-                                <span className="review-meta">{product.rating || 4.8} ({product.reviews || 0} reviews)</span>
+                                <Rating 
+                                    averageRating={reviewStats.average || 0}
+                                    totalReviews={reviewStats.total || 0}
+                                    size={16}
+                                    showCount={true}
+                                    className="product-detail-rating"
+                                />
                                 <div className="actions-meta">
                                     <button onClick={toggleWishlist} className={isSaved ? 'active' : ''}>
                                         <Heart size={18} fill={isSaved ? "#E11D48" : "none"} color={isSaved ? "#E11D48" : "currentColor"} />
@@ -856,8 +863,13 @@ export default function ProductDetail() {
                         <div className="block-header">
                             <h2>Customer Reviews</h2>
                             <div className="header-stats">
-                                <Star size={16} fill="#FFB800" color="#FFB800" />
-                                <span>{reviewStats.average} ({reviewStats.total} reviews)</span>
+                                <Rating 
+                                    averageRating={reviewStats.average || 0}
+                                    totalReviews={reviewStats.total || 0}
+                                    size={16}
+                                    showCount={true}
+                                    className="reviews-header-rating"
+                                />
                             </div>
                         </div>
 
@@ -1065,8 +1077,7 @@ export default function ProductDetail() {
                                     <div className="fbt-info">
                                         <span className="p-name">{p.name}</span>
                                         <div className="rating">
-                                            {[...Array(5)].map((_, j) => <Star key={j} size={14} fill={j < Math.floor(p.rating) ? "#FFB800" : "none"} color="#FFB800" />)}
-                                            <span>({p.reviews})</span>
+                                            <span className="no-rating">No reviews</span>
                                         </div>
                                     </div>
                                     <span className="p-price">₹{(p.price || 0).toLocaleString()}</span>
@@ -1093,8 +1104,7 @@ export default function ProductDetail() {
                                 <img src={p.image} alt={p.name} />
                                 <h3>{p.name}</h3>
                                 <div className="rating">
-                                    {[...Array(5)].map((_, i) => <Star key={i} size={16} fill={i < Math.floor(p.rating) ? "#FFB800" : "none"} color="#FFB800" />)}
-                                    <span>({p.reviews})</span>
+                                    <span className="no-rating">No reviews</span>
                                 </div>
                                 <span className="price">₹{(p.price || 0).toLocaleString()}</span>
                             </div>
@@ -1113,8 +1123,7 @@ export default function ProductDetail() {
                                     <img src={p.imageUrl || p.image} alt={p.name} />
                                     <h3>{p.name}</h3>
                                     <div className="rating">
-                                        {[...Array(5)].map((_, i) => <Star key={i} size={16} fill={i < Math.floor(p.rating || 4.8) ? "#FFB800" : "none"} color="#FFB800" />)}
-                                        <span>({p.reviews || 0})</span>
+                                        <span className="no-rating">No reviews</span>
                                     </div>
                                     <span className="price">₹{(p.price || 0).toLocaleString()}</span>
                                 </div>
@@ -1241,6 +1250,9 @@ const pdStyles = `
 .show-more-reviews-blue-btn.show-less { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
 .show-more-reviews-blue-btn.show-less:hover { background: #fee2e2; }
 .rev-loader { width: 30px; height: 30px; border: 3px solid #f3f3f3; border-top: 3px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; }
+
+.no-rating { color: #64748b; font-size: 0.9rem; font-weight: 500; font-style: italic; }
+.rating .no-rating { display: flex; align-items: center; height: 20px; }
 
 .about-seller-section { margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 3rem; }
 .seller-card { padding: 2.5rem; border-radius: 24px; position: relative; overflow: hidden; }

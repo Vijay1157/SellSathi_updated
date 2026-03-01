@@ -7,7 +7,21 @@ import { db } from '../../config/firebase';
 import { listenToCart } from '../../utils/cartUtils';
 import { listenToWishlist } from '../../utils/wishlistUtils';
 
-const MAIN_CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories", "Today's Deals", "New Arrivals", "Trending"];
+const MAIN_CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", 'Home & Living', 'Beauty', 'Sports', 'Accessories', "Today's Deals", 'New Arrivals', 'Trending'];
+
+// Structured subcategories for Mega Menu
+const SUBCATEGORIES = {
+    'Electronics': ['Mobiles', 'Laptops', 'Headphones', 'Smart Watches', 'Cameras', 'Accessories'],
+    "Men's Fashion": ['Shirts', 'T-Shirts', 'Pants', 'Trousers', 'Jeans', 'Shoes', 'Jackets', 'Ethnic Wear'],
+    "Women's Fashion": ['Tops', 'Kurtis', 'Ethnic Wear', 'Sarees', 'Dresses', 'Jeans', 'Handbags', 'Sandals'],
+    'Home & Living': ['Furniture', 'Kitchen', 'Decor', 'Lighting', 'Bedding', 'Storage'],
+    'Beauty': ['Skincare', 'Makeup', 'Haircare', 'Fragrances', 'Grooming'],
+    'Sports': ['Sports Shoes', 'Gym Equipment', 'Activewear', 'Outdoor Gear', 'Fitness Accessories'],
+    'Accessories': ['Watches', 'Sunglasses', 'Wallets', 'Belts', 'Bags'],
+    "Today's Deals": ['Under ₹499', 'Under ₹999', 'Best Sellers', 'Limited Offers'],
+    'New Arrivals': ['Latest Fashion', 'Latest Electronics', 'Trending Now'],
+    'Trending': ['Most Viewed', 'Most Purchased', "Editor's Picks"]
+};
 
 const LANGUAGES = [
     { code: 'en', name: 'English', native: 'English' },
@@ -255,6 +269,11 @@ export default function Navbar() {
         }
     };
 
+    const handleSubCategoryClick = (category, subcategory) => {
+        setActiveMegaMenu(null);
+        navigate(`/products?category=${encodeURIComponent(category)}&subcategory=${encodeURIComponent(subcategory)}`);
+    };
+
     const handleItemClick = (category, subCategory, item) => {
         setActiveMegaMenu(null);
         navigate(`/products?category=${category}&sub=${subCategory}&item=${item}`);
@@ -419,22 +438,22 @@ export default function Navbar() {
                         </div>
 
                         {/* Mega Menu Dropdown */}
-                        {activeMegaMenu && dynamicMegaData[activeMegaMenu] && (
+                        {activeMegaMenu && (
                             <div className="mega-menu animate-slide-down" onMouseEnter={() => setActiveMegaMenu(activeMegaMenu)}>
                                 <div className="container mega-menu-content">
                                     <div className="mega-sidebar">
-                                        <h3 onClick={() => { navigate(`/products?category=${activeMegaMenu}`); setActiveMegaMenu(null); }} style={{ cursor: 'pointer' }}>
+                                        <h3 onClick={() => { navigate(`/products?category=${encodeURIComponent(activeMegaMenu)}`); setActiveMegaMenu(null); }} style={{ cursor: 'pointer' }}>
                                             {activeMegaMenu}
                                         </h3>
                                         <div className="sidebar-items">
-                                            {dynamicMegaData[activeMegaMenu].categories.map((scat, idx) => (
+                                            {SUBCATEGORIES[activeMegaMenu]?.map((subcategory, idx) => (
                                                 <button
-                                                    key={scat.id}
+                                                    key={subcategory}
                                                     className={activeSubCategory === idx ? 'active' : ''}
                                                     onMouseEnter={() => setActiveSubCategory(idx)}
-                                                    onClick={() => { navigate(`/products?category=${activeMegaMenu}&sub=${scat.name}`); setActiveMegaMenu(null); }}
+                                                    onClick={() => handleSubCategoryClick(activeMegaMenu, subcategory)}
                                                 >
-                                                    {scat.name}
+                                                    {subcategory}
                                                     <ArrowRight size={14} className="arrow" />
                                                 </button>
                                             ))}
@@ -442,12 +461,12 @@ export default function Navbar() {
                                     </div>
 
                                     <div className="mega-main">
-                                        {dynamicMegaData[activeMegaMenu].categories[activeSubCategory] && (
+                                        {SUBCATEGORIES[activeMegaMenu]?.[activeSubCategory] && (
                                             <>
                                                 <div className="mega-title-row">
-                                                    <h4>{dynamicMegaData[activeMegaMenu].categories[activeSubCategory].name}</h4>
+                                                    <h4>{SUBCATEGORIES[activeMegaMenu][activeSubCategory]}</h4>
                                                 </div>
-                                                {dynamicMegaData[activeMegaMenu].categories[activeSubCategory].items.length > 0 ? (
+                                                {dynamicMegaData[activeMegaMenu]?.categories[activeSubCategory]?.items?.length > 0 ? (
                                                     <div className="mega-grid">
                                                         {dynamicMegaData[activeMegaMenu].categories[activeSubCategory].items.map((item, idx) => (
                                                             <div
@@ -467,12 +486,12 @@ export default function Navbar() {
                                                     </div>
                                                 ) : (
                                                     <div className="mega-empty-state">
-                                                        <p>Showing popular products</p>
+                                                        <p>Browse {SUBCATEGORIES[activeMegaMenu][activeSubCategory]} products</p>
                                                         <button 
                                                             className="btn btn-primary"
-                                                            onClick={() => { navigate(`/products?category=${activeMegaMenu}`); setActiveMegaMenu(null); }}
+                                                            onClick={() => { navigate(`/products?category=${encodeURIComponent(activeMegaMenu)}&subcategory=${encodeURIComponent(SUBCATEGORIES[activeMegaMenu][activeSubCategory])}`); setActiveMegaMenu(null); }}
                                                         >
-                                                            Browse All {activeMegaMenu}
+                                                            Browse All {SUBCATEGORIES[activeMegaMenu][activeSubCategory]}
                                                         </button>
                                                     </div>
                                                 )}
@@ -482,11 +501,11 @@ export default function Navbar() {
                                         <div className="mega-footer">
                                             <div className="popular-tags">
                                                 <span className="label">Popular Tags:</span>
-                                                {dynamicMegaData[activeMegaMenu].popular.map(tag => (
+                                                {dynamicMegaData[activeMegaMenu]?.popular?.map(tag => (
                                                     <Link key={tag} to={`/products?search=${tag}`} className="tag" onClick={() => setActiveMegaMenu(null)}>{tag}</Link>
                                                 ))}
                                             </div>
-                                            <Link to={`/products?category=${activeMegaMenu}`} className="explore-link" onClick={() => setActiveMegaMenu(null)}>
+                                            <Link to={`/products?category=${encodeURIComponent(activeMegaMenu)}`} className="explore-link" onClick={() => setActiveMegaMenu(null)}>
                                                 Explore {activeMegaMenu} <ArrowRight size={14} />
                                             </Link>
                                         </div>
@@ -694,8 +713,10 @@ const navStyles = `
 
 .sub-nav {
     display: flex;
-    gap: 2.5rem;
+    justify-content: space-between;
+    align-items: center;
     padding: 0.75rem 0;
+    width: 100%;
 }
 
 .sub-nav-link {
@@ -733,6 +754,42 @@ const navStyles = `
 
 .sub-nav-link svg.rotate {
     transform: rotate(180deg);
+}
+
+/* Responsive Category Navigation */
+@media (max-width: 1200px) {
+    .sub-nav {
+        gap: 1.5rem;
+        justify-content: space-between;
+    }
+}
+
+@media (max-width: 1024px) {
+    .sub-nav {
+        gap: 1rem;
+        justify-content: space-between;
+    }
+    .sub-nav-link {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .sub-nav {
+        gap: 0.75rem;
+        justify-content: flex-start;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .sub-nav::-webkit-scrollbar {
+        display: none;
+    }
+    .sub-nav-link {
+        font-size: 0.8rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
 }
 
 /* Mega Menu Content */

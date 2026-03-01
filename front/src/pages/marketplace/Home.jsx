@@ -7,6 +7,8 @@ import { db } from '../../config/firebase';
 import { addToCart } from '../../utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '../../utils/wishlistUtils';
 import QuickViewModal from '../../components/common/QuickViewModal';
+import Rating from '../../components/common/Rating';
+import { fetchProductReviews } from '../../utils/reviewUtils';
 
 const HERO_SLIDES = [
     {
@@ -280,6 +282,7 @@ export default function Home() {
     const [wishlist, setWishlist] = useState([]);
     const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
     const [selectedQuickProduct, setSelectedQuickProduct] = useState(null);
+    const [productReviews, setProductReviews] = useState({}); // Cache reviews for all products
     const navigate = useNavigate();
 
     // Initial wishlist load is handled by the listener below
@@ -327,6 +330,9 @@ export default function Home() {
                 setFeaturedProducts(featured);
                 setLatestProducts(featured.slice().reverse());
                 setLoading(false);
+                
+                // Fetch reviews for all loaded products
+                fetchReviewsForProducts([...featured]);
             } catch (err) {
                 console.error(err);
                 setLoading(false);
@@ -339,6 +345,30 @@ export default function Home() {
         }, 5000);
         return () => clearInterval(timer);
     }, []);
+
+    // Fetch reviews for products
+    const fetchReviewsForProducts = async (productsToFetch) => {
+        const reviewPromises = productsToFetch.map(async (product) => {
+            try {
+                const { reviews, stats } = await fetchProductReviews(product.id);
+                return { productId: product.id, reviews, stats };
+            } catch (error) {
+                console.error(`Failed to fetch reviews for product ${product.id}:`, error);
+                return { productId: product.id, reviews: [], stats: { averageRating: 0, totalReviews: 0 } };
+            }
+        });
+
+        try {
+            const reviewResults = await Promise.all(reviewPromises);
+            const reviewsMap = {};
+            reviewResults.forEach(result => {
+                reviewsMap[result.productId] = result;
+            });
+            setProductReviews(reviewsMap);
+        } catch (error) {
+            console.error('Error fetching product reviews:', error);
+        }
+    };
 
     const handleAddToCart = async (e, product) => {
         if (e) e.stopPropagation();
@@ -456,11 +486,13 @@ export default function Home() {
                     <h3 className="title">{product.name}</h3>
 
                     <div className="rating-row">
-                        <Star size={14} fill="#FFB800" color="#FFB800" />
-                        <span>{product.rating || 4.5}</span>
-                        {(product.stock === 0 || product.status === 'Out of Stock') && (
-                            <span style={{ color: '#ef4444', marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 800 }}>OUT OF STOCK</span>
-                        )}
+                        <Rating 
+                            averageRating={productReviews[product.id]?.stats?.averageRating || 0}
+                            totalReviews={productReviews[product.id]?.stats?.totalReviews || 0}
+                            size={14}
+                            showCount={true}
+                            className="home-product-rating"
+                        />
                     </div>
 
                     <div className="info-bottom">

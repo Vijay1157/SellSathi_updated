@@ -50,8 +50,10 @@ export async function authFetch(path, options = {}) {
     const currentUser = auth.currentUser;
     if (currentUser) {
         try {
-            // Force-refresh the token to prevent 401 from expired tokens
+            // Force-refresh token to prevent 401 from expired tokens
             const idToken = await currentUser.getIdToken(true);
+            console.log("[authFetch] Generated token (first 50 chars):", idToken.substring(0, 50) + "...");
+            console.log("[authFetch] Full token length:", idToken.length);
             headers['Authorization'] = `Bearer ${idToken}`;
         } catch (err) {
             console.warn('[authFetch] Token refresh failed, falling back to X-Test-UID:', err.message);

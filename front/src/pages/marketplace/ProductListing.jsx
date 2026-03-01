@@ -8,6 +8,8 @@ import { addToCart } from '../../utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '../../utils/wishlistUtils';
 import ReviewModal from '../../components/common/ReviewModal';
 import QuickViewModal from '../../components/common/QuickViewModal';
+import Rating from '../../components/common/Rating';
+import { fetchProductReviews } from '../../utils/reviewUtils';
 
 const CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories"];
 
@@ -24,6 +26,7 @@ export default function ProductListing() {
     const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
     const [selectedQuickProduct, setSelectedQuickProduct] = useState(null);
     const [wishlist, setWishlist] = useState([]);
+    const [productReviews, setProductReviews] = useState({}); // Cache reviews for all products
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -32,8 +35,10 @@ export default function ProductListing() {
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const cat = params.get('category');
+        const subcat = params.get('subcategory');
+        
         if (cat) {
-            setSelectedCategory(cat);
+            setSelectedCategory(cat.trim());
         } else {
             setSelectedCategory('All');
         }
@@ -140,11 +145,17 @@ export default function ProductListing() {
 
                 setProducts(data);
                 setLoading(false);
+                
+                // Fetch reviews for all loaded products
+                fetchReviewsForProducts(data);
             } catch (err) {
                 console.error("Fetch Products Error:", err);
                 // Fallback to purely mock data if quota hit or other error
                 setProducts([...mockData]);
                 setLoading(false);
+                
+                // Fetch reviews for mock data too
+                fetchReviewsForProducts(mockData);
             }
         };
         fetchProducts();
@@ -154,34 +165,75 @@ export default function ProductListing() {
         setWishlist(saved);
     }, []);
 
+    // Fetch reviews for products
+    const fetchReviewsForProducts = async (productsToFetch) => {
+        const reviewPromises = productsToFetch.map(async (product) => {
+            try {
+                const { reviews, stats } = await fetchProductReviews(product.id);
+                return { productId: product.id, reviews, stats };
+            } catch (error) {
+                console.error(`Failed to fetch reviews for product ${product.id}:`, error);
+                return { productId: product.id, reviews: [], stats: { averageRating: 0, totalReviews: 0 } };
+            }
+        });
+
+        try {
+            const reviewResults = await Promise.all(reviewPromises);
+            const reviewsMap = {};
+            reviewResults.forEach(result => {
+                reviewsMap[result.productId] = result;
+            });
+            setProductReviews(reviewsMap);
+        } catch (error) {
+            console.error('Error fetching product reviews:', error);
+        }
+    };
+
     useEffect(() => {
         let result = [...products];
         const params = new URLSearchParams(location.search);
         const searchQuery = params.get('search')?.toLowerCase();
         const subCategory = params.get('sub');
+        const subcategory = params.get('subcategory');
         const itemName = params.get('item');
 
         // Search Filter
         if (searchQuery) {
             result = result.filter(p =>
                 p.name.toLowerCase().includes(searchQuery) ||
-                p.category.toLowerCase().includes(searchQuery)
+                p.category.toLowerCase().includes(searchQuery) ||
+                p.subCategory?.toLowerCase().includes(searchQuery)
             );
         }
 
-        // Category Filter
+        // Category Filter - with proper normalization
         if (selectedCategory !== 'All') {
-            result = result.filter(p => p.category === selectedCategory);
+            result = result.filter(p => 
+                p.category?.toLowerCase().trim() === selectedCategory.toLowerCase().trim()
+            );
         }
 
-        // Sub Category Filter
+        // Subcategory Filter - with proper normalization and both field names
         if (subCategory) {
-            result = result.filter(p => p.subCategory === subCategory || p.category === subCategory);
+            const normalizedSubCategory = subCategory.toLowerCase().trim();
+            result = result.filter(p => 
+                p.subCategory?.toLowerCase().trim() === normalizedSubCategory ||
+                p.category?.toLowerCase().trim() === normalizedSubCategory
+            );
+        } else if (subcategory) {
+            const normalizedSubcategory = subcategory.toLowerCase().trim();
+            result = result.filter(p => 
+                p.subCategory?.toLowerCase().trim() === normalizedSubcategory ||
+                p.category?.toLowerCase().trim() === normalizedSubcategory
+            );
         }
 
         // Specific Item Filter
         if (itemName) {
-            result = result.filter(p => p.name.includes(itemName) || p.tags?.includes(itemName));
+            result = result.filter(p => 
+                p.name.toLowerCase().includes(itemName.toLowerCase()) || 
+                p.tags?.some(tag => tag.toLowerCase().includes(itemName.toLowerCase()))
+            );
         }
 
         // Price Filter
@@ -297,7 +349,12 @@ export default function ProductListing() {
                                 >
                                     <Search size={48} className="text-muted" />
                                     <h2>No products found</h2>
-                                    <p>Try adjusting your filters or search query to find what you're looking for.</p>
+                                    <p>
+                                        {location.search.includes('subcategory') 
+                                            ? 'No products found for this selection. Try browsing other categories or subcategories.'
+                                            : 'Try adjusting your filters or search query to find what you\'re looking for.'
+                                        }
+                                    </p>
                                     <button onClick={() => { setSelectedCategory('All'); setPriceRange(100000); navigate('/products') }} className="btn btn-primary">Clear All Filters</button>
                                 </motion.div>
                             ) : (
@@ -350,9 +407,13 @@ export default function ProductListing() {
                                                 <p className="p-cat">{p.category}</p>
                                                 <h3 className="p-name">{p.name}</h3>
                                                 <div className="p-rating">
-                                                    <Star size={14} fill="#FFB800" color="#FFB800" />
-                                                    <span>{p.rating || 4.8}</span>
-                                                    <span className="p-reviews">({p.reviews || 0})</span>
+                                                    <Rating 
+                                                        averageRating={productReviews[p.id]?.stats?.averageRating || 0}
+                                                        totalReviews={productReviews[p.id]?.stats?.totalReviews || 0}
+                                                        size={14}
+                                                        showCount={true}
+                                                        className="product-card-rating"
+                                                    />
                                                 </div>
                                                 <div className="p-footer">
                                                     <span className="p-price">₹{(p.price || 0).toLocaleString()}</span>
@@ -441,7 +502,25 @@ const listingStyles = `
 .rating-opt input { width: 22px; height: 22px; border-radius: 6px; cursor: pointer; accent-color: var(--primary); }
 
 /* PRODUCT CARD PREMIUM (Shared with Home) */
-.products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2.5rem; }
+.products-grid { 
+    display: grid; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 2.5rem; 
+}
+
+@media (max-width: 1024px) {
+    .products-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .products-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+}
 .product-card-premium { background: white; border-radius: 32px; padding: 1.25rem; border: 1px solid var(--border); transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; height: 100%; cursor: pointer; }
 .product-card-premium:hover { transform: translateY(-10px); box-shadow: 0 20px 50px rgba(0,0,0,0.08); }
 

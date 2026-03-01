@@ -37,8 +37,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
 
     const cleanupRecaptcha = () => {
         if (window.recaptchaVerifier) {
-            try { window.recaptchaVerifier.clear(); } catch (e) { console.log('Recaptcha clear error:', e); }
+            try { 
+                window.recaptchaVerifier.clear(); 
+            } catch (e) { 
+                console.log('Recaptcha clear error:', e); 
+            }
             window.recaptchaVerifier = null;
+        }
+        
+        // Clear the recaptcha container DOM element
+        const container = document.getElementById('recaptcha-container');
+        if (container) {
+            container.innerHTML = '';
         }
     };
 
@@ -63,16 +73,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
 
     const setupRecaptcha = () => {
         cleanupRecaptcha();
-        try {
-            window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-                'size': 'invisible',
-                'callback': () => { },
-                'expired-callback': () => cleanupRecaptcha()
-            });
-        } catch (error) {
-            console.error('Error creating recaptcha verifier:', error);
-            cleanupRecaptcha();
-        }
+        
+        // Add a small delay to ensure DOM is fully cleared
+        setTimeout(() => {
+            try {
+                if (!document.getElementById('recaptcha-container')) {
+                    console.error('Recaptcha container not found');
+                    return;
+                }
+                
+                window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+                    'size': 'invisible',
+                    'callback': () => { },
+                    'expired-callback': () => cleanupRecaptcha()
+                });
+            } catch (error) {
+                console.error('Error creating recaptcha verifier:', error);
+                cleanupRecaptcha();
+            }
+        }, 100);
     };
 
     const handleSendOTP = async (e) => {
@@ -97,7 +116,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
         setLoading(true);
 
         try {
-            setupRecaptcha();
+            // Setup recaptcha and wait for it to be ready
+            await new Promise((resolve) => {
+                setupRecaptcha();
+                setTimeout(resolve, 200); // Wait for recaptcha initialization
+            });
+            
+            if (!window.recaptchaVerifier) {
+                throw new Error('reCAPTCHA initialization failed');
+            }
+            
             const appVerifier = window.recaptchaVerifier;
             const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
             setConfirmationResult(confirmation);

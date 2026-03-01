@@ -3,12 +3,13 @@ const admin = require("firebase-admin");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 require("dotenv").config();
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+const serviceAccount = require("./serviceAccountKey.json");
 
 serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
+    projectId: "sellsathi-94ede"
 });
 
 // Environment flags
@@ -107,6 +108,29 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+// Test endpoint to debug Firebase Admin
+app.get("/test-firebase", async (req, res) => {
+    try {
+        console.log("[TEST] Firebase Admin initialized:", !!admin.auth());
+        console.log("[TEST] Project ID:", admin.app().options.projectId);
+        
+        // Test token verification with a sample token
+        const testToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjMjdhZmY1YzlkNGU1MzAhYyR5pqhaFqs6z0CzOiqzqvLAuMfCIrZHQwFJgt57crBF-mA";
+        
+        try {
+            const decoded = await admin.auth().verifyIdToken(testToken);
+            console.log("[TEST] Token verification successful:", decoded.uid);
+            res.json({ success: true, message: "Firebase Admin working correctly" });
+        } catch (error) {
+            console.error("[TEST] Token verification failed:", error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    } catch (error) {
+        console.error("[TEST] Firebase initialization error:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Root route
 app.get("/", (req, res) => {
     res.json({
@@ -177,9 +201,22 @@ const verifyAuth = async (req, res, next) => {
         }
 
         const idToken = authHeader.split("Bearer ")[1];
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
-        req.user = decodedToken;
-        next();
+        console.log("[AUTH] Received ID token (first 50 chars):", idToken.substring(0, 50) + "...");
+        
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            console.log("[AUTH] Token verified successfully for UID:", decodedToken.uid);
+            console.log("[AUTH] Token claims:", decodedToken);
+            req.user = decodedToken;
+            next();
+        } catch (error) {
+            console.error("[AUTH] Token verification failed:", error);
+            console.error("[AUTH] Full error object:", JSON.stringify(error, null, 2));
+            console.error("[AUTH] Error code:", error.code);
+            console.error("[AUTH] Error message:", error.message);
+            console.error("[AUTH] Error stack:", error.stack);
+            return res.status(401).json({ success: false, message: "Invalid or expired token" });
+        }
     } catch (error) {
         console.error("AUTH MIDDLEWARE ERROR:", error.message);
         return res.status(401).json({ success: false, message: "Invalid or expired token" });
@@ -236,43 +273,44 @@ const verifyAdmin = async (req, res, next) => {
 const TEST_CREDENTIALS = {
     '+917483743936': { otp: '123456', role: 'ADMIN' },
     '+919876543210': { otp: '123456', role: 'CONSUMER' },
-    '+917676879059': { otp: '123456', role: 'CONSUMER' },
-    '+919353469036': { otp: '741852', role: 'SELLER' }, // Test seller
-    // Add the actual seller phone numbers used in your DB here if different:
 };
 
 app.post("/auth/login", async (req, res) => {
-    try {
-        const { idToken, isTest, email: testEmail } = req.body;
+try {
+const { idToken, isTest, email: testEmail } = req.body;
+console.log("[LOGIN] Request body:", { idToken: idToken ? "RECEIVED" : "MISSING", isTest, email: testEmail });
 
-        let uid;
-        let phoneNumber = null;
-        let email = null;
-        let fullName = null;
+let uid;
+let phoneNumber = null;
+let email = null;
+let fullName = null;
 
-        if (isTest) {
-            // Bypass for dev mode
-            uid = `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
-            email = testEmail;
-            fullName = testEmail?.split('@')[0] || "Test User";
-        } else {
-            if (!idToken) {
-                return res.status(400).json({
-                    success: false,
-                    message: "ID token is required",
-                });
-            }
+if (isTest) {
+// Bypass for dev mode
+uid = `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
+email = testEmail;
+fullName = testEmail?.split('@')[0] || "Test User";
+console.log("[LOGIN] Using test mode for:", email);
+} else {
+if (!idToken) {
+return res.status(400).json({
+success: false,
+message: "ID token is required",
+});
+}
 
-            const decodedToken = await admin.auth().verifyIdToken(idToken);
-            uid = decodedToken.uid;
-            phoneNumber = decodedToken.phone_number || null;
-            email = decodedToken.email || null;
-            fullName = decodedToken.name || null;
-        }
+console.log("[LOGIN] Attempting to verify ID token...");
+const decodedToken = await admin.auth().verifyIdToken(idToken);
+console.log("[LOGIN] Token decoded successfully:", decodedToken.uid);
+uid = decodedToken.uid;
+phoneNumber = decodedToken.phone_number || null;
+email = decodedToken.email || null;
+fullName = decodedToken.name || null;
+}
 
 
-        const userRef = db.collection("users").doc(uid);
-        const userSnap = await userRef.get();
+const userRef = db.collection("users").doc(uid);
+const userSnap = await userRef.get();
 
         if (!userSnap.exists) {
             await userRef.set({
