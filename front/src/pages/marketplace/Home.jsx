@@ -8,6 +8,7 @@ import { addToCart } from '../../utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '../../utils/wishlistUtils';
 import QuickViewModal from '../../components/common/QuickViewModal';
 import Rating from '../../components/common/Rating';
+import PriceDisplay from '../../components/common/PriceDisplay';
 import { fetchProductReviews } from '../../utils/reviewUtils';
 
 const HERO_SLIDES = [
@@ -296,7 +297,12 @@ export default function Home() {
                 // Fetch Featured
                 const qFeatured = query(productsCol, limit(8));
                 const snapFeatured = await getDocs(qFeatured);
-                let featured = snapFeatured.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                let featured = snapFeatured.docs.map(doc => {
+                    const d = { id: doc.id, ...doc.data() };
+                    // Seller products store `title` instead of `name` — normalize here
+                    if (!d.name && d.title) d.name = d.title;
+                    return d;
+                });
 
                 // Add fallback mock data if Firestore is empty
                 if (featured.length === 0) {
@@ -330,7 +336,7 @@ export default function Home() {
                 setFeaturedProducts(featured);
                 setLatestProducts(featured.slice().reverse());
                 setLoading(false);
-                
+
                 // Fetch reviews for all loaded products
                 fetchReviewsForProducts([...featured]);
             } catch (err) {
@@ -373,7 +379,9 @@ export default function Home() {
     const handleAddToCart = async (e, product) => {
         if (e) e.stopPropagation();
         const res = await addToCart(product);
-        if (res.success) navigate('/checkout');
+        if (res.success) {
+            alert('✅ Product added to cart successfully!');
+        }
     };
 
     // Listen to wishlist changes
@@ -486,7 +494,7 @@ export default function Home() {
                     <h3 className="title">{product.name}</h3>
 
                     <div className="rating-row">
-                        <Rating 
+                        <Rating
                             averageRating={productReviews[product.id]?.stats?.averageRating || 0}
                             totalReviews={productReviews[product.id]?.stats?.totalReviews || 0}
                             size={14}
@@ -496,10 +504,7 @@ export default function Home() {
                     </div>
 
                     <div className="info-bottom">
-                        <div className="price-group">
-                            <span className="current-price">₹{(product.price || 0).toLocaleString()}</span>
-                            {product.oldPrice && <span className="old-price">₹{product.oldPrice.toLocaleString()}</span>}
-                        </div>
+                        <PriceDisplay product={product} size="sm" />
                         <button
                             onClick={(e) => handleAddToCart(e, product)}
                             className="add-to-cart-simple"

@@ -9,6 +9,8 @@ import { Ruler, ShoppingCart, Heart, Shield, Truck, RotateCcw, ArrowLeft, ArrowR
 import { motion, AnimatePresence } from 'framer-motion';
 import SizeChartModal from '../../components/common/SizeChartModal';
 import Rating from '../../components/common/Rating';
+import PriceDisplay from '../../components/common/PriceDisplay';
+import { getProductPricing } from '../../utils/priceUtils';
 import { fetchProductReviews, calculateRatingStats, clearProductReviewCache } from '../../utils/reviewUtils';
 
 const ExpandableText = ({ text, maxLength = 180 }) => {
@@ -59,6 +61,17 @@ export default function ProductDetail() {
     const [seller, setSeller] = useState(null);
     const [isEligibleForReview, setIsEligibleForReview] = useState(false);
     const [eligibleOrder, setEligibleOrder] = useState(null);
+
+    // Consolidated Price Calculation
+    const productPriceInfo = useMemo(() => {
+        return getProductPricing(product, {
+            size: selectedSize,
+            storage: selectedStorage,
+            memory: selectedMemory,
+            purchaseOption: purchaseOption
+        });
+    }, [product, selectedSize, selectedStorage, selectedMemory, purchaseOption]);
+
     const images = product?.images || [product?.image || product?.imageUrl];
 
     const nextImage = () => setActiveImageIndex((prev) => (prev + 1) % images.length);
@@ -68,52 +81,66 @@ export default function ProductDetail() {
         let unsubscribeSeller = null;
         let unsubscribeUser = null;
 
-        const setupSellerListener = (sellerId) => {
-            if (!sellerId) {
-                setSeller({
-                    name: "SellSathi Verified Hub",
-                    shopName: "SellSathi Official Store",
-                    companyName: "Antigravity Solutions Pvt Ltd",
-                    city: "New Delhi, India",
-                    category: "Verified Retailer",
-                    joinedAt: new Date('2023-01-01')
-                });
+        const setupSellerListener = async (sellerId) => {
+            if (!sellerId || sellerId === "system_generated" || sellerId === "official") {
+                setSeller(null);
                 return;
             }
 
-            unsubscribeSeller = onSnapshot(doc(db, "sellers", sellerId), (sSnap) => {
-                if (sSnap.exists()) {
-                    const sData = sSnap.data();
+            // Primary: Fetch seller via public backend API (no auth needed, avoids Firestore quota)
+            try {
+                const response = await fetch(`${API_BASE}/api/seller/${sellerId}/public-profile`);
+                const data = await response.json();
 
-                    unsubscribeUser = onSnapshot(doc(db, "users", sellerId), (uSnap) => {
-                        const uData = uSnap.exists() ? uSnap.data() : {};
-
-                        let city = "N/A";
-                        if (sData.address) {
-                            const parts = sData.address.split(',');
-                            city = parts.length > 1 ? parts[parts.length - 2].trim() : parts[0].trim();
-                        }
-
-                        setSeller({
-                            name: uData.fullName || sData.extractedName || "Professional Seller",
-                            shopName: sData.shopName || "SellSathi Partner",
-                            companyName: sData.shopName || "SellSathi Registered Hub",
-                            city: city,
-                            category: sData.category || "General",
-                            joinedAt: sData.appliedAt ? (sData.appliedAt.toDate ? sData.appliedAt.toDate() : new Date(sData.appliedAt._seconds * 1000)) : null
-                        });
-                    });
-                } else {
+                if (data.success && data.seller) {
+                    const s = data.seller;
                     setSeller({
-                        name: "SellSathi Verified Hub",
-                        shopName: "SellSathi Official Store",
-                        companyName: "Antigravity Solutions Pvt Ltd",
-                        city: "New Delhi, India",
-                        category: "Verified Retailer",
-                        joinedAt: new Date('2023-01-01')
+                        name: s.name || "Verified Seller",
+                        shopName: s.shopName || "SellSathi Partner",
+                        companyName: s.shopName || "Registered Hub",
+                        city: s.city || "India",
+                        category: s.category || "General",
+                        joinedAt: s.joinedAt ? new Date(s.joinedAt) : null
                     });
+                    return;
                 }
-            });
+            } catch (apiErr) {
+                console.log("API seller fetch failed, trying Firestore:", apiErr.message);
+            }
+
+            // Fallback: Firestore direct
+            try {
+                unsubscribeSeller = onSnapshot(doc(db, "sellers", sellerId), (sSnap) => {
+                    if (sSnap.exists()) {
+                        const sData = sSnap.data();
+                        if (sData.sellerStatus !== 'APPROVED') { setSeller(null); return; }
+
+                        unsubscribeUser = onSnapshot(doc(db, "users", sellerId), (uSnap) => {
+                            const uData = uSnap.exists() ? uSnap.data() : {};
+                            let city = "India";
+                            if (sData.address) {
+                                const parts = sData.address.split(',').map(p => p.trim());
+                                const vtcPart = parts.find(p => p.startsWith('VTC:'));
+                                if (vtcPart) city = vtcPart.replace('VTC:', '').trim();
+                                else if (parts.length >= 2) city = parts[1];
+                                else city = parts[0];
+                            }
+                            setSeller({
+                                name: uData.fullName || sData.extractedName || "Verified Seller",
+                                shopName: sData.shopName || "SellSathi Partner",
+                                companyName: sData.shopName || "Registered Hub",
+                                city, category: sData.category || "General",
+                                joinedAt: sData.approvedAt ?
+                                    (sData.approvedAt.toDate ? sData.approvedAt.toDate() : new Date(sData.approvedAt._seconds * 1000)) :
+                                    (sData.appliedAt ? (sData.appliedAt.toDate ? sData.appliedAt.toDate() : new Date(sData.appliedAt._seconds * 1000)) : null)
+                            });
+                        }, () => setSeller(null));
+                    } else { setSeller(null); }
+                }, () => setSeller(null));
+            } catch (err) {
+                console.error("All seller fetch methods failed:", err);
+                setSeller(null);
+            }
         };
 
         const fetchProduct = async () => {
@@ -137,6 +164,8 @@ export default function ProductDetail() {
 
                 if (data) {
                     data.id = data.id || id;
+                    // Normalise: seller products store `title` not `name`
+                    if (!data.name && data.title) data.name = data.title;
                     setProduct(data);
                     if (data.colors && data.colors.length > 0) setSelectedColor(data.colors[0]);
                     if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[1] || data.sizes[0]);
@@ -300,15 +329,15 @@ export default function ProductDetail() {
                 setNewReview({ rating: 5, title: '', body: '', images: [] });
                 setIsEligibleForReview(false); // Can't review twice for same order
                 setEligibleOrder(null);
-                
+
                 // Clear cache for this product to force refresh
                 clearProductReviewCache(id);
-                
+
                 // Dispatch event to update UI across components
-                window.dispatchEvent(new CustomEvent('reviewsUpdate', { 
-                    detail: { productId: id, review: data.review } 
+                window.dispatchEvent(new CustomEvent('reviewsUpdate', {
+                    detail: { productId: id, review: data.review }
                 }));
-                
+
                 alert('✅ Review submitted successfully! It will be visible after a short processing time.');
             } else {
                 alert('❌ Failed to submit review: ' + data.message);
@@ -656,9 +685,9 @@ export default function ProductDetail() {
                     {/* Right: Info & Config */}
                     <div className="pd-info">
                         <div className="info-header">
-                            <h1 className="main-title">{product.name}</h1>
+                            <h1 className="main-title">{product.name || product.title}</h1>
                             <div className="rating-row">
-                                <Rating 
+                                <Rating
                                     averageRating={reviewStats.average || 0}
                                     totalReviews={reviewStats.total || 0}
                                     size={16}
@@ -675,39 +704,16 @@ export default function ProductDetail() {
                             </div>
                         </div>
                         <div className="price-box glass-card">
-                            <div className="price-row">
-                                <span className="final-price">
-                                    ₹{(() => {
-                                        let basePrice = product.price || 0;
-                                        // Size-varied pricing
-                                        if (product.pricingType === 'varied' && product.sizePrices && selectedSize && product.sizePrices[selectedSize]) {
-                                            basePrice = Number(product.sizePrices[selectedSize]);
-                                        }
-                                        // Variant price offsets (storage, memory)
-                                        if (selectedStorage && typeof selectedStorage === 'object' && selectedStorage.priceOffset) {
-                                            basePrice += Number(selectedStorage.priceOffset);
-                                        }
-                                        if (selectedMemory && typeof selectedMemory === 'object' && selectedMemory.priceOffset) {
-                                            basePrice += Number(selectedMemory.priceOffset);
-                                        }
-                                        if (purchaseOption === 'exchange') basePrice *= 0.9;
-                                        return basePrice.toLocaleString();
-                                    })()}
-                                </span>
-                                {product.oldPrice && (
-                                    <span className="original-price">
-                                        ₹{Number(product.oldPrice).toLocaleString()}
-                                    </span>
-                                )}
-                                {product.discountPrice && !product.oldPrice && (
-                                    <span className="original-price">
-                                        ₹{Number(product.discountPrice).toLocaleString()}
-                                    </span>
-                                )}
-                                <span className="discount-tag">
-                                    {purchaseOption === 'exchange' ? '23% off' : (product.discount || (product.oldPrice ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100) + '%' : (product.discountPrice ? Math.round(((product.price - product.discountPrice) / product.price) * 100) + '% off' : '')))}
-                                </span>
-                            </div>
+                            <PriceDisplay
+                                product={product}
+                                selections={{
+                                    size: selectedSize,
+                                    storage: selectedStorage,
+                                    memory: selectedMemory,
+                                    purchaseOption: purchaseOption
+                                }}
+                                size="lg"
+                            />
                             <div className={`stock-status ${(product.stock === 0 || product.status === 'Out of Stock') ? 'out' : 'in'}`}>
                                 {(product.stock === 0 || product.status === 'Out of Stock') ? 'Out of Stock' : `In Stock${product.stock ? ` (${product.stock} units)` : ''}`}
                             </div>
@@ -728,14 +734,14 @@ export default function ProductDetail() {
                                     className={`opt-card ${purchaseOption === 'standard' ? 'active' : ''}`}
                                     onClick={() => setPurchaseOption('standard')}
                                 >
-                                    <span className="p">₹{(product.price || 0).toLocaleString()}</span>
+                                    <span className="p">₹{Math.round(productPriceInfo.baseSellingPrice).toLocaleString()}</span>
                                     <span className="l">Buy without exchange</span>
                                 </div>
                                 <div
                                     className={`opt-card ${purchaseOption === 'exchange' ? 'active' : ''}`}
                                     onClick={() => setPurchaseOption('exchange')}
                                 >
-                                    <span className="p">₹{((product.price || 0) * 0.9).toLocaleString()}</span>
+                                    <span className="p">₹{Math.round(productPriceInfo.baseSellingPrice * 1.1).toLocaleString()}</span>
                                     <span className="l">Buy with exchange</span>
                                 </div>
                             </div>
@@ -863,7 +869,7 @@ export default function ProductDetail() {
                         <div className="block-header">
                             <h2>Customer Reviews</h2>
                             <div className="header-stats">
-                                <Rating 
+                                <Rating
                                     averageRating={reviewStats.average || 0}
                                     totalReviews={reviewStats.total || 0}
                                     size={16}

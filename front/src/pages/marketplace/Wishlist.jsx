@@ -4,6 +4,7 @@ import { Heart, ShoppingCart, Trash2, ArrowLeft, Star, ShoppingBag } from 'lucid
 import { motion, AnimatePresence } from 'framer-motion';
 import { addToCart } from '../../utils/cartUtils';
 import { listenToWishlist, removeFromWishlist as removeFromWishlistAPI } from '../../utils/wishlistUtils';
+import PriceDisplay from '../../components/common/PriceDisplay';
 
 export default function Wishlist() {
     const [wishlist, setWishlist] = useState([]);
@@ -30,7 +31,7 @@ export default function Wishlist() {
     const handleAddToCart = async (product) => {
         const res = await addToCart(product);
         if (res.success) {
-            navigate('/checkout');
+            alert('✅ Product added to cart successfully!');
         }
     };
 
@@ -87,11 +88,11 @@ export default function Wishlist() {
                                 className="wishlist-card glass-card"
                             >
                                 <div className="card-media" onClick={() => navigate(`/product/${item.id}`)}>
-                                    <img src={item.image || item.imageUrl} alt={item.name} />
+                                    <img src={item.image || item.imageUrl} alt={item.name || item.title} />
                                 </div>
                                 <div className="card-info">
                                     <div className="info-top">
-                                        <h3 onClick={() => navigate(`/product/${item.id}`)}>{item.name}</h3>
+                                        <h3 onClick={() => navigate(`/product/${item.id}`)}>{item.name || item.title}</h3>
                                         <button className="remove-btn" onClick={() => removeFromWishlist(item.id)} title="Remove">
                                             <Trash2 size={18} />
                                         </button>
@@ -101,8 +102,7 @@ export default function Wishlist() {
                                         <span>{item.rating || 4.5}</span>
                                     </div>
                                     <div className="price-row">
-                                        <span className="current-price">₹{item.price?.toLocaleString()}</span>
-                                        {item.oldPrice && <span className="old-price">₹{item.oldPrice.toLocaleString()}</span>}
+                                        <PriceDisplay product={item} size="sm" />
                                     </div>
                                     <div className="card-actions">
                                         <button className="add-cart-btn" onClick={() => handleAddToCart(item)}>

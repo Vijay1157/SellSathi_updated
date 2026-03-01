@@ -2,6 +2,8 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Star, ShoppingCart, Heart, Clock } from 'lucide-react';
 import { addToCart } from '../../utils/cartUtils';
+import { getProductPricing } from '../../utils/priceUtils';
+import PriceDisplay from './PriceDisplay';
 
 export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
     if (!product) return null;
@@ -24,6 +26,15 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
         if (product.colors && product.colors.length > 0) setSelectedColor(product.colors[0]);
         if (product.sizes && product.sizes.length > 0) setSelectedSize(product.sizes[0]);
     }, [product.id]);
+
+    const priceInfo = React.useMemo(() => {
+        return getProductPricing(product, {
+            size: selectedSize,
+            storage: selectedStorage,
+            memory: selectedMemory,
+            purchaseOption: purchaseOption
+        });
+    }, [product, selectedSize, selectedStorage, selectedMemory, purchaseOption]);
 
     const toggleWishlist = (e) => {
         e.stopPropagation();
@@ -55,8 +66,8 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
         };
         const res = await addToCart(product, selections);
         if (res.success) {
+            alert('✅ Product added to cart successfully!');
             onClose();
-            navigate('/checkout');
         }
     };
 
@@ -97,13 +108,16 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                                 </div>
 
                                 <div className="qv-price-row">
-                                    <span className="qv-price">
-                                        ₹{(purchaseOption === 'exchange' ? (product.price || 0) * 0.9 : (product.price || 0)).toLocaleString()}
-                                    </span>
-                                    {product.oldPrice && <span className="qv-old-price">₹{(product.oldPrice || 0).toLocaleString()}</span>}
-                                    <span className="qv-discount-text">
-                                        ({purchaseOption === 'exchange' ? '23% off' : (product.discount || '13% off')})
-                                    </span>
+                                    <PriceDisplay
+                                        product={product}
+                                        selections={{
+                                            size: selectedSize,
+                                            storage: selectedStorage,
+                                            memory: selectedMemory,
+                                            purchaseOption: purchaseOption
+                                        }}
+                                        size="md"
+                                    />
                                 </div>
 
                                 <div className={`stock-status ${(product.stock === 0 || product.status === 'Out of Stock') ? 'out' : 'in'}`}>
@@ -126,14 +140,14 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                                             className={`qv-opt-card ${purchaseOption === 'standard' ? 'active' : ''}`}
                                             onClick={() => setPurchaseOption('standard')}
                                         >
-                                            <span className="p">₹{(product.price || 0).toLocaleString()}</span>
+                                            <span className="p">₹{Math.round(priceInfo.strikethroughPrice).toLocaleString()}</span>
                                             <span className="l">Buy without exchange</span>
                                         </div>
                                         <div
                                             className={`qv-opt-card ${purchaseOption === 'exchange' ? 'active' : ''}`}
                                             onClick={() => setPurchaseOption('exchange')}
                                         >
-                                            <span className="p">₹{((product.price || 0) * 0.9).toLocaleString()}</span>
+                                            <span className="p">₹{Math.round(priceInfo.finalPrice).toLocaleString()}</span>
                                             <span className="l">Buy with exchange</span>
                                         </div>
                                     </div>

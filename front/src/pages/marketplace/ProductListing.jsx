@@ -10,6 +10,7 @@ import ReviewModal from '../../components/common/ReviewModal';
 import QuickViewModal from '../../components/common/QuickViewModal';
 import Rating from '../../components/common/Rating';
 import { fetchProductReviews } from '../../utils/reviewUtils';
+import PriceDisplay from '../../components/common/PriceDisplay';
 
 const CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories"];
 
@@ -36,7 +37,7 @@ export default function ProductListing() {
         const params = new URLSearchParams(location.search);
         const cat = params.get('category');
         const subcat = params.get('subcategory');
-        
+
         if (cat) {
             setSelectedCategory(cat.trim());
         } else {
@@ -136,7 +137,12 @@ export default function ProductListing() {
             try {
                 const q = query(collection(db, "products"), limit(20));
                 const snap = await getDocs(q);
-                let data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                let data = snap.docs.map(doc => {
+                    const d = { id: doc.id, ...doc.data() };
+                    // Seller products store `title` instead of `name` — normalize here
+                    if (!d.name && d.title) d.name = d.title;
+                    return d;
+                });
 
                 // Merge and ensure all mock products are added even if database has items
                 const existingIds = new Set(data.map(p => p.id));
@@ -145,7 +151,7 @@ export default function ProductListing() {
 
                 setProducts(data);
                 setLoading(false);
-                
+
                 // Fetch reviews for all loaded products
                 fetchReviewsForProducts(data);
             } catch (err) {
@@ -153,7 +159,7 @@ export default function ProductListing() {
                 // Fallback to purely mock data if quota hit or other error
                 setProducts([...mockData]);
                 setLoading(false);
-                
+
                 // Fetch reviews for mock data too
                 fetchReviewsForProducts(mockData);
             }
@@ -200,39 +206,40 @@ export default function ProductListing() {
         // Search Filter
         if (searchQuery) {
             result = result.filter(p =>
-                p.name.toLowerCase().includes(searchQuery) ||
-                p.category.toLowerCase().includes(searchQuery) ||
-                p.subCategory?.toLowerCase().includes(searchQuery)
+                (p.name && p.name.toLowerCase().includes(searchQuery)) ||
+                (p.category && p.category.toLowerCase().includes(searchQuery)) ||
+                (p.subCategory && p.subCategory.toLowerCase().includes(searchQuery))
             );
         }
 
         // Category Filter - with proper normalization
         if (selectedCategory !== 'All') {
-            result = result.filter(p => 
-                p.category?.toLowerCase().trim() === selectedCategory.toLowerCase().trim()
+            result = result.filter(p =>
+                p.category?.toLowerCase()?.trim() === selectedCategory.toLowerCase().trim()
             );
         }
 
         // Subcategory Filter - with proper normalization and both field names
         if (subCategory) {
             const normalizedSubCategory = subCategory.toLowerCase().trim();
-            result = result.filter(p => 
-                p.subCategory?.toLowerCase().trim() === normalizedSubCategory ||
-                p.category?.toLowerCase().trim() === normalizedSubCategory
+            result = result.filter(p =>
+                p.subCategory?.toLowerCase()?.trim() === normalizedSubCategory ||
+                p.category?.toLowerCase()?.trim() === normalizedSubCategory
             );
         } else if (subcategory) {
             const normalizedSubcategory = subcategory.toLowerCase().trim();
-            result = result.filter(p => 
-                p.subCategory?.toLowerCase().trim() === normalizedSubcategory ||
-                p.category?.toLowerCase().trim() === normalizedSubcategory
+            result = result.filter(p =>
+                p.subCategory?.toLowerCase()?.trim() === normalizedSubcategory ||
+                p.category?.toLowerCase()?.trim() === normalizedSubcategory
             );
         }
 
         // Specific Item Filter
         if (itemName) {
-            result = result.filter(p => 
-                p.name.toLowerCase().includes(itemName.toLowerCase()) || 
-                p.tags?.some(tag => tag.toLowerCase().includes(itemName.toLowerCase()))
+            const queryName = itemName.toLowerCase();
+            result = result.filter(p =>
+                (p.name && p.name.toLowerCase().includes(queryName)) ||
+                (p.tags && p.tags.some(tag => tag.toLowerCase().includes(queryName)))
             );
         }
 
@@ -296,7 +303,9 @@ export default function ProductListing() {
 
     const handleAddToCart = async (p) => {
         const res = await addToCart(p);
-        if (res.success) navigate('/checkout');
+        if (res.success) {
+            alert('✅ Product added to cart successfully!');
+        }
     };
 
     return (
@@ -350,7 +359,7 @@ export default function ProductListing() {
                                     <Search size={48} className="text-muted" />
                                     <h2>No products found</h2>
                                     <p>
-                                        {location.search.includes('subcategory') 
+                                        {location.search.includes('subcategory')
                                             ? 'No products found for this selection. Try browsing other categories or subcategories.'
                                             : 'Try adjusting your filters or search query to find what you\'re looking for.'
                                         }
@@ -407,7 +416,7 @@ export default function ProductListing() {
                                                 <p className="p-cat">{p.category}</p>
                                                 <h3 className="p-name">{p.name}</h3>
                                                 <div className="p-rating">
-                                                    <Rating 
+                                                    <Rating
                                                         averageRating={productReviews[p.id]?.stats?.averageRating || 0}
                                                         totalReviews={productReviews[p.id]?.stats?.totalReviews || 0}
                                                         size={14}
@@ -416,7 +425,9 @@ export default function ProductListing() {
                                                     />
                                                 </div>
                                                 <div className="p-footer">
-                                                    <span className="p-price">₹{(p.price || 0).toLocaleString()}</span>
+                                                    <div className="p-price-group">
+                                                        <PriceDisplay product={p} size="sm" />
+                                                    </div>
                                                     {(p.stock === 0 || p.status === 'Out of Stock') && (
                                                         <span style={{ color: '#ef4444', fontSize: '0.65rem', fontWeight: 900, marginRight: '0.5rem', textTransform: 'uppercase' }}>OUT OF STOCK</span>
                                                     )}
@@ -540,8 +551,10 @@ const listingStyles = `
 .p-name { font-size: 1.25rem; font-weight: 850; margin-bottom: 1rem; color: var(--text); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .p-rating { display: flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; font-weight: 700; margin-bottom: 1.5rem; }
 .p-reviews { opacity: 0.5; font-weight: 600; }
-.p-footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
-.p-price { font-size: 1.8rem; font-weight: 900; color: var(--text); }
+.p-footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.p-price-group { display: flex; flex-direction: column; gap: 0.1rem; }
+.p-price { font-size: 1.6rem; font-weight: 950; color: var(--text); line-height: 1; }
+.p-old-price { font-size: 0.9rem; font-weight: 700; color: var(--text-muted); text-decoration: line-through; opacity: 0.7; }
 .add-to-cart-simple { width: 56px; height: 56px; background: #1E293B; color: white; border-radius: 18px; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
 .add-to-cart-simple:hover { background: var(--primary); transform: scale(1.1); box-shadow: 0 8px 15px rgba(99, 102, 241, 0.3); }
 

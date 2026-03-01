@@ -1,0 +1,74 @@
+[
+  {
+    "id": "1jSfM0mszoKBs85BtZhg",
+    "title": "abcd",
+    "price": "500",
+    "discountPrice": "150"
+  },
+  {
+    "id": "30VSjyDCxrHPxQ9thUk8",
+    "title": "towel 2 ",
+    "price": 200,
+    "discountPrice": ""
+  },
+  {
+    "id": "36RvluRVzwt6MLal1mQv",
+    "title": "puma cap",
+    "price": 500,
+    "discountPrice": ""
+  },
+  {
+    "id": "7lF1qJ21Ey41NGulxM8V",
+    "title": "silk saree",
+    "price": 600,
+    "discountPrice": "248"
+  },
+  {
+    "id": "BZl0G7KeUm6RtoMe8OrD",
+    "title": "dhoti 2",
+    "price": 103,
+    "discountPrice": null
+  },
+  {
+    "id": "D5DP9sfqvrMpjx1ryAj2",
+    "title": "poiu",
+    "price": 180,
+    "discountPrice": 10
+  },
+  {
+    "id": "DSSgPKi1baooWonagyLJ",
+    "title": "wr",
+    "price": 4711,
+    "discountPrice": 41
+  },
+  {
+    "id": "Em9oNRpHqoKg5bztKiol",
+    "title": "dhoti",
+    "price": 150,
+    "discountPrice": ""
+  },
+  {
+    "id": "WBz1blzX3LVjXn40ZXkT",
+    "title": "abc",
+    "price": 200,
+    "discountPrice": null
+  },
+  {
+    "id": "WuJ72MHdMGrndX3lDfz9",
+    "title": "capzzz",
+    "price": 200,
+    "discountPrice": null
+  },
+  {
+    "id": "oCN2kh38e8J9hAJEv425",
+    "title": "Tshirt",
+    "price": "400",
+    "discountPrice": "500"
+  },
+  {
+    "id": "unjiHvEuOzyGIeMX8eck",
+    "title": "towel",
+    "price": 100,
+    "discountPrice": null
+  }
+]

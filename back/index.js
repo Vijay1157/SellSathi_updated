@@ -113,10 +113,10 @@ app.get("/test-firebase", async (req, res) => {
     try {
         console.log("[TEST] Firebase Admin initialized:", !!admin.auth());
         console.log("[TEST] Project ID:", admin.app().options.projectId);
-        
+
         // Test token verification with a sample token
         const testToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjMjdhZmY1YzlkNGU1MzAhYyR5pqhaFqs6z0CzOiqzqvLAuMfCIrZHQwFJgt57crBF-mA";
-        
+
         try {
             const decoded = await admin.auth().verifyIdToken(testToken);
             console.log("[TEST] Token verification successful:", decoded.uid);
@@ -202,7 +202,7 @@ const verifyAuth = async (req, res, next) => {
 
         const idToken = authHeader.split("Bearer ")[1];
         console.log("[AUTH] Received ID token (first 50 chars):", idToken.substring(0, 50) + "...");
-        
+
         try {
             const decodedToken = await admin.auth().verifyIdToken(idToken);
             console.log("[AUTH] Token verified successfully for UID:", decodedToken.uid);
@@ -276,41 +276,41 @@ const TEST_CREDENTIALS = {
 };
 
 app.post("/auth/login", async (req, res) => {
-try {
-const { idToken, isTest, email: testEmail } = req.body;
-console.log("[LOGIN] Request body:", { idToken: idToken ? "RECEIVED" : "MISSING", isTest, email: testEmail });
+    try {
+        const { idToken, isTest, email: testEmail } = req.body;
+        console.log("[LOGIN] Request body:", { idToken: idToken ? "RECEIVED" : "MISSING", isTest, email: testEmail });
 
-let uid;
-let phoneNumber = null;
-let email = null;
-let fullName = null;
+        let uid;
+        let phoneNumber = null;
+        let email = null;
+        let fullName = null;
 
-if (isTest) {
-// Bypass for dev mode
-uid = `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
-email = testEmail;
-fullName = testEmail?.split('@')[0] || "Test User";
-console.log("[LOGIN] Using test mode for:", email);
-} else {
-if (!idToken) {
-return res.status(400).json({
-success: false,
-message: "ID token is required",
-});
-}
+        if (isTest) {
+            // Bypass for dev mode
+            uid = `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
+            email = testEmail;
+            fullName = testEmail?.split('@')[0] || "Test User";
+            console.log("[LOGIN] Using test mode for:", email);
+        } else {
+            if (!idToken) {
+                return res.status(400).json({
+                    success: false,
+                    message: "ID token is required",
+                });
+            }
 
-console.log("[LOGIN] Attempting to verify ID token...");
-const decodedToken = await admin.auth().verifyIdToken(idToken);
-console.log("[LOGIN] Token decoded successfully:", decodedToken.uid);
-uid = decodedToken.uid;
-phoneNumber = decodedToken.phone_number || null;
-email = decodedToken.email || null;
-fullName = decodedToken.name || null;
-}
+            console.log("[LOGIN] Attempting to verify ID token...");
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            console.log("[LOGIN] Token decoded successfully:", decodedToken.uid);
+            uid = decodedToken.uid;
+            phoneNumber = decodedToken.phone_number || null;
+            email = decodedToken.email || null;
+            fullName = decodedToken.name || null;
+        }
 
 
-const userRef = db.collection("users").doc(uid);
-const userSnap = await userRef.get();
+        const userRef = db.collection("users").doc(uid);
+        const userSnap = await userRef.get();
 
         if (!userSnap.exists) {
             await userRef.set({
@@ -2051,8 +2051,9 @@ app.post("/seller/product/add", verifyAuth, async (req, res) => {
         const newProduct = {
             title: productData.title || productData.name,
             name: productData.title || productData.name,
-            price: price,
+            price: price, // This is effectively the Selling Price
             discountPrice: productData.discountPrice || null,
+            oldPrice: productData.discountPrice ? (productData.price || null) : null, // Original MRP if discount exists
             category: productData.category,
             description: productData.description || "",
             image: productData.image || "",
@@ -2167,19 +2168,80 @@ app.get("/seller/:uid/profile", verifyAuth, async (req, res) => {
         ]);
         if (!sellerSnap.exists) return res.status(404).json({ success: false, message: "Seller profile not found" });
         const sellerData = sellerSnap.data();
-        const userData = userSnap.data();
+        const userData = userSnap.exists ? userSnap.data() : {};
         return res.status(200).json({
             success: true,
             profile: {
                 shopName: sellerData.shopName,
-                name: userData?.name || sellerData.shopName,
+                name: userData?.fullName || userData?.name || sellerData.extractedName || sellerData.shopName,
                 phone: sellerData.phone,
                 category: sellerData.category,
-                status: sellerData.sellerStatus
+                status: sellerData.sellerStatus,
+                address: sellerData.address || '',
+                extractedName: sellerData.extractedName || ''
             }
         });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to fetch profile" });
+    }
+});
+
+// GET /api/seller/:uid/public-profile - Public endpoint for product pages (no auth required)
+app.get("/api/seller/:uid/public-profile", async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const [sellerSnap, userSnap] = await Promise.all([
+            db.collection("sellers").doc(uid).get(),
+            db.collection("users").doc(uid).get()
+        ]);
+        if (!sellerSnap.exists) return res.status(404).json({ success: false, message: "Seller not found" });
+        const sellerData = sellerSnap.data();
+        const userData = userSnap.exists ? userSnap.data() : {};
+
+        // Only return data for APPROVED sellers
+        if (sellerData.sellerStatus !== 'APPROVED') {
+            return res.status(404).json({ success: false, message: "Seller not found" });
+        }
+
+        // Parse city from address
+        let city = "India";
+        if (sellerData.address) {
+            const parts = sellerData.address.split(',').map(p => p.trim()).filter(p => p.length > 0);
+            const vtcPart = parts.find(p => p.startsWith('VTC:'));
+            const statePart = parts.find(p => p.startsWith('State:'));
+            if (vtcPart) {
+                city = vtcPart.replace('VTC:', '').trim();
+            } else if (parts.length >= 2) {
+                // For standard addresses like "122, 18th main, jp nagar, bangalore"
+                // Take the last part that isn't a state or pincode
+                const lastParts = parts.filter(p => !p.startsWith('State:') && !/^\d{6}$/.test(p));
+                city = lastParts.length > 0 ? lastParts[lastParts.length - 1] : parts[parts.length - 1];
+            } else {
+                city = parts[0];
+            }
+        }
+
+        // Compute joinedAt from approvedAt or appliedAt
+        let joinedAt = null;
+        if (sellerData.approvedAt) {
+            joinedAt = sellerData.approvedAt.toDate ? sellerData.approvedAt.toDate().toISOString() : new Date(sellerData.approvedAt._seconds * 1000).toISOString();
+        } else if (sellerData.appliedAt) {
+            joinedAt = sellerData.appliedAt.toDate ? sellerData.appliedAt.toDate().toISOString() : new Date(sellerData.appliedAt._seconds * 1000).toISOString();
+        }
+
+        return res.status(200).json({
+            success: true,
+            seller: {
+                name: userData?.fullName || userData?.name || sellerData.extractedName || "Verified Seller",
+                shopName: sellerData.shopName || "SellSathi Partner",
+                category: sellerData.category || "General",
+                city: city,
+                joinedAt: joinedAt
+            }
+        });
+    } catch (error) {
+        console.error("PUBLIC SELLER PROFILE ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch seller info" });
     }
 });
 

@@ -21,6 +21,7 @@ import { listenToCart, removeFromCart } from '../../utils/cartUtils';
 import { auth, db } from '../../config/firebase';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { authFetch } from '../../utils/api';
+import PriceDisplay from '../../components/common/PriceDisplay';
 import ConfirmationAnimation from '../../components/common/ConfirmationAnimation';
 
 export default function Checkout() {
@@ -53,7 +54,7 @@ export default function Checkout() {
     const [fetchingSavedAddress, setFetchingSavedAddress] = useState(false);
     const [razorpayLoading, setRazorpayLoading] = useState(false);
     const [showAnimation, setShowAnimation] = useState(false);
-    
+
     // New states for address selection
     const [addressMode, setAddressMode] = useState('saved'); // 'saved' or 'new'
     const [savedAddresses, setSavedAddresses] = useState([]);
@@ -71,7 +72,7 @@ export default function Checkout() {
                     if (docSnap.exists()) {
                         const addresses = docSnap.data().addresses || [];
                         setSavedAddresses(addresses);
-                        
+
                         // Auto-select default address if exists
                         const defaultAddr = addresses.find(addr => addr.isDefault === true);
                         if (defaultAddr) {
@@ -535,12 +536,18 @@ export default function Checkout() {
                                             <h4 className="font-bold text-gray-900 mb-1">{item.name}</h4>
                                             <div className="flex items-center gap-2 text-xs font-bold text-gray-400">
                                                 <span>Qty: {item.quantity}</span>
-                                                <span>•</span>
-                                                <span className="text-primary">₹{item.price.toLocaleString()}</span>
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-3">
-                                            <span className="text-lg font-black text-gray-900">₹{(item.price * item.quantity).toLocaleString()}</span>
+                                            <PriceDisplay
+                                                product={{
+                                                    ...item,
+                                                    price: item.originalPrice || item.price,
+                                                    discountPrice: item.price
+                                                }}
+                                                size="sm"
+                                                showBadge={false}
+                                            />
                                             <button
                                                 onClick={() => handleRemove(item.id || item.productId)}
                                                 className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
@@ -582,11 +589,10 @@ export default function Checkout() {
                                                         setShippingAddress(savedAddresses[selectedAddressIndex]);
                                                     }
                                                 }}
-                                                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all ${
-                                                    addressMode === 'saved' 
-                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                                                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all ${addressMode === 'saved'
+                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
                                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                                }`}
+                                                    }`}
                                             >
                                                 Select Saved Address
                                             </button>
@@ -602,11 +608,10 @@ export default function Checkout() {
                                                         pincode: ''
                                                     });
                                                 }}
-                                                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all ${
-                                                    addressMode === 'new' 
-                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                                                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all ${addressMode === 'new'
+                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
                                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                                }`}
+                                                    }`}
                                             >
                                                 Enter New Address
                                             </button>

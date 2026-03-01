@@ -1,6 +1,7 @@
 
 import { auth } from '../config/firebase';
 import { authFetch } from './api';
+import { getProductPricing } from './priceUtils';
 
 // Helper to get current user UID (consistent with wishlist)
 const getUID = () => {
@@ -17,6 +18,8 @@ export const addToCart = async (product, selections = {}) => {
     try {
         const uid = getUID();
 
+        const { finalPrice, strikethroughPrice } = getProductPricing(product, selections);
+
         const variantKey = Object.values(selections).filter(Boolean).join('_');
         const cartItemId = variantKey ? `${product.id}_${variantKey.replace(/\s+/g, '')}` : product.id;
 
@@ -25,7 +28,8 @@ export const addToCart = async (product, selections = {}) => {
             id: cartItemId, // Use cartItemId as the unique document ID
             sellerId: product.sellerId || null,
             name: product.name || product.title,
-            price: Number(product.price) + (selections.storage?.priceOffset || 0) + (selections.memory?.priceOffset || 0),
+            price: finalPrice, // Keeping 'price' as the final selling price for compatibility
+            originalPrice: strikethroughPrice,
             imageUrl: product.imageUrl || product.image,
             quantity: 1,
             category: product.category,

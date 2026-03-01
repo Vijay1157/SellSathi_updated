@@ -45,7 +45,9 @@ export default function Deals() {
     const handleAddToCart = async (e, p) => {
         if (e) e.stopPropagation();
         const res = await addToCart(p);
-        if (res.success) navigate('/checkout');
+        if (res.success) {
+            alert('✅ Product added to cart successfully!');
+        }
     };
 
     const toggleWishlist = (e, product) => {
@@ -133,8 +135,25 @@ export default function Deals() {
 
                                     <div className="info-bottom">
                                         <div className="price-group">
-                                            <span className="current-price">₹{(p.price || 0).toLocaleString()}</span>
-                                            <span className="old-price">₹{(p.price * (1 + p.discount / 100)).toFixed(0).toLocaleString()}</span>
+                                            <span className="current-price">
+                                                ₹{(() => {
+                                                    const orig = Number(p.price) || 0;
+                                                    const disc = Number(p.discountPrice) || 0;
+                                                    return (disc > 0 && disc < orig ? disc : orig).toLocaleString();
+                                                })()}
+                                            </span>
+                                            {(() => {
+                                                const orig = Number(p.price) || 0;
+                                                const disc = Number(p.discountPrice) || 0;
+                                                const old = Number(p.oldPrice) || 0;
+
+                                                if (old > 0 && old > orig) return <span className="old-price">₹{old.toLocaleString()}</span>;
+                                                if (disc > 0 && disc < orig) return <span className="old-price">₹{orig.toLocaleString()}</span>;
+
+                                                // Fallback to mock calculation for seed/mock deals if no real old price exists
+                                                const mockOld = (p.price * (1 + (p.discount || 20) / 100)).toFixed(0);
+                                                return <span className="old-price">₹{Number(mockOld).toLocaleString()}</span>;
+                                            })()}
                                         </div>
                                         <button
                                             onClick={(e) => handleAddToCart(e, p)}

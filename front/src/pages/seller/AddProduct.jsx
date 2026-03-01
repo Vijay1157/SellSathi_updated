@@ -264,14 +264,6 @@ export default function AddProduct() {
             return;
         }
 
-        let basePrice = parseFloat(product.price);
-        if (selectedSizes.length > 0 && pricingType === 'varied') {
-            const prices = Object.values(sizePrices).map(p => parseFloat(p)).filter(p => !isNaN(p) && p > 0);
-            if (prices.length > 0) {
-                basePrice = Math.min(...prices);
-            }
-        }
-
         const user = auth.currentUser;
         let sellerId = user?.uid || null;
         if (!sellerId) {
@@ -282,7 +274,7 @@ export default function AddProduct() {
         // Build the full product data with dynamic fields
         const fullProduct = {
             title: product.name,
-            price: basePrice,
+            price: parseFloat(product.price),
             discountPrice: product.discountPrice ? parseFloat(product.discountPrice) : null,
             category: product.category,
             stock: parseInt(product.stock),

@@ -44,7 +44,9 @@ export default function Trending() {
     const handleAddToCart = async (e, p) => {
         if (e) e.stopPropagation();
         const res = await addToCart(p);
-        if (res.success) navigate('/checkout');
+        if (res.success) {
+            alert('✅ Product added to cart successfully!');
+        }
     };
 
     const toggleWishlist = (e, product) => {
@@ -133,8 +135,21 @@ export default function Trending() {
 
                                     <div className="info-bottom">
                                         <div className="price-group">
-                                            <span className="current-price">₹{(p.price || 0).toLocaleString()}</span>
-                                            {p.oldPrice && <span className="old-price">₹{p.oldPrice.toLocaleString()}</span>}
+                                            <span className="current-price">
+                                                ₹{(() => {
+                                                    const orig = Number(p.price) || 0;
+                                                    const disc = Number(p.discountPrice) || 0;
+                                                    return (disc > 0 && disc < orig ? disc : orig).toLocaleString();
+                                                })()}
+                                            </span>
+                                            {(() => {
+                                                const orig = Number(p.price) || 0;
+                                                const disc = Number(p.discountPrice) || 0;
+                                                const old = Number(p.oldPrice) || 0;
+                                                if (old > 0 && old > orig) return <span className="old-price">₹{old.toLocaleString()}</span>;
+                                                if (disc > 0 && disc < orig) return <span className="old-price">₹{orig.toLocaleString()}</span>;
+                                                return null;
+                                            })()}
                                         </div>
                                         <button
                                             onClick={(e) => handleAddToCart(e, p)}
