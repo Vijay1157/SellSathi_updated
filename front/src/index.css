@@ -2,27 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 :root {
-  --primary: hsl(230, 85%, 60%);
-  --secondary: hsl(280, 80%, 65%);
-  --accent: hsl(190, 90%, 50%);
-  --background: hsl(0, 0%, 100%);
-  --surface: hsl(240, 10%, 98%);
-  --surface-hover: hsl(240, 10%, 95%);
-  --text: hsl(240, 10%, 15%);
-  --text-muted: hsl(240, 5%, 45%);
-  --error: hsl(0, 85%, 60%);
-  --success: hsl(140, 80%, 50%);
-  --warning: hsl(40, 90%, 60%);
-  --border: hsla(0, 0%, 0%, 0.1);
-  --glass: hsla(0, 0%, 0%, 0.03);
-  --glass-border: hsla(0, 0%, 0%, 0.08);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
+  --primary: #4f46e5;
+  --secondary: #6366f1;
+  --accent: #f59e0b;
+  --background: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f8fafc;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --error: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --border: #e2e8f0;
+  --glass: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
   --radius-full: 9999px;
 }
 
@@ -131,12 +133,13 @@ input:focus {
 
 .btn {
   padding: 0.75rem 1.5rem;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-primary {
@@ -511,6 +514,7 @@ h4 {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -548,7 +552,7 @@ h4 {
   .dashboard-container {
     padding: 1rem;
   }
-  
+
   .glass-card {
     border-radius: 1.5rem !important;
   }
@@ -560,9 +564,12 @@ h4 {
 }
 
 @keyframes pulse-subtle {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.8;
   }
@@ -574,6 +581,7 @@ h4 {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
+
 /* Product Detail Review Styles */
 .write-rev-header {
   display: flex;
@@ -633,19 +641,19 @@ h4 {
 }
 
 .rev-inline-form .star-rating-input {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .rev-inline-form .star-rating-input button {
-    opacity: 0.4;
-    transition: all 0.2s;
+  opacity: 0.4;
+  transition: all 0.2s;
 }
 
 .rev-inline-form .star-rating-input button.active {
-    opacity: 1;
-    transform: scale(1.1);
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .rev-submit-btn {

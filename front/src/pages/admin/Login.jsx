@@ -12,11 +12,10 @@ export default function AdminLogin() {
 
         // Only redirect to admin dashboard if user is actually an admin
         // with the correct phone number
-        const ADMIN_PHONE = '+917483743936';
-        if (data && data.role === 'ADMIN' && data.phone === ADMIN_PHONE) {
+        if (data && data.role === 'ADMIN') {
             navigate('/admin');
         } else {
-            // Redirect non-admin users to home page (featured products)
+            // Redirect non-admin users to home page
             navigate('/');
         }
     };

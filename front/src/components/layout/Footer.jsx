@@ -1,7 +1,11 @@
 import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import AdminLoginModal from '../common/AdminLoginModal';
+import { ShieldCheck } from 'lucide-react';
 
 export default function Footer() {
     const navigate = useNavigate();
+    const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
     const handleBecomeSellerClick = () => {
         const rawUser = localStorage.getItem('user');
@@ -26,56 +30,95 @@ export default function Footer() {
     };
 
     return (
-        <footer style={{
-            marginTop: '4rem',
-            padding: '4rem 0',
-            borderTop: '1px solid var(--border)',
-            background: 'var(--surface)'
-        }}>
-            <div className="container">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '2rem' }}>
-                    <div>
-                        <h3 className="gradient-text" style={{ marginBottom: '1rem' }}>SELLSATHI</h3>
-                        <p className="text-muted">The future of global marketplace. Fast, secure, and seller-friendly.</p>
-                    </div>
+        <>
+            <footer style={{
+                marginTop: '4rem',
+                padding: '4rem 0',
+                borderTop: '1px solid var(--border)',
+                background: 'var(--surface)'
+            }}>
+                <div className="container">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '2rem' }}>
+                        <div>
+                            <h3 className="gradient-text" style={{ marginBottom: '1rem', fontWeight: 900, fontSize: '1.5rem', letterSpacing: '-1px' }}>SELLSATHI</h3>
+                            <p className="text-muted" style={{ lineHeight: 1.6 }}>The future of global marketplace. Fast, secure, and seller-friendly.</p>
+                        </div>
 
-                    <div>
-                        <h4>Marketplace</h4>
-                        <ul style={{ listStyle: 'none', marginTop: '1rem' }} className="flex flex-col gap-2">
-                            <li><Link to="/products" className="text-muted">All Products</Link></li>
-                            <li><Link to="/categories" className="text-muted">Categories</Link></li>
-                            <li><Link to="/track" className="text-muted">Track Order</Link></li>
-                        </ul>
-                    </div>
+                        <div>
+                            <h4 style={{ fontWeight: 800, marginBottom: '1.5rem' }}>Marketplace</h4>
+                            <ul style={{ listStyle: 'none' }} className="flex flex-col gap-3">
+                                <li><Link to="/products" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>All Products</Link></li>
+                                <li><Link to="/categories" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Categories</Link></li>
+                                <li><Link to="/track" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Track Order</Link></li>
+                            </ul>
+                        </div>
 
-                    <div>
-                        <h4>Support</h4>
-                        <ul style={{ listStyle: 'none', marginTop: '1rem' }} className="flex flex-col gap-2">
-                            <li><Link to="/faq" className="text-muted">FAQ</Link></li>
-                            <li><Link to="/contact" className="text-muted">Contact Us</Link></li>
-                            <li><Link to="/terms" className="text-muted">Terms of Service</Link></li>
-                        </ul>
-                    </div>
+                        <div>
+                            <h4 style={{ fontWeight: 800, marginBottom: '1.5rem' }}>Support</h4>
+                            <ul style={{ listStyle: 'none' }} className="flex flex-col gap-3">
+                                <li><Link to="/faq" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>FAQ</Link></li>
+                                <li><Link to="/contact" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Contact Us</Link></li>
+                                <li><Link to="/terms" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Terms of Service</Link></li>
+                            </ul>
+                        </div>
 
-                    <div style={{ textAlign: 'right' }}>
-                        <h4>Earn with Us</h4>
-                        <div style={{ marginTop: '1rem' }}>
-                            <button
-                                onClick={handleBecomeSellerClick}
-                                className="btn btn-primary"
-                                style={{ cursor: 'pointer' }}
-                            >
-                                Become a Seller
-                            </button>
-                            <p className="text-muted" style={{ marginTop: '0.5rem' }}>Open your shop in minutes.</p>
+                        <div>
+                            <h4 style={{ fontWeight: 800, marginBottom: '1.5rem' }}>Management</h4>
+                            <ul style={{ listStyle: 'none' }} className="flex flex-col gap-3">
+                                <li>
+                                    <button
+                                        onClick={() => setIsAdminModalOpen(true)}
+                                        className="text-muted"
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            padding: 0,
+                                            fontSize: '0.9rem',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}
+                                    >
+                                        <ShieldCheck size={16} /> Management Login
+                                    </button>
+                                </li>
+                                <li><Link to="/seller/register" className="text-muted" style={{ textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Seller Portal</Link></li>
+                            </ul>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                            <h4 style={{ fontWeight: 800, marginBottom: '1.5rem' }}>Earn with Us</h4>
+                            <div style={{ marginTop: '0' }}>
+                                <button
+                                    onClick={handleBecomeSellerClick}
+                                    className="btn btn-primary"
+                                    style={{
+                                        cursor: 'pointer',
+                                        padding: '0.75rem 1.5rem',
+                                        fontSize: '0.9rem',
+                                        fontWeight: 700,
+                                        borderRadius: '99px',
+                                        background: '#2563eb', // Syncing with the new primary blue
+                                        border: 'none',
+                                        color: 'white'
+                                    }}
+                                >
+                                    Become a Seller
+                                </button>
+                                <p className="text-muted" style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}>Open your shop in minutes.</p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div style={{ marginTop: '4rem', paddingTop: '2rem', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                    <p className="text-muted">&copy; 2026 SELLSATHI Inc. All rights reserved.</p>
+                    <div style={{ marginTop: '4rem', paddingTop: '2rem', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+                        <p className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 500 }}>&copy; 2026 SELLSATHI Inc. All rights reserved.</p>
+                    </div>
                 </div>
-            </div>
-        </footer>
+            </footer>
+
+            <AdminLoginModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} />
+        </>
     );
 }

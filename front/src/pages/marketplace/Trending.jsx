@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, Heart, Eye, ShoppingCart, TrendingUp } from 'lucide-react';
 import { collection, getDocs, query, limit } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { db, auth } from '../../config/firebase';
 import { addToCart } from '../../utils/cartUtils';
 import QuickViewModal from '../../components/common/QuickViewModal';
 
@@ -43,6 +43,10 @@ export default function Trending() {
 
     const handleAddToCart = async (e, p) => {
         if (e) e.stopPropagation();
+        if (!auth.currentUser) {
+            window.dispatchEvent(new Event('openLoginModal'));
+            return;
+        }
         const res = await addToCart(p);
         if (res.success) {
             alert('✅ Product added to cart successfully!');
@@ -51,6 +55,10 @@ export default function Trending() {
 
     const toggleWishlist = (e, product) => {
         if (e) e.stopPropagation();
+        if (!auth.currentUser) {
+            window.dispatchEvent(new Event('openLoginModal'));
+            return;
+        }
         const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
         const alreadySaved = saved.some(item => item.id === product.id);
         let updated;

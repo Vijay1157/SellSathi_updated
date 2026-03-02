@@ -280,6 +280,10 @@ export default function ProductDetail() {
 
 
     const toggleWishlist = async () => {
+        if (!auth.currentUser) {
+            window.dispatchEvent(new Event('openLoginModal'));
+            return;
+        }
         if (!product) return;
         try {
             if (isSaved) {
@@ -412,6 +416,10 @@ export default function ProductDetail() {
     };
 
     const handleAddToCart = async () => {
+        if (!auth.currentUser) {
+            window.dispatchEvent(new Event('openLoginModal'));
+            return;
+        }
         if (!product) return;
         const inStock = product.stock !== 0 && product.status !== 'Out of Stock';
         if (!inStock) return;
@@ -434,6 +442,10 @@ export default function ProductDetail() {
     };
 
     const handleBuyNow = async () => {
+        if (!auth.currentUser) {
+            window.dispatchEvent(new Event('openLoginModal'));
+            return;
+        }
         if (!product) return;
         const inStock = product.stock !== 0 && product.status !== 'Out of Stock';
         if (!inStock) return;

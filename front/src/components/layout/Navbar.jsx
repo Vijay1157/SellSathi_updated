@@ -58,6 +58,18 @@ export default function Navbar() {
     const location = useLocation();
     const menuRef = useRef(null);
 
+    const calculateAge = (dob) => {
+        if (!dob) return null;
+        const birthDate = new Date(dob);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+        return age;
+    };
+
     useEffect(() => {
         const fetchMegaData = async () => {
             try {
@@ -89,26 +101,26 @@ export default function Navbar() {
                     } else if (cat === "Trending") {
                         catProducts = products.filter(p => (p.rating || 0) >= 4.5 || p.id === 'e1');
                     } else if (cat === "Men's Fashion") {
-                        catProducts = products.filter(p => 
-                            p.category === "Men's Fashion" || 
-                            p.category === "Fashion" || 
+                        catProducts = products.filter(p =>
+                            p.category === "Men's Fashion" ||
+                            p.category === "Fashion" ||
                             p.category === "Mens Fashion" ||
                             p.category === "Men Fashion" ||
                             p.subCategory?.toLowerCase().includes('men') ||
                             p.name?.toLowerCase().includes('men')
                         );
                     } else if (cat === "Women's Fashion") {
-                        catProducts = products.filter(p => 
-                            p.category === "Women's Fashion" || 
-                            p.category === "Fashion" || 
+                        catProducts = products.filter(p =>
+                            p.category === "Women's Fashion" ||
+                            p.category === "Fashion" ||
                             p.category === "Womens Fashion" ||
                             p.category === "Women Fashion" ||
                             p.subCategory?.toLowerCase().includes('women') ||
                             p.name?.toLowerCase().includes('women')
                         );
                     } else if (cat === "Electronics") {
-                        catProducts = products.filter(p => 
-                            p.category === "Electronics" || 
+                        catProducts = products.filter(p =>
+                            p.category === "Electronics" ||
                             p.category === "Electronic" ||
                             p.subCategory?.toLowerCase().includes('electronic') ||
                             p.name?.toLowerCase().includes('phone') ||
@@ -117,8 +129,8 @@ export default function Navbar() {
                             p.name?.toLowerCase().includes('headphone')
                         );
                     } else if (cat === "Home & Living") {
-                        catProducts = products.filter(p => 
-                            p.category === "Home & Living" || 
+                        catProducts = products.filter(p =>
+                            p.category === "Home & Living" ||
                             p.category === "Home" ||
                             p.category === "Home & Kitchen" ||
                             p.category === "Living" ||
@@ -127,8 +139,8 @@ export default function Navbar() {
                             p.name?.toLowerCase().includes('home')
                         );
                     } else if (cat === "Beauty") {
-                        catProducts = products.filter(p => 
-                            p.category === "Beauty" || 
+                        catProducts = products.filter(p =>
+                            p.category === "Beauty" ||
                             p.category === "Cosmetics" ||
                             p.subCategory?.toLowerCase().includes('beauty') ||
                             p.subCategory?.toLowerCase().includes('cosmetic') ||
@@ -136,16 +148,16 @@ export default function Navbar() {
                             p.name?.toLowerCase().includes('makeup')
                         );
                     } else if (cat === "Sports") {
-                        catProducts = products.filter(p => 
-                            p.category === "Sports" || 
+                        catProducts = products.filter(p =>
+                            p.category === "Sports" ||
                             p.category === "Sport" ||
                             p.subCategory?.toLowerCase().includes('sport') ||
                             p.name?.toLowerCase().includes('sport') ||
                             p.name?.toLowerCase().includes('fitness')
                         );
                     } else if (cat === "Accessories") {
-                        catProducts = products.filter(p => 
-                            p.category === "Accessories" || 
+                        catProducts = products.filter(p =>
+                            p.category === "Accessories" ||
                             p.category === "Accessory" ||
                             p.subCategory?.toLowerCase().includes('accessor') ||
                             p.name?.toLowerCase().includes('bag') ||
@@ -241,14 +253,20 @@ export default function Navbar() {
         };
         document.addEventListener('mousedown', handleClickOutside);
 
+        const handleOpenLogin = () => setIsLoginModalOpen(true);
+        window.addEventListener('openLoginModal', handleOpenLogin);
+
         return () => {
             window.removeEventListener('userDataChanged', handleUserChange);
             document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('openLoginModal', handleOpenLogin);
         };
     }, []);
 
     const handleSignOut = () => {
         localStorage.removeItem('user');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('dob');
         setUser(null);
         setIsProfileOpen(false);
         window.dispatchEvent(new CustomEvent('userDataChanged'));
@@ -354,12 +372,30 @@ export default function Navbar() {
                         )}
 
                         <div className="nav-actions">
-                            <Link to="/wishlist" className="btn btn-secondary icon-btn wishlist-btn-nav">
+                            <Link
+                                to={user ? "/wishlist" : "#"}
+                                onClick={(e) => {
+                                    if (!user) {
+                                        e.preventDefault();
+                                        setIsLoginModalOpen(true);
+                                    }
+                                }}
+                                className="btn btn-secondary icon-btn wishlist-btn-nav"
+                            >
                                 <Heart size={20} />
                                 {wishlistCount > 0 && <span className="wishlist-badge">{wishlistCount}</span>}
                             </Link>
 
-                            <Link to="/checkout" className="btn btn-secondary icon-btn cart-btn-nav">
+                            <Link
+                                to={user ? "/checkout" : "#"}
+                                onClick={(e) => {
+                                    if (!user) {
+                                        e.preventDefault();
+                                        setIsLoginModalOpen(true);
+                                    }
+                                }}
+                                className="btn btn-secondary icon-btn cart-btn-nav"
+                            >
                                 <ShoppingCart size={20} />
                                 {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
                             </Link>
@@ -379,7 +415,7 @@ export default function Navbar() {
                                             <div className="menu-header">
                                                 <div className="avatar">{(user.fullName || 'U').charAt(0).toUpperCase()}</div>
                                                 <div className="info">
-                                                    <p className="name">{user.fullName || 'User'}</p>
+                                                    <p className="name">{localStorage.getItem('userName') || user.fullName || 'User'}</p>
                                                     <p className="email">{user.email || user.phone}</p>
                                                 </div>
                                             </div>
@@ -487,7 +523,7 @@ export default function Navbar() {
                                                 ) : (
                                                     <div className="mega-empty-state">
                                                         <p>Browse {SUBCATEGORIES[activeMegaMenu][activeSubCategory]} products</p>
-                                                        <button 
+                                                        <button
                                                             className="btn btn-primary"
                                                             onClick={() => { navigate(`/products?category=${encodeURIComponent(activeMegaMenu)}&subcategory=${encodeURIComponent(SUBCATEGORIES[activeMegaMenu][activeSubCategory])}`); setActiveMegaMenu(null); }}
                                                         >

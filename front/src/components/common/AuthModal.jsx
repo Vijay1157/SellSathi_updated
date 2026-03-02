@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Phone, ShieldCheck, ArrowRight, User as UserIcon, Mail, Lock, Check, Eye, EyeOff } from 'lucide-react';
+import { X, Phone, ShieldCheck, ArrowRight, User as UserIcon, Mail, Lock, Check, Eye, EyeOff, Calendar } from 'lucide-react';
 import { auth } from '../../config/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +23,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
     const [confirmationResult, setConfirmationResult] = useState(null);
     const [isTestNumber, setIsTestNumber] = useState(false);
     const [formData, setFormData] = useState({
+        fullName: '',
+        dob: '',
         email: '',
         password: '',
         confirmPassword: '',
@@ -37,14 +39,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
 
     const cleanupRecaptcha = () => {
         if (window.recaptchaVerifier) {
-            try { 
-                window.recaptchaVerifier.clear(); 
-            } catch (e) { 
-                console.log('Recaptcha clear error:', e); 
+            try {
+                window.recaptchaVerifier.clear();
+            } catch (e) {
+                console.log('Recaptcha clear error:', e);
             }
             window.recaptchaVerifier = null;
         }
-        
+
         // Clear the recaptcha container DOM element
         const container = document.getElementById('recaptcha-container');
         if (container) {
@@ -73,7 +75,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
 
     const setupRecaptcha = () => {
         cleanupRecaptcha();
-        
+
         // Add a small delay to ensure DOM is fully cleared
         setTimeout(() => {
             try {
@@ -81,7 +83,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                     console.error('Recaptcha container not found');
                     return;
                 }
-                
+
                 window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
                     'size': 'invisible',
                     'callback': () => { },
@@ -121,11 +123,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 setupRecaptcha();
                 setTimeout(resolve, 200); // Wait for recaptcha initialization
             });
-            
+
             if (!window.recaptchaVerifier) {
                 throw new Error('reCAPTCHA initialization failed');
             }
-            
+
             const appVerifier = window.recaptchaVerifier;
             const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
             setConfirmationResult(confirmation);
@@ -149,12 +151,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
         }
 
         if (isEmailSignup) {
-            if (!formData.email.trim() || !formData.password.trim()) {
-                setError('Please fill in both email and password');
+            if (!formData.fullName.trim() || !formData.dob || !formData.email.trim() || !formData.password.trim()) {
+                setError('Please fill in all details');
                 return;
             }
         } else {
-            if (!formData.email.trim() || !formData.password.trim()) {
+            if (!formData.fullName.trim() || !formData.dob || !formData.email.trim() || !formData.password.trim()) {
                 setError('Please fill in all information');
                 return;
             }
@@ -223,6 +225,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                     isDevMode: currentIsTest
                 };
                 localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('userName', formData.fullName);
+                localStorage.setItem('dob', formData.dob);
                 window.dispatchEvent(new CustomEvent('userDataChanged', { detail: userData }));
                 navigate('/');
                 if (onSuccess) onSuccess(data);
@@ -278,7 +282,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
             const response = await authFetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    ...payload,
+                    fullName: formData.fullName,
+                    dob: formData.dob
+                }),
             });
 
             const contentType = response.headers.get("content-type");
@@ -301,6 +309,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                     fullName: data.fullName
                 };
                 localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('userName', formData.fullName || data.fullName || '');
+                localStorage.setItem('dob', formData.dob || '');
                 window.dispatchEvent(new CustomEvent('userDataChanged', { detail: userData }));
 
                 if (isRegistering) {
@@ -342,8 +352,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
         if (e) e.preventDefault();
         setError('');
 
-        if (!formData.email.trim() || !formData.password.trim()) {
-            setError('Please fill in both email and password');
+        if (!formData.fullName.trim() || !formData.dob || !formData.email.trim() || !formData.password.trim()) {
+            setError('Please fill in all details');
             return;
         }
 
@@ -403,6 +413,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                     fullName: data.fullName || user?.displayName || formData.email.split('@')[0],
                 };
                 localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('userName', formData.fullName);
+                localStorage.setItem('dob', formData.dob);
                 window.dispatchEvent(new CustomEvent('userDataChanged', { detail: userData }));
 
                 if (data.role === 'ADMIN') navigate('/admin');
@@ -442,7 +454,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
         setIsTestNumber(false);
         setIsRegistering(false);
         setIsEmailSignup(false);
-        setFormData({ email: '', password: '', confirmPassword: '', agreedToTerms: false, agreedToPrivacy: false });
+        setFormData({ fullName: '', dob: '', email: '', password: '', confirmPassword: '', agreedToTerms: false, agreedToPrivacy: false });
         cleanupRecaptcha();
         onClose();
     };
@@ -475,6 +487,26 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                             {isEmailLogin ? (
                                 <form onSubmit={handleEmailLogin} className="auth-form">
                                     <div className="auth-fields-grid">
+                                        <div className="auth-input-group">
+                                            <UserIcon size={18} className="auth-field-icon" />
+                                            <input
+                                                type="text"
+                                                placeholder="Full Name"
+                                                value={formData.fullName}
+                                                onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                                                required
+                                            />
+                                        </div>
+                                        <div className="auth-input-group">
+                                            <Calendar size={18} className="auth-field-icon" />
+                                            <input
+                                                type="date"
+                                                placeholder="Date of Birth"
+                                                value={formData.dob}
+                                                onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                required
+                                            />
+                                        </div>
                                         <div className="auth-input-group">
                                             <Mail size={18} className="auth-field-icon" />
                                             <input
@@ -514,6 +546,26 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                             ) : isEmailSignup ? (
                                 <form onSubmit={handleRegisterDirectly} className="auth-form">
                                     <div className="auth-fields-grid">
+                                        <div className="auth-input-group">
+                                            <UserIcon size={18} className="auth-field-icon" />
+                                            <input
+                                                type="text"
+                                                placeholder="Full Name"
+                                                value={formData.fullName}
+                                                onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                                                required
+                                            />
+                                        </div>
+                                        <div className="auth-input-group">
+                                            <Calendar size={18} className="auth-field-icon" />
+                                            <input
+                                                type="date"
+                                                placeholder="Date of Birth"
+                                                value={formData.dob}
+                                                onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                required
+                                            />
+                                        </div>
                                         <div className="auth-input-group">
                                             <Mail size={18} className="auth-field-icon" />
                                             <input
@@ -574,6 +626,26 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                             {isRegistering && (
                                                 <>
                                                     <div className="auth-input-group">
+                                                        <UserIcon size={18} className="auth-field-icon" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Full Name"
+                                                            value={formData.fullName}
+                                                            onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                                                            required
+                                                        />
+                                                    </div>
+                                                    <div className="auth-input-group">
+                                                        <Calendar size={18} className="auth-field-icon" />
+                                                        <input
+                                                            type="date"
+                                                            placeholder="Date of Birth"
+                                                            value={formData.dob}
+                                                            onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                            required
+                                                        />
+                                                    </div>
+                                                    <div className="auth-input-group">
                                                         <Mail size={18} className="auth-field-icon" />
                                                         <input
                                                             type="email"
@@ -586,19 +658,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                                 </>
                                             )}
 
-                                            <div className="auth-input-group">
-                                                <Phone size={18} className="auth-field-icon" />
-                                                <div className="phone-input-wrapper">
-                                                    <span className="country-code">+91</span>
-                                                    <input
-                                                        type="tel"
-                                                        placeholder="Mobile Number"
-                                                        value={phone}
-                                                        onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                                                        required
-                                                        disabled={loading}
-                                                    />
-                                                </div>
+                                            <div className="auth-input-group phone-input-standard">
+                                                <Phone size={18} className="auth-field-icon" style={{ position: 'absolute', left: '1rem', zIndex: 1 }} />
+                                                <div className="phone-prefix-box">+91</div>
+                                                <input
+                                                    type="tel"
+                                                    placeholder="Mobile Number"
+                                                    value={phone}
+                                                    onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                                                    required
+                                                    disabled={loading}
+                                                    className="phone-main-input"
+                                                />
                                             </div>
 
                                             {isRegistering && (
@@ -875,21 +946,41 @@ input::-webkit-credentials-auto-fill-button {
     transition: color 0.2s;
 }
 
-.phone-input-wrapper {
+.phone-input-standard {
     display: flex;
     align-items: center;
-    width: 100%;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
 }
 
-.country-code {
-    position: absolute;
-    left: 3rem;
-    font-weight: 600;
+.phone-prefix-box {
+    padding: 0.8rem 0.5rem 0.8rem 3rem;
+    font-weight: 700;
     color: var(--primary);
+    border-right: 1px solid var(--border);
+    background: rgba(var(--primary-rgb), 0.05);
+    min-width: 85px;
+    text-align: right;
 }
 
-.phone-input-wrapper input {
-    padding-left: 5.5rem;
+.phone-main-input {
+    border: none !important;
+    background: transparent !important;
+    padding: 0.8rem 1rem !important;
+    flex: 1;
+    font-weight: 700;
+}
+
+.phone-main-input:focus {
+    box-shadow: none !important;
+}
+
+.phone-input-standard:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.1);
 }
 
 .auth-submit-btn {
