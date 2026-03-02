@@ -4,13 +4,17 @@ back/node_modules/
 
 # Environment files
 .env
-.env.local
-.env.development
-.env.production
+.env.*
+back/.env
+services/.env
+_.env
+_ (1).env
 
 # Firebase secret key
 serviceAccountKey.json
 back/serviceAccountKey.json
+services/serviceAccountKey.json
+serviceAccountKey copy.json
 
 # Logs
 npm-debug.log*
