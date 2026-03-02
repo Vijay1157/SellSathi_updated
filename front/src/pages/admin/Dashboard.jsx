@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 import { authFetch } from '../../utils/api';
 import SellerAnalyticsModal from '../../components/admin/SellerAnalyticsModal';
 import SellerInvoiceModal from '../../components/admin/SellerInvoiceModal';
+import BankDetailsModal from '../../components/admin/BankDetailsModal';
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState('home');
@@ -33,6 +34,7 @@ export default function AdminDashboard() {
     const [invoiceFilterDateFrom, setInvoiceFilterDateFrom] = useState('');
     const [invoiceFilterDateTo, setInvoiceFilterDateTo] = useState('');
     const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
+    const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
 
     // Fetch all data on component mount
     useEffect(() => {
@@ -1871,13 +1873,23 @@ export default function AdminDashboard() {
                                 <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>Review Seller Application</h2>
                                 <p className="text-muted" style={{ margin: 0 }}>UID: {selectedSeller.uid}</p>
                             </div>
-                            <button
-                                onClick={() => setSelectedSeller(null)}
-                                className="btn btn-secondary"
-                                style={{ padding: '0.5rem', borderRadius: '50%', width: '40px', height: '40px' }}
-                            >
-                                <X size={20} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowBankDetailsModal(true)}
+                                    className="btn btn-primary"
+                                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                >
+                                    <CreditCard size={16} />
+                                    View Bank Details
+                                </button>
+                                <button
+                                    onClick={() => setSelectedSeller(null)}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.5rem', borderRadius: '50%', width: '40px', height: '40px' }}
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Scrollable Content Area */}
@@ -2067,6 +2079,14 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Bank Details Modal */}
+            {showBankDetailsModal && selectedSeller && (
+                <BankDetailsModal
+                    sellerId={selectedSeller.uid}
+                    onClose={() => setShowBankDetailsModal(false)}
+                />
             )}
 
         </div>

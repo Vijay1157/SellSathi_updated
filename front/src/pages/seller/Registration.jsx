@@ -4,6 +4,8 @@ import { Phone, FileCheck, CheckCircle, Upload, ShieldCheck, ArrowRight, Loader 
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../../config/firebase';
 import { authFetch } from '../../utils/api';
+import SellerLandingBanner from '../../components/seller/SellerLandingBanner';
+import ManualSellerRegistration from '../../components/seller/ManualSellerRegistration';
 
 export default function SellerRegistration() {
     const navigate = useNavigate();
@@ -11,6 +13,7 @@ export default function SellerRegistration() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [showManualRegistration, setShowManualRegistration] = useState(false);
 
     // User data
     const [user, setUser] = useState(null);
@@ -206,11 +209,20 @@ export default function SellerRegistration() {
     }
 
     return (
-        <div className="container" style={{ maxWidth: '800px', padding: '4rem 0' }}>
-            <div className="text-center" style={{ marginBottom: '3rem' }}>
-                <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Become a <span className="gradient-text">Seller</span></h1>
-                <p className="text-muted">Fast & Secure Aadhaar-based verification</p>
-            </div>
+        <>
+            {/* Show Manual Registration if activated */}
+            {showManualRegistration ? (
+                <ManualSellerRegistration onClose={() => setShowManualRegistration(false)} />
+            ) : (
+                <>
+                    {/* Seller Landing Banner */}
+                    <SellerLandingBanner />
+                    
+                    <div className="container" style={{ maxWidth: '800px', padding: '4rem 0' }}>
+                        <div className="text-center" style={{ marginBottom: '3rem' }}>
+                            <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Become a <span className="gradient-text">Seller</span></h1>
+                            <p className="text-muted">Fast & Secure Aadhaar-based verification</p>
+                        </div>
 
             {/* Progress Bar */}
             <div className="flex justify-between items-center" style={{ marginBottom: '4rem', position: 'relative' }}>
@@ -364,6 +376,25 @@ export default function SellerRegistration() {
                     )}
                 </AnimatePresence>
             </div>
+
+            {/* Alternative Manual Registration Option */}
+            <div className="text-center" style={{ marginTop: '3rem', marginBottom: '2rem' }}>
+                <div className="flex items-center justify-center mb-6">
+                    <div className="border-t border-gray-300 flex-grow"></div>
+                    <span className="px-4 text-gray-500 font-medium">OR</span>
+                    <div className="border-t border-gray-300 flex-grow"></div>
+                </div>
+                
+                <button
+                    onClick={() => setShowManualRegistration(true)}
+                    className="px-8 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                    Enter Details Manually
+                </button>
+            </div>
         </div>
+                </>
+            )}
+        </>
     );
 }
