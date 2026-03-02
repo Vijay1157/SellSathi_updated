@@ -329,18 +329,6 @@ export default function SellerDashboard() {
                         ))}
                     </nav>
                 </div>
-
-                <div style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div style={{ padding: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }}>
-                            <Edit2 size={14} className="text-white" />
-                        </div>
-                        <small style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quick Tip</small>
-                    </div>
-                    <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>
-                        Update your inventory daily to boost visibility.
-                    </p>
-                </div>
             </aside>
 
             {/* Main Content Area - Light & Spacious */}
@@ -1325,13 +1313,20 @@ export default function SellerDashboard() {
                         { key: 'DELIVERED', label: 'Delivered', desc: 'Delivered to customer' },
                     ];
                     const shippingToStage = (s) => {
+                        if (trackingOrder.status === 'Cancelled') return 'CANCELLED';
+                        if (trackingOrder.status === 'Delivered' || s === 'DELIVERED') return 'DELIVERED';
+                        if (['PACKING', 'SHIPPING', 'OUT_FOR_DELIVERY', 'PICKUP_SCHEDULED', 'PICKUP_COMPLETE', 'SHIPPED', 'IN_TRANSIT'].includes(s) || trackingOrder.status === 'Shipped') return 'PICKUP';
+                        if (trackingOrder.status === 'Processing') return 'PROCESSING';
                         if (!s || s === 'ORDERED') return 'ORDERED';
-                        if (['PACKING', 'SHIPPING', 'OUT_FOR_DELIVERY', 'PICKUP_SCHEDULED', 'PICKUP_COMPLETE', 'SHIPPED', 'IN_TRANSIT'].includes(s)) return 'PICKUP';
-                        if (s === 'DELIVERED') return 'DELIVERED';
                         return 'ORDERED';
                     };
                     const currentStage = shippingToStage(trackingOrder.shippingStatus);
-                    const currentIdx = SELLER_STAGES.findIndex(s => s.key === currentStage);
+                    let currentIdx = SELLER_STAGES.findIndex(s => s.key === currentStage);
+                    if (currentIdx === -1) {
+                        if (currentStage === 'CANCELLED') currentIdx = 0; // Just to avoid breaking progress bar UI entirely
+                        else if (currentStage === 'PROCESSING') currentIdx = 0.5; // Custom hack 
+                        else currentIdx = 0;
+                    }
 
                     return (
                         <div style={{
@@ -1408,7 +1403,12 @@ export default function SellerDashboard() {
                                     <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                         <Truck size={16} className="text-primary" /> Shipping Details
                                     </h4>
-                                    {trackingOrder.awbNumber ? (
+                                    {trackingOrder.status === 'Cancelled' ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--error)' }}>
+                                            <X size={18} />
+                                            <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Order cancelled.</p>
+                                        </div>
+                                    ) : trackingOrder.awbNumber ? (
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                             <div>
                                                 <p className="text-muted" style={{ fontSize: '0.75rem', margin: '0 0 0.2rem 0' }}>Courier Partner</p>

@@ -2096,6 +2096,9 @@ app.post("/seller/product/add", verifyAuth, async (req, res) => {
         if (productData.specifications && typeof productData.specifications === "object" && Object.keys(productData.specifications).length > 0) {
             newProduct.specifications = productData.specifications;
         }
+        if (productData.variantImages && typeof productData.variantImages === "object" && Object.keys(productData.variantImages).length > 0) {
+            newProduct.variantImages = productData.variantImages;
+        }
 
         const docRef = await db.collection("products").add(newProduct);
 
