@@ -416,7 +416,7 @@ export default function Navbar() {
                                                 <div className="avatar">{(user.fullName || 'U').charAt(0).toUpperCase()}</div>
                                                 <div className="info">
                                                     <p className="name">{localStorage.getItem('userName') || user.fullName || 'User'}</p>
-                                                    <p className="email">{user.email || user.phone}</p>
+                                                    <p className="email">{user.phone ? (user.phone.startsWith('+') ? user.phone : '+91' + user.phone) : ''}</p>
                                                 </div>
                                             </div>
                                             <div className="menu-items">

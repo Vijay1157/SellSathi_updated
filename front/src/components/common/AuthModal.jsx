@@ -155,9 +155,23 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 setError('Please fill in all details');
                 return;
             }
+            // Validate DOB is not in future
+            const selectedDate = new Date(formData.dob);
+            const today = new Date();
+            if (selectedDate > today) {
+                setError('Date of Birth cannot be in the future');
+                return;
+            }
         } else {
             if (!formData.fullName.trim() || !formData.dob || !formData.email.trim() || !formData.password.trim()) {
                 setError('Please fill in all information');
+                return;
+            }
+            // Validate DOB is not in future
+            const selectedDate = new Date(formData.dob);
+            const today = new Date();
+            if (selectedDate > today) {
+                setError('Date of Birth cannot be in the future');
                 return;
             }
         }
@@ -356,6 +370,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
             setError('Please fill in all details');
             return;
         }
+        // Validate DOB is not in future
+        const selectedDate = new Date(formData.dob);
+        const today = new Date();
+        if (selectedDate > today) {
+            setError('Date of Birth cannot be in the future');
+            return;
+        }
 
         setLoading(true);
 
@@ -504,6 +525,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                                 placeholder="Date of Birth"
                                                 value={formData.dob}
                                                 onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                max={new Date().toISOString().split('T')[0]}
                                                 required
                                             />
                                         </div>
@@ -563,6 +585,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                                 placeholder="Date of Birth"
                                                 value={formData.dob}
                                                 onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                max={new Date().toISOString().split('T')[0]}
                                                 required
                                             />
                                         </div>

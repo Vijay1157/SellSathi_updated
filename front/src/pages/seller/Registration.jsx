@@ -19,7 +19,7 @@ export default function SellerRegistration() {
     const [user, setUser] = useState(null);
     const [status, setStatus] = useState(null); // 'NONE', 'PENDING', 'APPROVED'
 
-    // Form data
+    // Form data - Step 1: Aadhaar + Shop Info
     const [phone, setPhone] = useState('');
     const [shopName, setShopName] = useState('');
     const [category, setCategory] = useState('');
@@ -29,6 +29,33 @@ export default function SellerRegistration() {
     const [age, setAge] = useState('');
     const [aadhaarImageUrl, setAadhaarImageUrl] = useState('');
     const [isExtracting, setIsExtracting] = useState(false);
+
+    // Form data - Step 2: Company Details
+    const [companyName, setCompanyName] = useState('');
+    const [companyEmail, setCompanyEmail] = useState('');
+    const [companyAddress, setCompanyAddress] = useState('');
+    const [panNumber, setPanNumber] = useState('');
+
+    // Form data - Step 3: Pickup Address
+    const [pickupAddress1, setPickupAddress1] = useState('');
+    const [pickupAddress2, setPickupAddress2] = useState('');
+    const [pickupCity, setPickupCity] = useState('');
+    const [pickupState, setPickupState] = useState('');
+    const [pickupPincode, setPickupPincode] = useState('');
+
+    // Validation errors state
+    const [errors, setErrors] = useState({
+        shopAddress: '',
+        shopName: '',
+        shopCategory: '',
+        companyName: '',
+        companyEmail: '',
+        panNumber: '',
+        pickupAddress1: '',
+        city: '',
+        state: '',
+        pincode: ''
+    });
 
     // Fetch logged-in user and status on mount
     useEffect(() => {
@@ -186,8 +213,100 @@ export default function SellerRegistration() {
     const steps = [
         { title: 'Phone', icon: <Phone size={20} /> },
         { title: 'Upload', icon: <Upload size={20} /> },
-        { title: 'Confirm', icon: <FileCheck size={20} /> }
+        { title: 'Shop', icon: <FileCheck size={20} /> },
+        { title: 'Company', icon: <FileCheck size={20} /> },
+        { title: 'Pickup', icon: <FileCheck size={20} /> },
+        { title: 'Submit', icon: <CheckCircle size={20} /> }
     ];
+
+    const handleNext = () => {
+        if (!validateStep()) {
+            return;
+        }
+        if (step < 6) setStep(step + 1);
+    };
+
+    const validateStep = () => {
+        let newErrors = { ...errors };
+        let isValid = true;
+
+        // Clear previous errors
+        Object.keys(newErrors).forEach(key => {
+            newErrors[key] = '';
+        });
+
+        if (step === 3) {
+            // Shop Details validation
+            if (!address.trim()) {
+                newErrors.shopAddress = 'Shop Address is required';
+                isValid = false;
+            }
+            if (!shopName.trim()) {
+                newErrors.shopName = 'Shop Name is required';
+                isValid = false;
+            }
+            if (!category.trim()) {
+                newErrors.shopCategory = 'Shop Category is required';
+                isValid = false;
+            }
+        } else if (step === 4) {
+            // Company Details validation
+            if (!companyName.trim()) {
+                newErrors.companyName = 'Company Name is required';
+                isValid = false;
+            }
+            if (!companyEmail.trim()) {
+                newErrors.companyEmail = 'Company Email is required';
+                isValid = false;
+            } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companyEmail)) {
+                newErrors.companyEmail = 'Please enter a valid email address';
+                isValid = false;
+            }
+            if (!companyAddress.trim()) {
+                newErrors.companyAddress = 'Company Address is required';
+                isValid = false;
+            }
+            if (!panNumber.trim()) {
+                newErrors.panNumber = 'PAN Card Number is required';
+                isValid = false;
+            }
+        } else if (step === 5) {
+            // Pickup Address validation
+            if (!pickupAddress1.trim()) {
+                newErrors.pickupAddress1 = 'Pickup Address Line 1 is required';
+                isValid = false;
+            }
+            if (!pickupCity.trim()) {
+                newErrors.city = 'City is required';
+                isValid = false;
+            }
+            if (!pickupState.trim()) {
+                newErrors.state = 'State is required';
+                isValid = false;
+            }
+            if (!pickupPincode.trim()) {
+                newErrors.pincode = 'Pincode is required';
+                isValid = false;
+            } else if (!/^\d{6}$/.test(pickupPincode)) {
+                newErrors.pincode = 'Pincode must be 6 digits';
+                isValid = false;
+            }
+        }
+
+        setErrors(newErrors);
+
+        if (!isValid) {
+            setError('Please fill all required fields');
+        } else {
+            setError('');
+        }
+
+        return isValid;
+    };
+
+    const handleBack = () => {
+        if (step > 1) setStep(step - 1);
+    };
 
     if (!user || status === null) return <div className="container" style={{ padding: '8rem 0', textAlign: 'center' }}><Loader className="animate-spin inline-block mr-2" /> Loading profile...</div>;
 
@@ -304,11 +423,11 @@ export default function SellerRegistration() {
                     {step === 3 && (
                         <motion.div key="s3" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="flex flex-col gap-8" style={{ padding: '3rem' }}>
                             <div className="text-center">
-                                <h3 className="text-2xl mb-2">Review & Submit</h3>
-                                <p className="text-muted">Check your details and provide shop information below.</p>
+                                <h3 className="text-2xl mb-2">Shop Information</h3>
+                                <p className="text-muted">Provide your shop details below.</p>
                             </div>
 
-                            <form onSubmit={handleSubmitSellerApplication} className="flex flex-col gap-6">
+                            <div className="flex flex-col gap-6">
                                 <div className="grid grid-cols-2 gap-6">
                                     <div className="flex flex-col gap-2">
                                         <label className="text-xs font-bold uppercase tracking-wider text-primary">Full Name *</label>
@@ -336,17 +455,19 @@ export default function SellerRegistration() {
 
                                 <div className="flex flex-col gap-2">
                                     <label className="text-xs font-bold uppercase tracking-wider text-primary">Shop Address (Required) *</label>
-                                    <textarea value={address} onChange={e => setAddress(e.target.value)} rows={2} className="py-3 px-4 border-primary focus:ring-2 ring-primary" placeholder="Enter your full shop address" />
+                                    <textarea value={address} onChange={e => setAddress(e.target.value)} rows={2} className={`py-3 px-4 ${errors.shopAddress ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} placeholder="Enter your full shop address" />
+                                    {errors.shopAddress && <span className="text-red-500 text-sm mt-1">{errors.shopAddress}</span>}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-6">
                                     <div className="flex flex-col gap-2">
                                         <label className="text-xs font-bold uppercase tracking-wider text-primary">Shop Name *</label>
-                                        <input type="text" value={shopName} onChange={e => setShopName(e.target.value)} placeholder="e.g. Rahul's Gadgets" className="py-3 px-4 border-primary focus:ring-2 ring-primary" />
+                                        <input type="text" value={shopName} onChange={e => setShopName(e.target.value)} placeholder="e.g. Rahul's Gadgets" className={`py-3 px-4 ${errors.shopName ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} />
+                                        {errors.shopName && <span className="text-red-500 text-sm mt-1">{errors.shopName}</span>}
                                     </div>
                                     <div className="flex flex-col gap-2">
                                         <label className="text-xs font-bold uppercase tracking-wider text-primary">Shop Category *</label>
-                                        <select value={category} onChange={e => setCategory(e.target.value)} className="py-3 px-4 border-primary">
+                                        <select value={category} onChange={e => setCategory(e.target.value)} className={`py-3 px-4 ${errors.shopCategory ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary'}`}>
                                             <option value="">Select Category</option>
                                             <option value="Electronics">Electronics</option>
                                             <option value="Fashion">Fashion</option>
@@ -355,6 +476,7 @@ export default function SellerRegistration() {
                                             <option value="Groceries">Groceries</option>
                                             <option value="Other">Other</option>
                                         </select>
+                                        {errors.shopCategory && <span className="text-red-500 text-sm mt-1">{errors.shopCategory}</span>}
                                     </div>
                                 </div>
 
@@ -367,6 +489,135 @@ export default function SellerRegistration() {
 
                                 <div className="flex gap-4 mt-4">
                                     <button type="button" onClick={() => setStep(2)} className="btn btn-secondary flex-1 py-4 font-bold">Retake Photo</button>
+                                    <button type="button" onClick={handleNext} className="btn btn-primary flex-1 py-4 font-bold shadow-xl">
+                                        Next <ArrowRight size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {step === 4 && (
+                        <motion.div key="s4" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="flex flex-col gap-8" style={{ padding: '3rem' }}>
+                            <div className="text-center">
+                                <h3 className="text-2xl mb-2">Company Details</h3>
+                                <p className="text-muted">Provide your company information below.</p>
+                            </div>
+
+                            <div className="flex flex-col gap-6">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-primary">Company Name *</label>
+                                    <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Enter your company name" className={`py-3 px-4 ${errors.companyName ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} />
+                                    {errors.companyName && <span className="text-red-500 text-sm mt-1">{errors.companyName}</span>}
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-primary">Company Email ID *</label>
+                                    <input type="email" value={companyEmail} onChange={e => setCompanyEmail(e.target.value)} placeholder="company@example.com" className={`py-3 px-4 ${errors.companyEmail ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} />
+                                    {errors.companyEmail && <span className="text-red-500 text-sm mt-1">{errors.companyEmail}</span>}
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-primary">Company Address *</label>
+                                    <textarea value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className={`py-3 px-4 ${errors.companyAddress ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} placeholder="Enter your company address" />
+                                    {errors.companyAddress && <span className="text-red-500 text-sm mt-1">{errors.companyAddress}</span>}
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-primary">PAN Card Number *</label>
+                                    <input type="text" value={panNumber} onChange={e => setPanNumber(e.target.value)} placeholder="Enter PAN number" className={`py-3 px-4 ${errors.panNumber ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} maxLength={10} />
+                                    {errors.panNumber && <span className="text-red-500 text-sm mt-1">{errors.panNumber}</span>}
+                                </div>
+
+                                <div className="flex gap-4 mt-4">
+                                    <button type="button" onClick={handleBack} className="btn btn-secondary flex-1 py-4 font-bold">Go Back</button>
+                                    <button type="button" onClick={handleNext} className="btn btn-primary flex-1 py-4 font-bold shadow-xl">
+                                        Next <ArrowRight size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {step === 5 && (
+                        <motion.div key="s5" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="flex flex-col gap-8" style={{ padding: '3rem' }}>
+                            <div className="text-center">
+                                <h3 className="text-2xl mb-2">Pickup Address Details</h3>
+                                <p className="text-muted">Provide your pickup address for order fulfillment.</p>
+                            </div>
+
+                            <div className="flex flex-col gap-6">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-primary">Pickup Address Line 1 *</label>
+                                    <input type="text" value={pickupAddress1} onChange={e => setPickupAddress1(e.target.value)} placeholder="Street address" className={`py-3 px-4 ${errors.pickupAddress1 ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} />
+                                    {errors.pickupAddress1 && <span className="text-red-500 text-sm mt-1">{errors.pickupAddress1}</span>}
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-bold uppercase tracking-wider text-primary">Pickup Address Line 2</label>
+                                    <input type="text" value={pickupAddress2} onChange={e => setPickupAddress2(e.target.value)} placeholder="Apartment, suite, etc." className="py-3 px-4 border-primary focus:ring-2 ring-primary" />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-6">
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-xs font-bold uppercase tracking-wider text-primary">City *</label>
+                                        <input type="text" value={pickupCity} onChange={e => setPickupCity(e.target.value)} placeholder="City" className={`py-3 px-4 ${errors.city ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} />
+                                        {errors.city && <span className="text-red-500 text-sm mt-1">{errors.city}</span>}
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-xs font-bold uppercase tracking-wider text-primary">State *</label>
+                                        <input type="text" value={pickupState} onChange={e => setPickupState(e.target.value)} placeholder="State" className={`py-3 px-4 ${errors.state ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} />
+                                        {errors.state && <span className="text-red-500 text-sm mt-1">{errors.state}</span>}
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-xs font-bold uppercase tracking-wider text-primary">Pincode *</label>
+                                        <input type="text" value={pickupPincode} onChange={e => setPickupPincode(e.target.value)} placeholder="Pincode" className={`py-3 px-4 ${errors.pincode ? 'border-red-500 focus:ring-2 ring-red-500' : 'border-primary focus:ring-2 ring-primary'}`} maxLength={6} />
+                                        {errors.pincode && <span className="text-red-500 text-sm mt-1">{errors.pincode}</span>}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4 mt-4">
+                                    <button type="button" onClick={handleBack} className="btn btn-secondary flex-1 py-4 font-bold">Go Back</button>
+                                    <button type="button" onClick={handleNext} className="btn btn-primary flex-1 py-4 font-bold shadow-xl">
+                                        Next <ArrowRight size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {step === 6 && (
+                        <motion.div key="s6" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="flex flex-col gap-8" style={{ padding: '3rem' }}>
+                            <div className="text-center">
+                                <h3 className="text-2xl mb-2">Final Step</h3>
+                                <p className="text-muted">Review your information and submit your seller application.</p>
+                            </div>
+
+                            <form onSubmit={handleSubmitSellerApplication} className="flex flex-col gap-6">
+                                <div className="glass-card" style={{ background: 'var(--surface)', padding: '2rem', borderRadius: '1rem' }}>
+                                    <h4 className="font-bold mb-4">Summary of Information</h4>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div>
+                                            <span className="text-muted">Shop Name:</span>
+                                            <p className="font-semibold">{shopName}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted">Category:</span>
+                                            <p className="font-semibold">{category}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted">Company Name:</span>
+                                            <p className="font-semibold">{companyName}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted">PAN Number:</span>
+                                            <p className="font-semibold">{panNumber}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4 mt-4">
+                                    <button type="button" onClick={handleBack} className="btn btn-secondary flex-1 py-4 font-bold">Go Back</button>
                                     <button type="submit" disabled={loading} className="btn btn-primary flex-1 py-4 font-bold shadow-xl">
                                         {loading ? <Loader className="animate-spin" /> : 'Apply for Seller Account'}
                                     </button>
@@ -387,7 +638,7 @@ export default function SellerRegistration() {
                 
                 <button
                     onClick={() => setShowManualRegistration(true)}
-                    className="px-8 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors"
+                    className="btn btn-primary w-full py-5 text-lg font-bold flex items-center justify-center gap-2 shadow-lg"
                 >
                     Enter Details Manually
                 </button>
