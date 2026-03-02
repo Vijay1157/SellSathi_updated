@@ -2828,32 +2828,33 @@ app.post("/payment/verify", async (req, res) => {
                     await orderRef.update(shippingUpdate);
                     console.log(`✅ Shiprocket shipment created successfully for order ${orderRef.id}`);
 
-                    // 🚀 Trigger Auto Courier Assignment in Background
-                    if (shipmentResult.shiprocketOrderId && shipmentResult.shipmentId) {
-                        shiprocketService.autoAssignCourierAndGenerateAWB(
-                            shipmentResult.shiprocketOrderId,
-                            shipmentResult.shipmentId,
-                            orderRef.id,
-                            3000 // 3-second delay
-                        ).then(async (assignmentResult) => {
-                            if (assignmentResult.success) {
-                                // Update order with AWB and courier details - strip undefined values
-                                const awbUpdate = {};
-                                if (assignmentResult.awbNumber !== undefined) awbUpdate.awbNumber = assignmentResult.awbNumber;
-                                if (assignmentResult.courierName !== undefined) awbUpdate.courierName = assignmentResult.courierName;
-                                if (assignmentResult.courierId !== undefined) awbUpdate.courierId = assignmentResult.courierId;
-                                if (assignmentResult.courierRate !== undefined) awbUpdate.courierRate = assignmentResult.courierRate;
-                                if (assignmentResult.estimatedDeliveryDays !== undefined) awbUpdate.estimatedDeliveryDays = assignmentResult.estimatedDeliveryDays;
-                                awbUpdate.courierAssignedAt = admin.firestore.FieldValue.serverTimestamp();
-                                await orderRef.update(awbUpdate);
-                                console.log(`🚚 Background courier assignment successful for order ${orderRef.id}`);
-                            } else {
-                                console.error(`❌ Background courier assignment failed for order ${orderRef.id}:`, assignmentResult.error);
-                            }
-                        }).catch(err => {
-                            console.error(`❌ Background courier assignment crashed for order ${orderRef.id}:`, err);
-                        });
-                    }
+                    // 🚀 Auto Courier Assignment DISABLED for testing
+                    // Uncomment below block when ready to go live with automatic courier dispatch
+                    // if (shipmentResult.shiprocketOrderId && shipmentResult.shipmentId) {
+                    //     shiprocketService.autoAssignCourierAndGenerateAWB(
+                    //         shipmentResult.shiprocketOrderId,
+                    //         shipmentResult.shipmentId,
+                    //         orderRef.id,
+                    //         3000 // 3-second delay
+                    //     ).then(async (assignmentResult) => {
+                    //         if (assignmentResult.success) {
+                    //             const awbUpdate = {};
+                    //             if (assignmentResult.awbNumber !== undefined) awbUpdate.awbNumber = assignmentResult.awbNumber;
+                    //             if (assignmentResult.courierName !== undefined) awbUpdate.courierName = assignmentResult.courierName;
+                    //             if (assignmentResult.courierId !== undefined) awbUpdate.courierId = assignmentResult.courierId;
+                    //             if (assignmentResult.courierRate !== undefined) awbUpdate.courierRate = assignmentResult.courierRate;
+                    //             if (assignmentResult.estimatedDeliveryDays !== undefined) awbUpdate.estimatedDeliveryDays = assignmentResult.estimatedDeliveryDays;
+                    //             awbUpdate.courierAssignedAt = admin.firestore.FieldValue.serverTimestamp();
+                    //             await orderRef.update(awbUpdate);
+                    //             console.log(`🚚 Background courier assignment successful for order ${orderRef.id}`);
+                    //         } else {
+                    //             console.error(`❌ Background courier assignment failed for order ${orderRef.id}:`, assignmentResult.error);
+                    //         }
+                    //     }).catch(err => {
+                    //         console.error(`❌ Background courier assignment crashed for order ${orderRef.id}:`, err);
+                    //     });
+                    // }
+                    console.log(`⏸️  Auto courier assignment skipped (testing mode) for order ${orderRef.id}`);
                 } else {
                     // Log error but don't fail order creation
                     console.error(`❌ Shiprocket shipment creation failed for order ${orderRef.id}:`, shipmentResult.error);
@@ -2953,32 +2954,33 @@ app.post("/payment/cod-order", verifyAuth, async (req, res) => {
                 await orderRef.update(shippingUpdate);
                 console.log(`✅ Shiprocket shipment created successfully for order ${orderRef.id}`);
 
-                // 🚀 Trigger Auto Courier Assignment in Background
-                if (shipmentResult.shiprocketOrderId && shipmentResult.shipmentId) {
-                    shiprocketService.autoAssignCourierAndGenerateAWB(
-                        shipmentResult.shiprocketOrderId,
-                        shipmentResult.shipmentId,
-                        orderRef.id,
-                        3000 // 3-second delay
-                    ).then(async (assignmentResult) => {
-                        if (assignmentResult.success) {
-                            // Update order with AWB and courier details - strip undefined values
-                            const awbUpdate = {};
-                            if (assignmentResult.awbNumber !== undefined) awbUpdate.awbNumber = assignmentResult.awbNumber;
-                            if (assignmentResult.courierName !== undefined) awbUpdate.courierName = assignmentResult.courierName;
-                            if (assignmentResult.courierId !== undefined) awbUpdate.courierId = assignmentResult.courierId;
-                            if (assignmentResult.courierRate !== undefined) awbUpdate.courierRate = assignmentResult.courierRate;
-                            if (assignmentResult.estimatedDeliveryDays !== undefined) awbUpdate.estimatedDeliveryDays = assignmentResult.estimatedDeliveryDays;
-                            awbUpdate.courierAssignedAt = admin.firestore.FieldValue.serverTimestamp();
-                            await orderRef.update(awbUpdate);
-                            console.log(`🚚 Background courier assignment successful for order ${orderRef.id}`);
-                        } else {
-                            console.error(`❌ Background courier assignment failed for order ${orderRef.id}:`, assignmentResult.error);
-                        }
-                    }).catch(err => {
-                        console.error(`❌ Background courier assignment crashed for order ${orderRef.id}:`, err);
-                    });
-                }
+                // 🚀 Auto Courier Assignment DISABLED for testing
+                // Uncomment below block when ready to go live with automatic courier dispatch
+                // if (shipmentResult.shiprocketOrderId && shipmentResult.shipmentId) {
+                //     shiprocketService.autoAssignCourierAndGenerateAWB(
+                //         shipmentResult.shiprocketOrderId,
+                //         shipmentResult.shipmentId,
+                //         orderRef.id,
+                //         3000 // 3-second delay
+                //     ).then(async (assignmentResult) => {
+                //         if (assignmentResult.success) {
+                //             const awbUpdate = {};
+                //             if (assignmentResult.awbNumber !== undefined) awbUpdate.awbNumber = assignmentResult.awbNumber;
+                //             if (assignmentResult.courierName !== undefined) awbUpdate.courierName = assignmentResult.courierName;
+                //             if (assignmentResult.courierId !== undefined) awbUpdate.courierId = assignmentResult.courierId;
+                //             if (assignmentResult.courierRate !== undefined) awbUpdate.courierRate = assignmentResult.courierRate;
+                //             if (assignmentResult.estimatedDeliveryDays !== undefined) awbUpdate.estimatedDeliveryDays = assignmentResult.estimatedDeliveryDays;
+                //             awbUpdate.courierAssignedAt = admin.firestore.FieldValue.serverTimestamp();
+                //             await orderRef.update(awbUpdate);
+                //             console.log(`🚚 Background courier assignment successful for order ${orderRef.id}`);
+                //         } else {
+                //             console.error(`❌ Background courier assignment failed for order ${orderRef.id}:`, assignmentResult.error);
+                //         }
+                //     }).catch(err => {
+                //         console.error(`❌ Background courier assignment crashed for order ${orderRef.id}:`, err);
+                //     });
+                // }
+                console.log(`⏸️  Auto courier assignment skipped (testing mode) for order ${orderRef.id}`);
             } else {
                 // Log error but don't fail order creation
                 console.error(`❌ Shiprocket shipment creation failed for order ${orderRef.id}:`, shipmentResult.error);
