@@ -31,14 +31,28 @@ function App() {
             <Route path="/" element={<MarketplaceHome />} />
             <Route path="/products" element={<ProductListing />} />
             <Route path="/product/:id" element={<ProductDetail />} />
-            <Route path="/checkout" element={<Checkout />} />
+            <Route
+              path="/checkout"
+              element={
+                <ProtectedRoute requiredRole="CONSUMER">
+                  <Checkout />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/track" element={<OrderTracking />} />
             <Route path="/invoice" element={<Invoice />} />
             <Route path="/deals" element={<Deals />} />
             <Route path="/new-arrivals" element={<NewArrivals />} />
             <Route path="/trending" element={<Trending />} />
             <Route path="/category/:categoryName" element={<CategoryPage />} />
-            <Route path="/wishlist" element={<Wishlist />} />
+            <Route
+              path="/wishlist"
+              element={
+                <ProtectedRoute requiredRole="CONSUMER">
+                  <Wishlist />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Consumer Routes */}
             <Route

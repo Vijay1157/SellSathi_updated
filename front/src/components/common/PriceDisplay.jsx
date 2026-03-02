@@ -69,53 +69,49 @@ const PriceDisplay = ({
                 .price-row {
                     display: flex;
                     align-items: center;
-                    gap: 0.75rem;
+                    gap: 0.5rem;
                     flex-wrap: wrap;
                 }
                 .final-price {
-                    font-weight: 950;
-                    color: #1e293b;
+                    font-weight: 700;
+                    color: var(--text);
                 }
                 .old-price {
-                    color: #94a3b8;
+                    color: var(--text-muted);
                     text-decoration: line-through;
-                    font-weight: 500;
                 }
                 .discount-badge-standard {
-                    background: #f97316;
+                    background: #ef4444;
                     color: white;
-                    border-radius: 12px;
-                    font-weight: 800;
+                    border-radius: 4px;
+                    font-weight: 600;
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
                 }
 
-                /* Size: Small (Listings, Cards) */
-                .price-display-sm .final-price { font-size: 1.6rem; letter-spacing: -0.5px; }
-                .price-display-sm .old-price { font-size: 0.9rem; margin-top: 0.25rem; }
+                /* Size: Small */
+                .price-display-sm .final-price { font-size: 1.1rem; }
+                .price-display-sm .old-price { font-size: 0.9rem; }
                 .price-display-sm .badge-sm { 
-                    font-size: 0.8rem; 
-                    padding: 0.2rem 0.6rem;
-                    margin-top: 0.25rem;
+                    font-size: 0.7rem; 
+                    padding: 0.1rem 0.4rem;
                 }
 
-                /* Size: Medium (Modals, Wishlist) */
-                .price-display-md .final-price { font-size: 1.8rem; letter-spacing: -0.5px; }
-                .price-display-md .old-price { font-size: 1rem; margin-top: 0.3rem; }
+                /* Size: Medium */
+                .price-display-md .final-price { font-size: 1.5rem; }
+                .price-display-md .old-price { font-size: 1.1rem; }
                 .price-display-md .badge-md { 
                     font-size: 0.85rem; 
-                    padding: 0.25rem 0.7rem;
-                    margin-top: 0.3rem;
+                    padding: 0.2rem 0.6rem;
                 }
 
-                /* Size: Large (Product Detail) */
-                .price-display-lg .final-price { font-size: 2.5rem; letter-spacing: -1px; }
-                .price-display-lg .old-price { font-size: 1.25rem; margin-top: 0.5rem; }
+                /* Size: Large */
+                .price-display-lg .final-price { font-size: 2rem; }
+                .price-display-lg .old-price { font-size: 1.25rem; }
                 .price-display-lg .badge-lg { 
                     font-size: 1rem; 
-                    padding: 0.3rem 0.8rem;
-                    margin-top: 0.5rem;
+                    padding: 0.25rem 0.75rem;
                 }
             `}</style>
         </div>

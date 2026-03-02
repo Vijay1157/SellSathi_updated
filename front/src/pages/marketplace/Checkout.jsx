@@ -386,6 +386,10 @@ export default function Checkout() {
     };
 
     const handleContinue = async () => {
+        if (!auth.currentUser) {
+            window.dispatchEvent(new Event('openLoginModal'));
+            return;
+        }
         console.log('=== handleContinue called ===');
         console.log('Current step:', step);
         console.log('Payment method:', paymentMethod);
@@ -590,8 +594,8 @@ export default function Checkout() {
                                                     }
                                                 }}
                                                 className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all ${addressMode === 'saved'
-                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                                     }`}
                                             >
                                                 Select Saved Address
@@ -609,8 +613,8 @@ export default function Checkout() {
                                                     });
                                                 }}
                                                 className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all ${addressMode === 'new'
-                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                                     }`}
                                             >
                                                 Enter New Address

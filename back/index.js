@@ -349,10 +349,16 @@ app.post("/auth/login", async (req, res) => {
                 // Stored as ADMIN but wrong phone — demote to CONSUMER
                 console.warn(`Security: phone ${phoneNumber} stored as ADMIN but doesn't match. Demoted.`);
             } else {
+                // Auto-sync ADMIN role if phoneNumber matches but role isn't ADMIN yet
+                if (userData.role !== "ADMIN") {
+                    try { await userRef.update({ role: "ADMIN" }); } catch (e) { }
+                }
                 return res.status(200).json({
                     success: true, uid,
                     role: "ADMIN",
                     status: "AUTHORIZED",
+                    phone: phoneNumber,
+                    fullName: userData.fullName || "Admin User",
                     message: "Admin login successful",
                 });
             }
@@ -661,10 +667,16 @@ app.post("/auth/test-login", async (req, res) => {
         const ADMIN_PHONE = "+917483743936";
         if (userData.role === "ADMIN" || phoneNumber === ADMIN_PHONE) {
             if (phoneNumber === ADMIN_PHONE) {
+                // Auto-sync ADMIN role if phoneNumber matches but role isn't ADMIN yet
+                if (userData.role !== "ADMIN") {
+                    try { await userRef.update({ role: "ADMIN" }); } catch (e) { }
+                }
                 return res.status(200).json({
                     success: true, uid,
                     role: "ADMIN",
                     status: "AUTHORIZED",
+                    phone: phoneNumber,
+                    fullName: userData.fullName || "Admin User",
                     message: "Admin login successful",
                 });
             }

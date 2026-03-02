@@ -62,6 +62,18 @@ const formatDate = (timestamp) => {
     }
 };
 
+const calculateAge = (dob) => {
+    if (!dob) return null;
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+    }
+    return age;
+};
+
 export default function ConsumerDashboard() {
     const [user, setUser] = useState(null);
     const [userName, setUserName] = useState('');
@@ -437,8 +449,9 @@ export default function ConsumerDashboard() {
                                     )}
                                     <p className="text-xs text-gray-600 mb-1">Hello,</p>
                                     <p className="font-semibold text-gray-900 text-sm">
-                                        {userName || 'User'}!
+                                        {localStorage.getItem('userName') || userName || 'User'}
                                     </p>
+
                                     <p className="text-xs text-gray-500 mt-1">{user.email}</p>
                                     <div className="flex items-center gap-1 mt-2">
                                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -1401,7 +1414,7 @@ export default function ConsumerDashboard() {
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Display Name</label>
                                             <input
                                                 type="text"
-                                                value={userName || ''}
+                                                value={localStorage.getItem('userName') || userName || ''}
                                                 readOnly
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
                                             />
@@ -1415,6 +1428,17 @@ export default function ConsumerDashboard() {
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
                                             />
                                         </div>
+                                        {localStorage.getItem('dob') && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Age</label>
+                                                <input
+                                                    type="text"
+                                                    value={calculateAge(localStorage.getItem('dob'))}
+                                                    readOnly
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+                                                />
+                                            </div>
+                                        )}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">User ID</label>
                                             <input

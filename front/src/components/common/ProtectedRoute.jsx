@@ -10,7 +10,7 @@ export default function ProtectedRoute({ children, requiredRole = null }) {
     useEffect(() => {
         const checkAuthorization = () => {
             const user = localStorage.getItem('user');
-            
+
             if (!user) {
                 console.log('No user in localStorage - Unauthorized');
                 setIsAuthorized(false);
@@ -19,16 +19,17 @@ export default function ProtectedRoute({ children, requiredRole = null }) {
 
             try {
                 const userData = JSON.parse(user);
-                
+
                 // Check for admin access
                 if (requiredRole === 'ADMIN') {
-                    if (userData.role !== 'ADMIN' || userData.phone !== ADMIN_PHONE) {
-                        console.warn(`Unauthorized admin access - Role: ${userData.role}, Phone: ${userData.phone}`);
+                    // Role must be ADMIN. Phone check is secondary/master-only.
+                    if (userData.role !== 'ADMIN') {
+                        console.warn(`Unauthorized admin access - Role: ${userData.role}`);
                         setIsAuthorized(false);
                         return;
                     }
                 }
-                
+
                 // Check for seller access
                 if (requiredRole === 'SELLER') {
                     if (userData.role !== 'SELLER') {
@@ -37,7 +38,7 @@ export default function ProtectedRoute({ children, requiredRole = null }) {
                         return;
                     }
                 }
-                
+
                 // Check for consumer access
                 if (requiredRole === 'CONSUMER') {
                     if (userData.role !== 'CONSUMER') {
@@ -46,7 +47,7 @@ export default function ProtectedRoute({ children, requiredRole = null }) {
                         return;
                     }
                 }
-                
+
                 setIsAuthorized(true);
             } catch (error) {
                 console.error('Error parsing user data:', error);
@@ -76,8 +77,16 @@ export default function ProtectedRoute({ children, requiredRole = null }) {
         if (isAuthorized === false) {
             console.log('Authorization lost - Navigating to home');
             navigate('/', { replace: true });
+
+            // Only trigger the login modal for general consumer routes
+            if (requiredRole === 'CONSUMER' || !requiredRole) {
+                // Short timeout to ensure navigation completed
+                setTimeout(() => {
+                    window.dispatchEvent(new Event('openLoginModal'));
+                }, 100);
+            }
         }
-    }, [isAuthorized, navigate]);
+    }, [isAuthorized, navigate, requiredRole]);
 
     if (isAuthorized === null) {
         return null; // Loading state

@@ -4,6 +4,9 @@ import { X, Star, ShoppingCart, Heart, Clock } from 'lucide-react';
 import { addToCart } from '../../utils/cartUtils';
 import { getProductPricing } from '../../utils/priceUtils';
 import PriceDisplay from './PriceDisplay';
+import Rating from './Rating';
+import { auth } from '../../config/firebase';
+import { fetchProductReviews } from '../../utils/reviewUtils';
 
 export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
     if (!product) return null;
@@ -15,6 +18,7 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
     const [purchaseOption, setPurchaseOption] = React.useState('standard');
     const [selectedColor, setSelectedColor] = React.useState(null);
     const [selectedSize, setSelectedSize] = React.useState(null);
+    const [reviewStats, setReviewStats] = React.useState({ averageRating: 0, totalReviews: 0 });
 
     React.useEffect(() => {
         const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
@@ -25,6 +29,13 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
         if (product.memory && product.memory.length > 0) setSelectedMemory(product.memory[0]);
         if (product.colors && product.colors.length > 0) setSelectedColor(product.colors[0]);
         if (product.sizes && product.sizes.length > 0) setSelectedSize(product.sizes[0]);
+
+        // Fetch dynamic reviews
+        const getReviews = async () => {
+            const result = await fetchProductReviews(product.id);
+            setReviewStats(result.stats);
+        };
+        getReviews();
     }, [product.id]);
 
     const priceInfo = React.useMemo(() => {
@@ -37,7 +48,11 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
     }, [product, selectedSize, selectedStorage, selectedMemory, purchaseOption]);
 
     const toggleWishlist = (e) => {
-        e.stopPropagation();
+        if (e) e.stopPropagation();
+        if (!auth.currentUser) {
+            window.dispatchEvent(new Event('openLoginModal'));
+            return;
+        }
         const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
         const alreadySaved = saved.some(item => item.id === product.id);
         let updated;
@@ -51,24 +66,10 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
         setIsSaved(!alreadySaved);
     };
 
-    const handleAddToCart = async (e) => {
+    const handleViewProduct = (e) => {
         if (e) e.stopPropagation();
-        if (!product) return;
-        const inStock = product.stock !== 0 && product.status !== 'Out of Stock';
-        if (!inStock) return;
-
-        const selections = {
-            color: selectedColor,
-            size: selectedSize,
-            storage: selectedStorage,
-            memory: selectedMemory,
-            purchaseOption: purchaseOption
-        };
-        const res = await addToCart(product, selections);
-        if (res.success) {
-            alert('✅ Product added to cart successfully!');
-            onClose();
-        }
+        onClose();
+        navigate(`/product/${product.id}`);
     };
 
     return (
@@ -96,26 +97,18 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                                 <h2 className="qv-title">{product.name}</h2>
 
                                 <div className="qv-rating">
-                                    {[...Array(5)].map((_, i) => (
-                                        <Star
-                                            key={i}
-                                            size={18}
-                                            fill={i < Math.floor(product.rating || 4) ? "#FFB800" : "none"}
-                                            color="#FFB800"
-                                        />
-                                    ))}
-                                    <span className="qv-review-count">({product.reviews || 0} reviews)</span>
+                                    <Rating
+                                        averageRating={reviewStats.averageRating || 0}
+                                        totalReviews={reviewStats.totalReviews || 0}
+                                        size={18}
+                                        showCount={true}
+                                        className="qv-rating-component"
+                                    />
                                 </div>
 
                                 <div className="qv-price-row">
                                     <PriceDisplay
                                         product={product}
-                                        selections={{
-                                            size: selectedSize,
-                                            storage: selectedStorage,
-                                            memory: selectedMemory,
-                                            purchaseOption: purchaseOption
-                                        }}
                                         size="md"
                                     />
                                 </div>
@@ -128,109 +121,12 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                                     {product.description || `Experience the best in category with the ${product.name}. Premium quality and exceptional performance guaranteed.`}
                                 </p>
 
-                                <div className="qv-deal-timer">
-                                    <Clock size={18} />
-                                    <span>Deal ends in 11h 24m</span>
-                                </div>
-
-                                <div className="qv-variant-section">
-                                    <h4>Purchase Options</h4>
-                                    <div className="qv-purchase-options">
-                                        <div
-                                            className={`qv-opt-card ${purchaseOption === 'standard' ? 'active' : ''}`}
-                                            onClick={() => setPurchaseOption('standard')}
-                                        >
-                                            <span className="p">₹{Math.round(priceInfo.strikethroughPrice).toLocaleString()}</span>
-                                            <span className="l">Buy without exchange</span>
-                                        </div>
-                                        <div
-                                            className={`qv-opt-card ${purchaseOption === 'exchange' ? 'active' : ''}`}
-                                            onClick={() => setPurchaseOption('exchange')}
-                                        >
-                                            <span className="p">₹{Math.round(priceInfo.finalPrice).toLocaleString()}</span>
-                                            <span className="l">Buy with exchange</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {product.colors && product.colors.length > 0 && (
-                                    <div className="qv-variant-section">
-                                        <h4>Color: <span className="qv-selected-val">{selectedColor?.name || selectedColor}</span></h4>
-                                        <div className="qv-pill-group">
-                                            {product.colors.map(color => (
-                                                <button
-                                                    key={color.name || color}
-                                                    className={`qv-pill ${selectedColor === color ? 'active' : ''}`}
-                                                    onClick={() => setSelectedColor(color)}
-                                                >
-                                                    {color.name || color}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {product.sizes && product.sizes.length > 0 && (
-                                    <div className="qv-variant-section">
-                                        <h4>Size: <span className="qv-selected-val">{selectedSize}</span></h4>
-                                        <div className="qv-pill-group">
-                                            {product.sizes.map(size => (
-                                                <button
-                                                    key={size}
-                                                    className={`qv-pill ${selectedSize === size ? 'active' : ''}`}
-                                                    onClick={() => setSelectedSize(size)}
-                                                >
-                                                    {size}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {product.storage && product.storage.length > 0 && (
-                                    <div className="qv-variant-section">
-                                        <h4>Storage: <span className="qv-selected-val">{selectedStorage?.label || selectedStorage}</span></h4>
-                                        <div className="qv-pill-group">
-                                            {product.storage.map(s => (
-                                                <button
-                                                    key={s.label || s}
-                                                    className={`qv-pill variant-pill ${selectedStorage === s ? 'active' : ''}`}
-                                                    onClick={() => setSelectedStorage(s)}
-                                                >
-                                                    <span className="v-label">{s.label || s}</span>
-                                                    <span className="v-price">{s.priceOffset ? (s.priceOffset > 0 ? `+₹${s.priceOffset.toLocaleString()}` : `-₹${Math.abs(s.priceOffset).toLocaleString()}`) : 'Included'}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {product.memory && product.memory.length > 0 && (
-                                    <div className="qv-variant-section">
-                                        <h4>Memory: <span className="qv-selected-val">{selectedMemory?.label || selectedMemory}</span></h4>
-                                        <div className="qv-pill-group">
-                                            {product.memory.map(m => (
-                                                <button
-                                                    key={m.label || m}
-                                                    className={`qv-pill variant-pill ${selectedMemory === m ? 'active' : ''}`}
-                                                    onClick={() => setSelectedMemory(m)}
-                                                >
-                                                    <span className="v-label">{m.label || m}</span>
-                                                    <span className="v-price">{m.priceOffset ? (m.priceOffset > 0 ? `+₹${m.priceOffset.toLocaleString()}` : `-₹${Math.abs(m.priceOffset).toLocaleString()}`) : 'Included'}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
                                 <div className="qv-actions">
                                     <button
-                                        className="qv-add-btn"
-                                        onClick={handleAddToCart}
-                                        disabled={product.stock === 0 || product.status === 'Out of Stock'}
-                                        style={product.stock === 0 || product.status === 'Out of Stock' ? { background: '#94a3b8', cursor: 'not-allowed' } : {}}
+                                        className="qv-view-btn"
+                                        onClick={handleViewProduct}
                                     >
-                                        Add to Cart
+                                        View Product
                                     </button>
                                     <button
                                         className={`qv-wishlist-btn ${isSaved ? 'active' : ''}`}
@@ -335,14 +231,8 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             letter-spacing: -0.5px;
                         }
                         .qv-rating {
-                            display: flex;
-                            align-items: center;
-                            gap: 0.5rem;
-                        }
-                        .qv-review-count {
-                            font-size: 0.9rem;
-                            color: #64748b;
-                            font-weight: 500;
+                            margin-top: -0.5rem;
+                            margin-bottom: 0.5rem;
                         }
                         .qv-price-row {
                             display: flex;
@@ -443,7 +333,7 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             gap: 1rem;
                             margin-top: 1rem;
                         }
-                        .qv-add-btn {
+                        .qv-view-btn {
                             flex: 1;
                             background: #4f46e5;
                             color: white;
@@ -454,15 +344,14 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             font-size: 1.1rem;
                             cursor: pointer;
                             transition: 0.2s;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
                         }
-                        .qv-add-btn:hover:not(:disabled) { 
+                        .qv-view-btn:hover { 
                             background: #0f172a; 
                             transform: translateY(-2px); 
                             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); 
-                        }
-                        .qv-add-btn:disabled {
-                            opacity: 0.5;
-                            cursor: not-allowed;
                         }
                         .qv-wishlist-btn {
                             width: 60px;
