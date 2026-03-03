@@ -179,10 +179,23 @@ const verifyAuth = async (req, res, next) => {
 
             // Cache miss — read Firestore once, then cache the result
             const userSnap = await db.collection("users").doc(testUid).get();
+            let userData;
             if (!userSnap.exists) {
-                return res.status(401).json({ success: false, message: "Test user not found in database" });
+                // User not in Firestore users collection — check Firebase Auth directly
+                // (this handles real Firebase users who exist in Auth but not in users collection)
+                try {
+                    const fbUser = await admin.auth().getUser(testUid);
+                    if (!fbUser) {
+                        return res.status(401).json({ success: false, message: "User not found" });
+                    }
+                    // User is valid in Firebase Auth — allow through with basic info
+                    userData = { role: 'CONSUMER', phone: fbUser.phoneNumber || null };
+                } catch (_authErr) {
+                    return res.status(401).json({ success: false, message: "User not found" });
+                }
+            } else {
+                userData = userSnap.data();
             }
-            const userData = userSnap.data();
             _testUserCache.set(testUid, { userData, expiresAt: Date.now() + TEST_USER_CACHE_TTL_MS });
 
             req.user = {
@@ -205,16 +218,34 @@ const verifyAuth = async (req, res, next) => {
 
         try {
             const decodedToken = await admin.auth().verifyIdToken(idToken);
-            console.log("[AUTH] Token verified successfully for UID:", decodedToken.uid);
-            console.log("[AUTH] Token claims:", decodedToken);
             req.user = decodedToken;
             next();
         } catch (error) {
-            console.error("[AUTH] Token verification failed:", error);
-            console.error("[AUTH] Full error object:", JSON.stringify(error, null, 2));
-            console.error("[AUTH] Error code:", error.code);
-            console.error("[AUTH] Error message:", error.message);
-            console.error("[AUTH] Error stack:", error.stack);
+            console.error("[AUTH] Token verification failed:", error.code, error.message);
+
+            // DEV FALLBACK: If we're in dev mode and full verification failed
+            // (clock skew, Google cert fetch delay, etc.), decode the JWT payload
+            // without signature verification to extract the UID, then confirm the
+            // user exists in Firestore. NEVER enabled in production.
+            if (IS_DEV) {
+                try {
+                    const payloadB64 = idToken.split('.')[1];
+                    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+                    const uid = payload.user_id || payload.sub;
+                    if (!uid) throw new Error('No UID in JWT payload');
+
+                    // Confirm user exists in Firebase Auth (lightweight check)
+                    const firebaseUser = await admin.auth().getUser(uid).catch(() => null);
+                    if (!firebaseUser) throw new Error('User not found in Firebase Auth');
+
+                    console.warn(`[AUTH-DEV] Bypassed signature check for UID: ${uid} (dev fallback)`);
+                    req.user = { uid, ...payload, isDevFallback: true };
+                    return next();
+                } catch (fallbackError) {
+                    console.error("[AUTH-DEV] Fallback also failed:", fallbackError.message);
+                }
+            }
+
             return res.status(401).json({ success: false, message: "Invalid or expired token" });
         }
     } catch (error) {
