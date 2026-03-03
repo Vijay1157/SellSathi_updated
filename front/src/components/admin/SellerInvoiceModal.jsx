@@ -138,6 +138,60 @@ export default function SellerInvoiceModal({ seller, onClose, onDownloadPDF, isD
                     </div>
                 </div>
 
+                {/* Bank Details Section */}
+                <div className="glass-card" style={{ padding: '2rem', marginBottom: '2rem', border: '1px solid var(--border)', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)' }}>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <DollarSign size={20} style={{ color: 'var(--primary)' }} />
+                        Bank Details
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
+                        <div>
+                            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                🏦 Bank Name
+                            </p>
+                            <p style={{ fontWeight: 600, fontSize: '1rem' }}>{seller.bankName || 'Not provided'}</p>
+                        </div>
+                        <div>
+                            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                👤 Account Holder Name
+                            </p>
+                            <p style={{ fontWeight: 600, fontSize: '1rem' }}>{seller.accountHolderName || 'Not provided'}</p>
+                        </div>
+                        <div>
+                            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                💳 IFSC Code
+                            </p>
+                            <p style={{ 
+                                fontWeight: 600, 
+                                fontSize: '1rem',
+                                fontFamily: 'monospace',
+                                letterSpacing: '0.05em',
+                                backgroundColor: 'white',
+                                padding: '0.5rem 0.75rem',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border)'
+                            }}>
+                                {seller.ifscCode || 'Not provided'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                📱 UPI ID
+                            </p>
+                            <p style={{ 
+                                fontWeight: 600, 
+                                fontSize: '1rem',
+                                backgroundColor: seller.upiId ? 'white' : 'transparent',
+                                padding: seller.upiId ? '0.5rem 0.75rem' : '0',
+                                borderRadius: '6px',
+                                border: seller.upiId ? '1px solid var(--border)' : 'none'
+                            }}>
+                                {seller.upiId || 'Not provided'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Invoice Summary - Four Boxes */}
                 <div className="glass-card" style={{ padding: '2rem', marginBottom: '2rem', border: '1px solid var(--border)' }}>
                     <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Invoice Summary</h3>

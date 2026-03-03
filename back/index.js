@@ -863,7 +863,20 @@ app.get("/admin/products", verifyAuth, verifyAdmin, async (req, res) => {
             }
         }
 
-        products.sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Sort by date (newest first) - parse dd/mm/yyyy format correctly
+        products.sort((a, b) => {
+            const parseDate = (dateStr) => {
+                if (!dateStr) return new Date(0);
+                const [day, month, year] = dateStr.split('/');
+                return new Date(year, month - 1, day);
+            };
+            return parseDate(b.date) - parseDate(a.date);
+        });
+
+        console.log(`[ADMIN-PRODUCTS] Total products fetched: ${products.length}`);
+        if (products.length > 0) {
+            console.log(`[ADMIN-PRODUCTS] Sample products:`, products.slice(0, 3).map(p => ({ id: p.id, title: p.title, date: p.date })));
+        }
 
         return res.status(200).json({
             success: true,
@@ -968,6 +981,9 @@ app.post("/admin/seller/:uid/block", verifyAuth, verifyAdmin, async (req, res) =
         const sellerRef = db.collection("sellers").doc(uid);
         const sellerSnap = await sellerRef.get();
         if (!sellerSnap.exists) return res.status(404).json({ success: false, message: "Seller not found" });
+        
+        const sellerData = sellerSnap.data();
+        
         await sellerRef.update({
             sellerStatus: "REJECTED",
             isBlocked: true,
@@ -975,10 +991,64 @@ app.post("/admin/seller/:uid/block", verifyAuth, verifyAdmin, async (req, res) =
             blockedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         await db.collection("users").doc(uid).update({ isActive: false, isBlocked: true });
-        return res.status(200).json({ success: true, message: "Seller blocked" });
+        
+        // Send email notification to seller
+        const emailService = require('./services/emailService');
+        await emailService.sendSellerBlockedEmail(
+            sellerData.email,
+            sellerData.name || 'Seller',
+            sellerData.shopName || 'Your Shop',
+            'Policy violation or admin decision'
+        );
+        
+        return res.status(200).json({ success: true, message: "Seller blocked and notified via email" });
     } catch (error) {
         console.error("BLOCK SELLER ERROR:", error);
         return res.status(500).json({ success: false, message: "Failed to block seller" });
+    }
+});
+
+// POST /admin/seller/:uid/unblock - Unblock a seller and move to pending
+app.post("/admin/seller/:uid/unblock", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const sellerRef = db.collection("sellers").doc(uid);
+        const sellerSnap = await sellerRef.get();
+        
+        if (!sellerSnap.exists) {
+            return res.status(404).json({ success: false, message: "Seller not found" });
+        }
+        
+        const sellerData = sellerSnap.data();
+        
+        // Update seller status to PENDING and remove block
+        await sellerRef.update({
+            sellerStatus: "PENDING",
+            status: "PENDING",
+            isBlocked: false,
+            blockDuration: admin.firestore.FieldValue.delete(),
+            blockedAt: admin.firestore.FieldValue.delete(),
+            unblockedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        // Update user status
+        await db.collection("users").doc(uid).update({ 
+            isActive: false, // Still inactive until approved
+            isBlocked: false 
+        });
+        
+        // Send email notification to seller
+        const emailService = require('./services/emailService');
+        await emailService.sendSellerUnblockedEmail(
+            sellerData.email,
+            sellerData.name || 'Seller',
+            sellerData.shopName || 'Your Shop'
+        );
+        
+        return res.status(200).json({ success: true, message: "Seller unblocked, moved to Pending Approvals, and notified via email" });
+    } catch (error) {
+        console.error("UNBLOCK SELLER ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to unblock seller" });
     }
 });
 
@@ -1356,13 +1426,37 @@ app.get("/admin/seller-analytics", verifyAuth, verifyAdmin, async (req, res) => 
 
             productsSnap.forEach(p => {
                 const prod = p.data();
+                let createdAt = null;
+                
+                // Handle different date formats for createdAt
+                if (prod.createdAt) {
+                    if (typeof prod.createdAt.toDate === 'function') {
+                        // Firestore Timestamp object
+                        createdAt = prod.createdAt.toDate();
+                    } else if (prod.createdAt._seconds) {
+                        // Serialized Firestore Timestamp with _seconds
+                        createdAt = new Date(prod.createdAt._seconds * 1000);
+                    } else if (prod.createdAt instanceof Date) {
+                        createdAt = prod.createdAt;
+                    } else if (typeof prod.createdAt === 'string' || typeof prod.createdAt === 'number') {
+                        createdAt = new Date(prod.createdAt);
+                    }
+                }
+                
+                // If no valid createdAt, use a default old date so it appears at the bottom
+                if (!createdAt || isNaN(createdAt.getTime())) {
+                    createdAt = new Date('2020-01-01'); // Default old date
+                }
+                
                 productStats[p.id] = {
                     id: p.id,
                     name: prod.title,
                     price: prod.price || 0,
+                    discountedPrice: prod.discountedPrice || prod.discountPrice || null,
                     stock: prod.stock || 0,
                     sold: 0,
-                    revenue: 0
+                    revenue: 0,
+                    createdAt: createdAt
                 };
             });
 
@@ -1419,6 +1513,8 @@ app.get("/admin/seller-analytics", verifyAuth, verifyAdmin, async (req, res) => 
 app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req, res) => {
     try {
         const { uid } = req.params;
+        const { dateFrom, dateTo } = req.query; // format: YYYY-MM-DD
+        
         const sellerSnap = await db.collection("sellers").doc(uid).get();
         if (!sellerSnap.exists) return res.status(404).send("Seller not found");
         const sellerData = sellerSnap.data();
@@ -1437,30 +1533,81 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
 
         productsSnap.forEach(p => {
             const prod = p.data();
-            totalProducts++;
-            const stock = prod.stock || 0;
-            const price = prod.price || 0;
-            const discountedPrice = prod.discountedPrice || price;
-            totalStockLeft += stock;
-            totalInventoryValue += (discountedPrice * stock);
-            productStats[p.id] = {
-                name: prod.title,
-                price: price,
-                discountedPrice: prod.discountedPrice || null,
-                stock: stock,
-                sold: 0,
-                revenue: 0,
-                worth: discountedPrice * stock
-            };
+            let productDate = null;
+            
+            // Handle different date formats
+            if (prod.createdAt) {
+                if (typeof prod.createdAt.toDate === 'function') {
+                    productDate = prod.createdAt.toDate();
+                } else if (prod.createdAt._seconds) {
+                    // Serialized Firestore Timestamp with _seconds
+                    productDate = new Date(prod.createdAt._seconds * 1000);
+                } else if (prod.createdAt instanceof Date) {
+                    productDate = prod.createdAt;
+                } else if (typeof prod.createdAt === 'string') {
+                    productDate = new Date(prod.createdAt);
+                }
+            }
+            
+            // Apply date filter to products if provided
+            let inDateRange = true;
+            if (dateFrom || dateTo) {
+                if (!productDate) {
+                    inDateRange = false;
+                } else {
+                    if (dateFrom && new Date(dateFrom) > productDate) inDateRange = false;
+                    if (dateTo) {
+                        const to = new Date(dateTo);
+                        to.setHours(23, 59, 59, 999);
+                        if (to < productDate) inDateRange = false;
+                    }
+                }
+            }
+            
+            if (inDateRange) {
+                totalProducts++;
+                const stock = prod.stock || 0;
+                const price = prod.price || 0;
+                const discountedPrice = prod.discountedPrice || prod.discountPrice || price;
+                totalStockLeft += stock;
+                totalInventoryValue += (discountedPrice * stock);
+                productStats[p.id] = {
+                    name: prod.title,
+                    price: price,
+                    discountedPrice: prod.discountedPrice || prod.discountPrice || null,
+                    stock: stock,
+                    sold: 0,
+                    revenue: 0,
+                    worth: discountedPrice * stock,
+                    createdAt: productDate
+                };
+            }
         });
 
-        // Get Orders
+        // Get Orders with date filtering
         let unitsSold = 0;
         let grossRevenue = 0;
         const ordersSnap = await db.collection("orders").get();
         ordersSnap.forEach(o => {
             const order = o.data();
-            if (order.items && Array.isArray(order.items)) {
+            const orderDate = order.createdAt?.toDate();
+            
+            // Apply date filter if provided
+            let inDateRange = true;
+            if (dateFrom || dateTo) {
+                if (!orderDate) {
+                    inDateRange = false;
+                } else {
+                    if (dateFrom && new Date(dateFrom) > orderDate) inDateRange = false;
+                    if (dateTo) {
+                        const to = new Date(dateTo);
+                        to.setHours(23, 59, 59, 999);
+                        if (to < orderDate) inDateRange = false;
+                    }
+                }
+            }
+            
+            if (inDateRange && order.items && Array.isArray(order.items)) {
                 order.items.forEach(item => {
                     if (item.sellerId === uid) {
                         unitsSold += (item.quantity || 1);
@@ -1479,8 +1626,9 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
 
         // Generate PDF with proper formatting
         const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const dateRangeText = dateFrom || dateTo ? `_${dateFrom || 'start'}_to_${dateTo || 'end'}` : '';
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=analytics_${sellerData.shopName?.replace(/\s+/g, '_') || 'seller'}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=analytics_${sellerData.shopName?.replace(/\s+/g, '_') || 'seller'}${dateRangeText}.pdf`);
         doc.pipe(res);
 
         // Header Section
@@ -1496,6 +1644,27 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
             .text('Report Date:', 450, 50)
             .fontSize(10).fillColor('#000000')
             .text(reportDate, 450, 62);
+        
+        // Date Range if filtered
+        if (dateFrom || dateTo) {
+            // Format dates to dd/mm/yyyy
+            const formatDateRange = (dateStr) => {
+                if (!dateStr) return null;
+                const date = new Date(dateStr);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}/${month}/${year}`;
+            };
+            
+            const formattedFrom = dateFrom ? formatDateRange(dateFrom) : 'Start';
+            const formattedTo = dateTo ? formatDateRange(dateTo) : 'End';
+            
+            doc.fontSize(9).fillColor('#666666')
+                .text('Date Range:', 450, 78)
+                .fontSize(9).fillColor('#000000')
+                .text(`${formattedFrom} to ${formattedTo}`, 450, 90);
+        }
 
         // Horizontal line
         doc.moveTo(50, 125).lineTo(545, 125).strokeColor('#6366f1').lineWidth(2).stroke();
@@ -1579,20 +1748,60 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
         // Table Header
         const tableTop = boxY + boxHeight + 85;
         doc.rect(50, tableTop, 495, 20).fillAndStroke('#6366f1', '#6366f1');
-        doc.fontSize(9).fillColor('#ffffff').font('Helvetica-Bold');
+        doc.fontSize(8).fillColor('#ffffff').font('Helvetica-Bold');
         doc.text('Product Name', 55, tableTop + 6);
+        doc.text('Date', 155, tableTop + 6);
         doc.text('Price', 200, tableTop + 6);
-        doc.text('Disc.', 250, tableTop + 6);
-        doc.text('Stock', 295, tableTop + 6);
-        doc.text('Sold', 340, tableTop + 6);
-        doc.text('Revenue', 385, tableTop + 6);
-        doc.text('Worth', 450, tableTop + 6);
-        doc.text('Margin', 505, tableTop + 6);
+        doc.text('Disc.', 240, tableTop + 6);
+        doc.text('Stock', 280, tableTop + 6);
+        doc.text('Sold', 320, tableTop + 6);
+        doc.text('Revenue', 360, tableTop + 6);
+        doc.text('Worth', 420, tableTop + 6);
+        doc.text('Margin', 480, tableTop + 6);
 
         // Table Rows
         let y = tableTop + 25;
         doc.font('Helvetica').fillColor('#000000');
-        const sortedProducts = Object.values(productStats).sort((a, b) => b.revenue - a.revenue);
+        
+        // Helper function to format date
+        const formatDate = (timestamp) => {
+            if (!timestamp) return 'N/A';
+            try {
+                let date;
+                if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+                    date = timestamp.toDate();
+                } else if (timestamp instanceof Date) {
+                    date = timestamp;
+                } else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+                    date = new Date(timestamp);
+                } else {
+                    return 'N/A';
+                }
+                
+                if (isNaN(date.getTime())) return 'N/A';
+                
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}/${month}/${year}`;
+            } catch (error) {
+                return 'N/A';
+            }
+        };
+
+        // Sort products by date (newest first), then by revenue
+        const sortedProducts = Object.values(productStats).sort((a, b) => {
+            // First sort by date (newest first)
+            const dateA = a.createdAt ? (a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt)) : new Date(0);
+            const dateB = b.createdAt ? (b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt)) : new Date(0);
+            
+            if (dateB.getTime() !== dateA.getTime()) {
+                return dateB.getTime() - dateA.getTime(); // Newest first
+            }
+            
+            // If dates are equal, sort by revenue
+            return b.revenue - a.revenue;
+        });
 
         sortedProducts.forEach((p, index) => {
             if (y > 720) {
@@ -1600,29 +1809,31 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
                 y = 50;
                 // Redraw header on new page
                 doc.rect(50, y, 495, 20).fillAndStroke('#6366f1', '#6366f1');
-                doc.fontSize(9).fillColor('#ffffff').font('Helvetica-Bold');
+                doc.fontSize(8).fillColor('#ffffff').font('Helvetica-Bold');
                 doc.text('Product Name', 55, y + 6);
+                doc.text('Date', 155, y + 6);
                 doc.text('Price', 200, y + 6);
-                doc.text('Disc.', 250, y + 6);
-                doc.text('Stock', 295, y + 6);
-                doc.text('Sold', 340, y + 6);
-                doc.text('Revenue', 385, y + 6);
-                doc.text('Worth', 450, y + 6);
-                doc.text('Margin', 505, y + 6);
+                doc.text('Disc.', 240, y + 6);
+                doc.text('Stock', 280, y + 6);
+                doc.text('Sold', 320, y + 6);
+                doc.text('Revenue', 360, y + 6);
+                doc.text('Worth', 420, y + 6);
+                doc.text('Margin', 480, y + 6);
                 y += 25;
             }
 
-            doc.fontSize(8).fillColor('#000000').font('Helvetica');
-            doc.text(p.name.substring(0, 25), 55, y);
+            doc.fontSize(7).fillColor('#000000').font('Helvetica');
+            doc.text(p.name.substring(0, 20), 55, y);
+            doc.text(formatDate(p.createdAt), 155, y);
             doc.text(`Rs.${p.price}`, 200, y);
-            doc.text(p.discountedPrice ? `Rs.${p.discountedPrice}` : '-', 250, y);
-            doc.text(p.stock.toString(), 295, y);
-            doc.text(p.sold.toString(), 340, y);
-            doc.text(`Rs.${p.revenue}`, 385, y);
-            doc.text(`Rs.${p.worth}`, 450, y);
+            doc.text(p.discountedPrice ? `Rs.${p.discountedPrice}` : '-', 240, y);
+            doc.text(p.stock.toString(), 280, y);
+            doc.text(p.sold.toString(), 320, y);
+            doc.text(`Rs.${p.revenue}`, 360, y);
+            doc.text(`Rs.${p.worth}`, 420, y);
 
             const margin = p.discountedPrice ? Math.round(((p.price - p.discountedPrice) / p.price) * 100) : 0;
-            doc.text(margin > 0 ? `${100 - margin}%` : '0%', 505, y);
+            doc.text(margin > 0 ? `${100 - margin}%` : '0%', 480, y);
 
             y += 18;
             doc.moveTo(50, y - 3).lineTo(545, y - 3).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
@@ -1637,6 +1848,263 @@ app.get("/admin/seller/:uid/analytics-pdf", verifyAuth, verifyAdmin, async (req,
     } catch (err) {
         console.error("PDF ERROR:", err);
         if (!res.headersSent) res.status(500).send("Error generating PDF");
+    }
+});
+
+// GET /admin/seller/:uid/settlement-invoice - Generate Settlement Invoice PDF
+app.get("/admin/seller/:uid/settlement-invoice", verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const { dateFrom, dateTo } = req.query; // format: YYYY-MM-DD
+        
+        const sellerSnap = await db.collection("sellers").doc(uid).get();
+        if (!sellerSnap.exists) return res.status(404).send("Seller not found");
+        const sellerData = sellerSnap.data();
+
+        // Get user data for contact
+        const userSnap = await db.collection("users").doc(uid).get();
+        const userData = userSnap.exists ? userSnap.data() : {};
+        const sellerContact = userData.phone || userData.email || "N/A";
+
+        // Get Orders with date filtering for settlement calculation
+        let totalOrders = 0;
+        let totalRevenue = 0;
+        let totalCommission = 0;
+        let settlementAmount = 0;
+        const commissionRate = 0.10; // 10% commission
+        const orderDetails = [];
+
+        const ordersSnap = await db.collection("orders").get();
+        ordersSnap.forEach(o => {
+            const order = o.data();
+            const orderDate = order.createdAt?.toDate();
+            
+            // Apply date filter if provided
+            let inDateRange = true;
+            if (dateFrom || dateTo) {
+                if (!orderDate) {
+                    inDateRange = false;
+                } else {
+                    if (dateFrom && new Date(dateFrom) > orderDate) inDateRange = false;
+                    if (dateTo) {
+                        const to = new Date(dateTo);
+                        to.setHours(23, 59, 59, 999);
+                        if (to < orderDate) inDateRange = false;
+                    }
+                }
+            }
+            
+            if (inDateRange && order.items && Array.isArray(order.items)) {
+                let orderRevenue = 0;
+                order.items.forEach(item => {
+                    if (item.sellerId === uid) {
+                        const itemRevenue = (item.price || 0) * (item.quantity || 1);
+                        orderRevenue += itemRevenue;
+                    }
+                });
+                
+                if (orderRevenue > 0) {
+                    totalOrders++;
+                    totalRevenue += orderRevenue;
+                    const commission = orderRevenue * commissionRate;
+                    totalCommission += commission;
+                    
+                    orderDetails.push({
+                        orderId: o.id,
+                        date: orderDate,
+                        revenue: orderRevenue,
+                        commission: commission,
+                        settlement: orderRevenue - commission
+                    });
+                }
+            }
+        });
+
+        settlementAmount = totalRevenue - totalCommission;
+
+        // Generate PDF
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const dateRangeText = dateFrom || dateTo ? `_${dateFrom || 'start'}_to_${dateTo || 'end'}` : '';
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=seller_analytics_${sellerData.shopName?.replace(/\s+/g, '_') || 'seller'}${dateRangeText}.pdf`);
+        doc.pipe(res);
+
+        // Header Section
+        doc.fontSize(24).fillColor('#6366f1').text('SELLSATHI', 50, 50);
+        doc.fontSize(9).fillColor('#666666')
+            .text('Your Trusted E-Commerce Platform', 50, 78)
+            .text('Empowering Sellers, Delighting Customers', 50, 90)
+            .text('Website: www.sellsathi.com | Email: support@sellsathi.com', 50, 102);
+
+        // Invoice Date (top right)
+        const invoiceDate = new Date().toLocaleDateString('en-GB');
+        doc.fontSize(9).fillColor('#666666')
+            .text('Invoice Date:', 450, 50)
+            .fontSize(10).fillColor('#000000')
+            .text(invoiceDate, 450, 62);
+        
+        // Date Range if filtered
+        if (dateFrom || dateTo) {
+            const formatDateRange = (dateStr) => {
+                if (!dateStr) return null;
+                const date = new Date(dateStr);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}/${month}/${year}`;
+            };
+            
+            const formattedFrom = dateFrom ? formatDateRange(dateFrom) : 'Start';
+            const formattedTo = dateTo ? formatDateRange(dateTo) : 'End';
+            
+            doc.fontSize(9).fillColor('#666666')
+                .text('Period:', 450, 78)
+                .fontSize(9).fillColor('#000000')
+                .text(`${formattedFrom} to ${formattedTo}`, 450, 90);
+        }
+
+        // Horizontal line
+        doc.moveTo(50, 125).lineTo(545, 125).strokeColor('#6366f1').lineWidth(2).stroke();
+
+        // Title
+        doc.fontSize(18).fillColor('#000000').font('Helvetica-Bold')
+            .text('SELLER ANALYTICS REPORT', 50, 145, { align: 'center' });
+        doc.fontSize(11).fillColor('#666666').font('Helvetica')
+            .text('Comprehensive Performance & Payout Analysis', 50, 168, { align: 'center' });
+
+        // Seller Information Section
+        doc.rect(50, 195, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text('SELLER INFORMATION', 55, 200);
+
+        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        doc.text('Shop Name:', 55, 225);
+        doc.text(sellerData.shopName || 'N/A', 150, 225);
+        doc.text('Category:', 320, 225);
+        doc.text(sellerData.category || 'N/A', 390, 225);
+
+        doc.text('Seller ID:', 55, 245);
+        doc.text(uid.substring(0, 20), 150, 245);
+        doc.text('Contact:', 320, 245);
+        doc.text(sellerContact, 390, 245);
+
+        doc.text('Email:', 55, 265);
+        doc.text(sellerData.email || 'N/A', 150, 265);
+
+        // Settlement Summary Section
+        doc.rect(50, 295, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text('SETTLEMENT SUMMARY', 55, 300);
+
+        // Summary boxes
+        const boxY = 330;
+        const boxWidth = 160;
+        const boxHeight = 60;
+        const boxGap = 7.5;
+
+        // Total Orders
+        doc.rect(50, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+            .text('Total Orders', 55, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(24).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(totalOrders.toString(), 55, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Total Revenue
+        doc.rect(50 + boxWidth + boxGap, boxY, boxWidth, boxHeight).fillAndStroke('#e0e7ff', '#c7d2fe');
+        doc.fontSize(9).fillColor('#6366f1').font('Helvetica')
+            .text('Total Revenue', 50 + boxWidth + boxGap + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(20).fillColor('#4f46e5').font('Helvetica-Bold')
+            .text(`Rs.${totalRevenue.toLocaleString()}`, 50 + boxWidth + boxGap + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Commission (10%)
+        doc.rect(50 + (boxWidth + boxGap) * 2, boxY, boxWidth, boxHeight).fillAndStroke('#fee2e2', '#fecaca');
+        doc.fontSize(9).fillColor('#dc2626').font('Helvetica')
+            .text('Commission (10%)', 50 + (boxWidth + boxGap) * 2 + 5, boxY + 10, { width: boxWidth - 10, align: 'center' });
+        doc.fontSize(20).fillColor('#dc2626').font('Helvetica-Bold')
+            .text(`Rs.${totalCommission.toLocaleString()}`, 50 + (boxWidth + boxGap) * 2 + 5, boxY + 28, { width: boxWidth - 10, align: 'center' });
+
+        // Net Settlement Amount (highlighted)
+        doc.rect(50, boxY + boxHeight + 20, 495, 70).fillAndStroke('#dcfce7', '#bbf7d0');
+        doc.fontSize(12).fillColor('#16a34a').font('Helvetica')
+            .text('NET SETTLEMENT AMOUNT', 55, boxY + boxHeight + 35, { width: 485, align: 'center' });
+        doc.fontSize(32).fillColor('#15803d').font('Helvetica-Bold')
+            .text(`Rs.${settlementAmount.toLocaleString()}`, 55, boxY + boxHeight + 55, { width: 485, align: 'center' });
+
+        // Order Details Section
+        doc.rect(50, boxY + boxHeight + 110, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text('ORDER DETAILS', 55, boxY + boxHeight + 115);
+
+        // Table Header
+        const tableTop = boxY + boxHeight + 140;
+        doc.rect(50, tableTop, 495, 20).fillAndStroke('#6366f1', '#6366f1');
+        doc.fontSize(8).fillColor('#ffffff').font('Helvetica-Bold');
+        doc.text('Order ID', 55, tableTop + 6);
+        doc.text('Date', 180, tableTop + 6);
+        doc.text('Revenue', 280, tableTop + 6);
+        doc.text('Commission', 360, tableTop + 6);
+        doc.text('Settlement', 460, tableTop + 6);
+
+        // Table Rows
+        let y = tableTop + 25;
+        doc.font('Helvetica').fillColor('#000000');
+        
+        const formatDate = (timestamp) => {
+            if (!timestamp) return 'N/A';
+            try {
+                const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+                if (isNaN(date.getTime())) return 'N/A';
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}/${month}/${year}`;
+            } catch (error) {
+                return 'N/A';
+            }
+        };
+
+        // Sort orders by date (newest first)
+        orderDetails.sort((a, b) => {
+            const dateA = a.date ? (a.date instanceof Date ? a.date : new Date(a.date)) : new Date(0);
+            const dateB = b.date ? (b.date instanceof Date ? b.date : new Date(b.date)) : new Date(0);
+            return dateB.getTime() - dateA.getTime();
+        });
+
+        orderDetails.forEach((order, index) => {
+            if (y > 720) {
+                doc.addPage();
+                y = 50;
+                // Redraw header on new page
+                doc.rect(50, y, 495, 20).fillAndStroke('#6366f1', '#6366f1');
+                doc.fontSize(8).fillColor('#ffffff').font('Helvetica-Bold');
+                doc.text('Order ID', 55, y + 6);
+                doc.text('Date', 180, y + 6);
+                doc.text('Revenue', 280, y + 6);
+                doc.text('Commission', 360, y + 6);
+                doc.text('Settlement', 460, y + 6);
+                y += 25;
+            }
+
+            doc.fontSize(7).fillColor('#000000').font('Helvetica');
+            doc.text(order.orderId.substring(0, 20), 55, y);
+            doc.text(formatDate(order.date), 180, y);
+            doc.text(`Rs.${order.revenue.toLocaleString()}`, 280, y);
+            doc.text(`Rs.${order.commission.toLocaleString()}`, 360, y);
+            doc.text(`Rs.${order.settlement.toLocaleString()}`, 460, y);
+
+            y += 18;
+            doc.moveTo(50, y - 3).lineTo(545, y - 3).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+        });
+
+        // Footer
+        doc.fontSize(8).fillColor('#999999').font('Helvetica')
+            .text(`Generated by SellSathi Admin Panel | ${invoiceDate} | Confidential Document`, 50, 770, { align: 'center' });
+        doc.text('This is a computer-generated document and does not require a signature', 50, 785, { align: 'center' });
+
+        doc.end();
+    } catch (err) {
+        console.error("SETTLEMENT INVOICE PDF ERROR:", err);
+        if (!res.headersSent) res.status(500).send("Error generating settlement invoice PDF");
     }
 });
 
@@ -1779,13 +2247,36 @@ app.get("/admin/seller/:uid/pdf", verifyAuth, verifyAdmin, async (req, res) => {
         doc.text('Email:', 55, 285);
         doc.text(sellerEmail, 180, 285);
 
-        // Invoice Summary Section
+        // Bank Details Section
         doc.rect(50, 315, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
-            .text('INVOICE SUMMARY', 55, 321);
+            .text('BANK DETAILS', 55, 321);
+
+        doc.fontSize(11).font('Helvetica').fillColor('#000000');
+
+        // Two column layout for bank details
+        const bankName = sellerData.bankName || 'Not provided';
+        const accountHolderName = sellerData.accountHolderName || 'Not provided';
+        const ifscCode = sellerData.ifscCode || 'Not provided';
+        const upiId = sellerData.upiId || 'Not provided';
+
+        doc.text('Bank Name:', 55, 351);
+        doc.text(bankName, 180, 351);
+        doc.text('IFSC Code:', 320, 351);
+        doc.text(ifscCode, 420, 351);
+
+        doc.text('Account Holder:', 55, 371);
+        doc.text(accountHolderName, 180, 371);
+        doc.text('UPI ID:', 320, 371);
+        doc.text(upiId, 420, 371);
+
+        // Invoice Summary Section
+        doc.rect(50, 401, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold')
+            .text('INVOICE SUMMARY', 55, 407);
 
         // Four colored boxes - All Blue for formal look
-        const boxY = 355;
+        const boxY = 441;
         const boxWidth = 115;
         const boxHeight = 70;
         const boxGap = 10;
@@ -1921,19 +2412,37 @@ app.post("/admin/seller/:uid/approve", verifyAuth, verifyAdmin, async (req, res)
         const { uid } = req.params;
 
         const sellerRef = db.collection("sellers").doc(uid);
+        const sellerSnap = await sellerRef.get();
+        
+        if (!sellerSnap.exists) {
+            return res.status(404).json({ success: false, message: "Seller not found" });
+        }
+        
+        const sellerData = sellerSnap.data();
+        
         await sellerRef.update({
             sellerStatus: "APPROVED",
+            status: "APPROVED",
             approvedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
         const userRef = db.collection("users").doc(uid);
         await userRef.update({
-            role: "SELLER"
+            role: "SELLER",
+            isActive: true
         });
+        
+        // Send approval email to seller
+        const emailService = require('./services/emailService');
+        await emailService.sendSellerApprovalEmail(
+            sellerData.email,
+            sellerData.name || 'Seller',
+            sellerData.shopName || 'Your Shop'
+        );
 
         return res.status(200).json({
             success: true,
-            message: "Seller approved successfully"
+            message: "Seller approved successfully and notified via email"
         });
     } catch (error) {
         console.error("APPROVE SELLER ERROR:", error);
@@ -1950,14 +2459,32 @@ app.post("/admin/seller/:uid/reject", verifyAuth, verifyAdmin, async (req, res) 
         const { uid } = req.params;
 
         const sellerRef = db.collection("sellers").doc(uid);
+        const sellerSnap = await sellerRef.get();
+        
+        if (!sellerSnap.exists) {
+            return res.status(404).json({ success: false, message: "Seller not found" });
+        }
+        
+        const sellerData = sellerSnap.data();
+        
         await sellerRef.update({
             sellerStatus: "REJECTED",
+            status: "REJECTED",
             rejectedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+        
+        // Send rejection email to seller
+        const emailService = require('./services/emailService');
+        await emailService.sendSellerRejectionEmail(
+            sellerData.email,
+            sellerData.name || 'Seller',
+            sellerData.shopName || 'Your Shop',
+            'Application did not meet our requirements'
+        );
 
         return res.status(200).json({
             success: true,
-            message: "Seller rejected successfully"
+            message: "Seller rejected successfully and notified via email"
         });
     } catch (error) {
         console.error("REJECT SELLER ERROR:", error);

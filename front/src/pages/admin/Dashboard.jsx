@@ -41,19 +41,19 @@ export default function AdminDashboard() {
         fetchAllData();
     }, []);
 
-    // Auto-refresh every 2 minutes
-    useEffect(() => {
-        const autoRefreshInterval = setInterval(() => {
-            console.log('[AUTO-REFRESH] Refreshing admin dashboard data...');
-            fetchAllData();
-        }, 2 * 60 * 1000); // 2 minutes in milliseconds
+    // Auto-refresh disabled to prevent interference with modals
+    // useEffect(() => {
+    //     const autoRefreshInterval = setInterval(() => {
+    //         console.log('[AUTO-REFRESH] Refreshing admin dashboard data...');
+    //         fetchAllData();
+    //     }, 30 * 60 * 1000); // 30 minutes in milliseconds
 
-        // Cleanup interval on component unmount
-        return () => {
-            clearInterval(autoRefreshInterval);
-            console.log('[AUTO-REFRESH] Cleanup: Stopped auto-refresh');
-        };
-    }, []);
+    //     // Cleanup interval on component unmount
+    //     return () => {
+    //         clearInterval(autoRefreshInterval);
+    //         console.log('[AUTO-REFRESH] Cleanup: Stopped auto-refresh');
+    //     };
+    // }, []);
 
     // Helper: fetch with a timeout so a dead endpoint never hangs forever
     const safeFetch = (path, opts = {}, timeoutMs = 10000) => {
@@ -149,7 +149,13 @@ export default function AdminDashboard() {
             // ── Products ──
             if (productsResult.status === 'fulfilled' && productsResult.value.ok) {
                 const d = await productsResult.value.json();
-                if (d.success) setProducts(d.products);
+                console.log('[DEBUG] Products response:', d.success, 'count:', d.products?.length);
+                if (d.success) {
+                    setProducts(d.products);
+                    if (d.products.length > 0) {
+                        console.log('[DEBUG] Sample products:', d.products.slice(0, 3).map(p => ({ id: p.id, title: p.title, date: p.date })));
+                    }
+                }
             } else {
                 console.warn('Products fetch failed:', productsResult.reason?.message || productsResult.value?.status);
             }
@@ -270,6 +276,28 @@ export default function AdminDashboard() {
         }
     };
 
+    const handleUnblockSeller = async (uid) => {
+        if (!confirm('Are you sure you want to unblock this seller? They will be moved to Pending Approvals.')) {
+            return;
+        }
+
+        try {
+            const response = await authFetch(`/admin/seller/${uid}/unblock`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(`✅ Seller unblocked successfully! The seller has been moved to Pending Approvals.`);
+                fetchAllData();
+            } else {
+                alert('❌ Failed to unblock seller: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Error unblocking seller:', err);
+            alert('❌ Error unblocking seller. Please try again.');
+        }
+    };
+
     const StatCard = ({ label, value, icon, color }) => (
         <div className="glass-card flex flex-col justify-center gap-4" style={{ minHeight: '180px' }}>
             <div className="flex justify-between items-start">
@@ -314,6 +342,7 @@ export default function AdminDashboard() {
     const [blockDuration, setBlockDuration] = useState('1');
     const [selectedJoinDate, setSelectedJoinDate] = useState(''); // For Seller Management date filter
     const [selectedRejectDate, setSelectedRejectDate] = useState(''); // For Rejected Applications date filter
+    const [selectedBlockDate, setSelectedBlockDate] = useState(''); // For Blocked Applications date filter
     const [feedbackSearch, setFeedbackSearch] = useState(''); // For Consumer Feedback search
     const [selectedFeedbackDate, setSelectedFeedbackDate] = useState(''); // For Customer Feedback date filter
     const [selectedProductDate, setSelectedProductDate] = useState(''); // For Product Review date filter
@@ -379,7 +408,18 @@ export default function AdminDashboard() {
                     value={stats.totalProducts}
                     icon={<Box size={32} />}
                     color="var(--secondary)"
-                    onView={() => setActiveTab('products')}
+                    onView={() => {
+                        console.log('[DEBUG] Active Products View clicked');
+                        console.log('[DEBUG] Current products count:', products.length);
+                        console.log('[DEBUG] Current searchTerm:', searchTerm);
+                        console.log('[DEBUG] Current selectedProductDate:', selectedProductDate);
+                        // Clear all product filters first
+                        setSearchTerm('');
+                        setSelectedProductDate('');
+                        console.log('[DEBUG] Filters cleared, switching to products tab');
+                        // Then switch to products tab
+                        setActiveTab('products');
+                    }}
                 />
                 <StatCardWithView
                     label="Daily Orders"
@@ -410,37 +450,6 @@ export default function AdminDashboard() {
                     onView={() => setActiveTab('orders')}
                 />
             </div>
-
-            {/* Spacer */}
-            <div style={{ height: '2rem' }}></div>
-
-            {/* Quick Actions */}
-            <div className="glass-card" style={{ padding: '2rem' }}>
-                <h3 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>Quick Actions</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => setActiveTab('sellers')}
-                        style={{ padding: '1rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}
-                    >
-                        <Users size={20} /> Manage Sellers
-                    </button>
-                    <button
-                        className="btn btn-secondary"
-                        onClick={() => setActiveTab('products')}
-                        style={{ padding: '1rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}
-                    >
-                        <Box size={20} /> Review Products
-                    </button>
-                    <button
-                        className="btn btn-secondary"
-                        onClick={() => setActiveTab('orders')}
-                        style={{ padding: '1rem', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}
-                    >
-                        <Truck size={20} /> View Orders
-                    </button>
-                </div>
-            </div>
         </div>
     );
 
@@ -448,7 +457,8 @@ export default function AdminDashboard() {
         // Separate sellers by status - ONLY APPROVED sellers in Seller Management
         const approvedSellers = allSellers.filter(s => s.status === 'APPROVED');
         const pendingSellers = sellers; // sellers already contains only PENDING
-        const rejectedSellers = allSellers.filter(s => s.status === 'REJECTED'); // Includes blocked sellers
+        const rejectedSellers = allSellers.filter(s => s.status === 'REJECTED' && !s.isBlocked); // Only rejected, not blocked
+        const blockedSellers = allSellers.filter(s => s.isBlocked); // All blocked sellers
 
         return (
             <div className="animate-fade-in flex flex-col gap-8">
@@ -862,11 +872,162 @@ export default function AdminDashboard() {
                         </div>
                     )}
                 </div>
+
+                <div style={{ height: '3rem', borderBottom: '2px solid var(--border)' }}></div>
+
+                {/* Blocked Applications Section */}
+                <div className="flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                        <h3 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Blocked Applications ({blockedSellers.length})</h3>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                placeholder="Search blocked sellers..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)', width: '200px' }}
+                            />
+                            <input
+                                type="date"
+                                value={selectedBlockDate}
+                                onChange={(e) => setSelectedBlockDate(e.target.value)}
+                                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)' }}
+                                title="Filter by block date"
+                            />
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => { setSearchTerm(''); setSelectedBlockDate(''); }}
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                            >
+                                Clear
+                            </button>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={fetchAllData}
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    {blockedSellers.filter(s => {
+                        const matchesName = searchTerm === '' ||
+                            s.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            s.email.toLowerCase().includes(searchTerm.toLowerCase());
+
+                        const matchesDate = selectedBlockDate === '' || s.joined === (() => {
+                            const date = new Date(selectedBlockDate);
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const year = date.getFullYear();
+                            return `${day}/${month}/${year}`;
+                        })();
+
+                        return matchesName && matchesDate;
+                    }).length === 0 ? (
+                        <div className="glass-card text-center p-8 text-muted">No blocked sellers.</div>
+                    ) : (
+                        <div className="glass-card" style={{ padding: 0, overflowX: 'auto', border: '1px solid var(--border)' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+                                <thead style={{ background: 'var(--surface)', textAlign: 'left' }}>
+                                    <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                                        <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shop Identity</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Category</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact Info</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joined</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Verification</th>
+                                        <th style={{ padding: '1.25rem 1.5rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {blockedSellers.filter(s => {
+                                        const matchesName = searchTerm === '' ||
+                                            s.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                            s.email.toLowerCase().includes(searchTerm.toLowerCase());
+                                        const matchesDate = selectedBlockDate === '' || s.joined === (() => {
+                                            const date = new Date(selectedBlockDate);
+                                            const day = String(date.getDate()).padStart(2, '0');
+                                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                                            const year = date.getFullYear();
+                                            return `${day}/${month}/${year}`;
+                                        })();
+                                        return matchesName && matchesDate;
+                                    }).map(s => (
+                                        <tr
+                                            key={s.uid}
+                                            style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}
+                                            onMouseOver={(e) => e.currentTarget.style.background = 'var(--surface)'}
+                                            onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <td style={{ padding: '1.25rem 1.5rem' }}>
+                                                <div className="flex flex-col">
+                                                    <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>{s.shopName}</span>
+                                                    <span className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>UID: {s.uid?.substring(0, 8)}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '1.25rem 1.5rem' }}>
+                                                <span style={{ padding: '4px 10px', background: 'var(--glass)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                    {s.category}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1.25rem 1.5rem' }}>
+                                                <div className="flex flex-col">
+                                                    <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{s.email}</span>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>UID: {s.uid?.substring(0, 8)}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '1.25rem 1.5rem' }}>
+                                                <span style={{
+                                                    padding: '6px 12px',
+                                                    background: 'rgba(255, 152, 0, 0.1)',
+                                                    color: '#ff9800',
+                                                    borderRadius: '8px',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 700
+                                                }}>
+                                                    🚫 BLOCKED
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1.25rem 1.5rem' }}>
+                                                <span className="text-muted" style={{ fontSize: '0.85rem' }}>{s.joined}</span>
+                                            </td>
+                                            <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
+                                                <button
+                                                    className="btn btn-secondary shadow-sm"
+                                                    onClick={() => setSelectedSeller(s)}
+                                                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 700, borderRadius: '8px', gap: '6px' }}
+                                                >
+                                                    <Box size={14} /> Review Data
+                                                </button>
+                                            </td>
+                                            <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
+                                                <button
+                                                    className="btn btn-primary"
+                                                    onClick={() => handleUnblockSeller(s.uid)}
+                                                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 700, borderRadius: '8px', gap: '6px', background: 'var(--success)', borderColor: 'var(--success)' }}
+                                                >
+                                                    <Check size={14} /> Unblock
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
             </div>
         );
     };
 
     const renderProductsTable = () => {
+        console.log('[DEBUG] renderProductsTable called');
+        console.log('[DEBUG] Total products:', products.length);
+        console.log('[DEBUG] searchTerm:', searchTerm);
+        console.log('[DEBUG] selectedProductDate:', selectedProductDate);
+        
         // Helper to convert dd/mm/yyyy to Date for comparison
         const parseDDMMYYYY = (dateStr) => {
             if (!dateStr) return null;
@@ -890,6 +1051,8 @@ export default function AdminDashboard() {
 
             return matchesSearch && matchesDate;
         });
+        
+        console.log('[DEBUG] Filtered products:', filteredProductsList.length);
 
         return (
             <div className="animate-fade-in flex flex-col gap-4">
