@@ -1991,13 +1991,35 @@ app.get("/admin/seller/:uid/settlement-invoice", verifyAuth, verifyAdmin, async 
         doc.text('Email:', 55, 265);
         doc.text(sellerData.email || 'N/A', 150, 265);
 
-        // Settlement Summary Section
-        doc.rect(50, 295, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        // Bank Details Section
+        doc.rect(50, 285, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
-            .text('SETTLEMENT SUMMARY', 55, 300);
+            .text('BANK DETAILS', 55, 290);
+
+        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        
+        const bankName = sellerData.bankName || 'Not provided';
+        const accountHolderName = sellerData.accountHolderName || 'Not provided';
+        const ifscCode = sellerData.ifscCode || 'Not provided';
+        const upiId = sellerData.upiId || 'Not provided';
+
+        doc.text('Bank Name:', 55, 315);
+        doc.text(bankName, 150, 315);
+        doc.text('IFSC Code:', 320, 315);
+        doc.text(ifscCode, 390, 315);
+
+        doc.text('Account Holder:', 55, 335);
+        doc.text(accountHolderName, 150, 335);
+        doc.text('UPI ID:', 320, 335);
+        doc.text(upiId, 390, 335);
+
+        // Settlement Summary Section
+        doc.rect(50, 365, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold')
+            .text('SETTLEMENT SUMMARY', 55, 370);
 
         // Summary boxes
-        const boxY = 330;
+        const boxY = 400;
         const boxWidth = 160;
         const boxHeight = 60;
         const boxGap = 7.5;
