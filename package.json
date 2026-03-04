@@ -3,13 +3,11 @@
   "version": "1.0.0",
   "description": "Root package for frontend and backend",
   "scripts": {
-    "dev": "concurrently \"npm run dev:front\" \"npm run dev:backend\"",
-    "dev:front": "npm --prefix front run dev",
-    "dev:back": "npm --prefix back run dev",
-    "dev:backend": "concurrently \"npm --prefix back run dev\" \"node services/auth.cjs\"",
-    "build": "npm --prefix front run build",
-    "start": "npm --prefix back run start",
-    "start:backend": "concurrently \"npm --prefix back run start\" \"node services/auth.cjs\""
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend run start"
   },
   "devDependencies": {
     "concurrently": "^8.0.1"
