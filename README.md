@@ -1,6 +1,6 @@
-# �️ Sellsathi - E-Commerce Platform Setup Guide
+# 🛒 Sellsathi - E-Commerce Platform Setup Guide
 
-## �📦 Installation & Setup Guide
+## 📦 Installation & Setup Guide
 
 ### Prerequisites
 Before you start, make sure you have the following installed on your machine:
@@ -23,7 +23,7 @@ cd Sellsathi
 ```
 
 **Step 2. Install Root Dependencies** 
-This command installs the dependencies required at the root level (like `concurrently` which helps run multiple servers at once). Ensure you are in the `Sellsathi` folder and run:
+This command installs the dependencies required at the root level (like `concurrently` which helps run multiple servers at once).
 ```bash
 npm install
 ```
@@ -31,25 +31,22 @@ npm install
 **Step 3. Install Backend Dependencies** 
 Navigate into the backend folder and install its specific dependencies.
 ```bash
-cd back
+cd backend
 npm install
 ```
 
 **Step 4. Install Frontend Dependencies** 
-Navigate into the frontend folder from the backend folder, and install its packages.
+Navigate into the frontend folder and install its packages.
 ```bash
-cd ../front
+cd ../frontend
 npm install
+cd ..
 ```
 
 **Step 5. Configure environment variables** 
-Navigate back to the root folder (or do this in your code editor):
-```bash
-cd ..
-```
-- Open the `.env.example` file (if available) or create a new `.env` file in the root and appropriate subfolders.
-- Add your API keys (Razorpay, Firebase, Nodemailer config) following the examples provided in the Environment Variables section.
-- Crucially, place your Firebase Admin `serviceAccountKey.json` inside the `back/` directory so the backend can communicate with your Firestore database.
+- Put your `.env` file in the `backend/` folder (with Firebase, Razorpay, Cloudinary keys).
+- Put your `.env` file in the `frontend/` folder (with `VITE_API_BASE_URL=http://localhost:5000`).
+- Crucially, place your Firebase Admin `serviceAccountKey.json` inside the `backend/` directory so the backend can communicate with your Firestore database.
 
 **Step 6. Start the development servers** 
 From the main project root directory (`Sellsathi/`), you can launch both the frontend and backend instantly with one command:
@@ -61,4 +58,3 @@ npm run dev
 Once the terminal shows that both the backend and frontend are running, open your web browser and go to:
 - **Frontend** (Main website): `http://localhost:5173`
 - **Backend API**: `http://localhost:5000`
-- **Dashboard Direct URL**: `http://localhost:5173/dashboard`

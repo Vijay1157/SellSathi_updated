@@ -11,5 +11,6 @@ router.get('/stats', adminController.getStats);
 router.get('/all-sellers', adminController.getAllSellers);
 router.post('/seller/:uid/approve', adminController.approveSeller);
 router.post('/seller/:uid/reject', adminController.rejectSeller);
+router.post('/seller/:uid/block', adminController.blockSeller);
 
 module.exports = router;

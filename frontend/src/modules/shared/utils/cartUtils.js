@@ -56,9 +56,10 @@ export const addToCart = async (product, selections = {}) => {
             return { success: true, message: "Added to guest cart" };
         } else {
             // Logged in: Backend API
-            const response = await authFetch(`/api/user/${uid}/cart/add`, {
+            const response = await authFetch(`/consumer/${uid}/cart`, {
                 method: 'POST',
-                body: JSON.stringify({ cartItem: cartItemData })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'add', item: cartItemData })
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.message || 'Failed to add to backend');
@@ -80,7 +81,7 @@ export const listenToCart = (callback) => {
                 const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
                 callback(localCart);
             } else {
-                const response = await authFetch(`/api/user/${uid}/cart`);
+                const response = await authFetch(`/consumer/${uid}/cart`);
                 const data = await response.json();
                 if (data.success) {
                     callback(data.cart || []);  // Fixed: use data.cart instead of data.items
@@ -112,8 +113,10 @@ export const removeFromCart = async (cartItemId) => {
             window.dispatchEvent(new Event('cartUpdate'));
             return { success: true };
         } else {
-            const response = await authFetch(`/api/user/${uid}/cart/${cartItemId}`, {
-                method: 'DELETE'
+            const response = await authFetch(`/consumer/${uid}/cart`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'remove', itemId: cartItemId })
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.message || 'Failed to remove');
@@ -136,9 +139,10 @@ export const clearCart = async () => {
             return { success: true };
         } else {
             // Clear cart by setting empty array
-            const response = await authFetch(`/api/user/${uid}/cart/add`, {
+            const response = await authFetch(`/consumer/${uid}/cart`, {
                 method: 'POST',
-                body: JSON.stringify({ cartItem: null, clearCart: true })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'clear' })
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.message || 'Failed to clear');

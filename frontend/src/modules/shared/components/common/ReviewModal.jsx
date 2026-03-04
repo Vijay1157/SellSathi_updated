@@ -30,7 +30,7 @@ export default function ReviewModal({ isOpen, onClose, productId, productName, o
 
         setSubmitting(true);
         try {
-            const response = await authFetch('/api/reviews', {
+            const response = await authFetch('/reviews', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

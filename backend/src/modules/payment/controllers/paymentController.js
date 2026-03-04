@@ -49,18 +49,23 @@ const verifyPayment = async (req, res) => {
 
         const orderRef = await db.collection("orders").add(orderData);
 
-        // Handle invoice and shipping asynchronously
+        // Handle invoice asynchronously
         try {
             const invPath = await invoiceService.generateInvoice({ ...orderData, documentId: orderRef.id });
             await orderRef.update({ invoiceGenerated: true, invoicePath: invPath });
             if (orderData.email) emailService.sendOrderConfirmation(orderData.email, { ...orderData, documentId: orderRef.id }, invPath).catch(err => console.error(err));
+        } catch (e) {
+            console.error("Invoice generation error:", e.message);
+        }
 
+        // Handle Shiprocket asynchronously
+        try {
             const shipmentResult = await shiprocketService.createShipment({ ...orderData, orderId: orderData.orderId });
             if (shipmentResult.success) {
                 await orderRef.update({ shiprocketOrderId: shipmentResult.shiprocketOrderId, shipmentId: shipmentResult.shipmentId, awbNumber: shipmentResult.awbNumber, courierName: shipmentResult.courierName, shiprocketCreatedAt: admin.firestore.FieldValue.serverTimestamp() });
             }
         } catch (e) {
-            console.error("Order follow-up logic error:", e.message);
+            console.error("Shiprocket shipment logic error:", e.message);
         }
 
         return res.status(200).json({ success: true, orderId: orderData.orderId, documentId: orderRef.id });
@@ -69,4 +74,60 @@ const verifyPayment = async (req, res) => {
     }
 };
 
-module.exports = { createOrder, verifyPayment };
+const codOrder = async (req, res) => {
+    try {
+        const { cartItems, customerInfo, amount, uid } = req.body;
+        const orderId = "OD" + Date.now();
+        // Resolve sellerId from cart items
+        const resolvedSellerId = (cartItems || []).find(i => i?.sellerId)?.sellerId || null;
+
+        const orderData = {
+            orderId,
+            uid: uid || "guest",
+            userId: uid || "guest",
+            sellerId: resolvedSellerId,
+            customerName: `${customerInfo?.firstName || ""} ${customerInfo?.lastName || ""}`.trim(),
+            email: customerInfo?.email || "",
+            phone: customerInfo?.phone || "",
+            shippingAddress: customerInfo?.address || {},
+            items: cartItems || [],
+            total: amount || 0,
+            paymentMethod: "COD",
+            status: "Processing",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        const orderRef = await db.collection("orders").add(orderData);
+
+        // Handle invoice asynchronously
+        try {
+            const invPath = await invoiceService.generateInvoice({ ...orderData, documentId: orderRef.id });
+            await orderRef.update({ invoiceGenerated: true, invoicePath: invPath });
+            if (orderData.email) emailService.sendOrderConfirmation(orderData.email, { ...orderData, documentId: orderRef.id }, invPath).catch(err => console.error(err));
+        } catch (e) {
+            console.error("Invoice generation error:", e.message);
+        }
+
+        // Handle Shiprocket asynchronously
+        try {
+            const shipmentResult = await shiprocketService.createShipment({ ...orderData, orderId: orderData.orderId });
+            if (shipmentResult.success) {
+                await orderRef.update({
+                    shiprocketOrderId: shipmentResult.shiprocketOrderId,
+                    shipmentId: shipmentResult.shipmentId,
+                    awbNumber: shipmentResult.awbNumber,
+                    courierName: shipmentResult.courierName,
+                    shiprocketCreatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        } catch (e) {
+            console.error("Shiprocket shipment logic error:", e.message);
+        }
+
+        return res.status(200).json({ success: true, orderId: orderData.orderId, documentId: orderRef.id });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: "COD placement failed" });
+    }
+};
+
+module.exports = { createOrder, verifyPayment, codOrder };

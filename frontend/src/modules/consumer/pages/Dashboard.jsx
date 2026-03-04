@@ -197,7 +197,7 @@ export default function ConsumerDashboard() {
 
     const fetchReviewableOrders = async (userId) => {
         try {
-            const response = await authFetch(`/api/user/${userId}/reviewable-orders`);
+            const response = await authFetch(`/orders/${userId}/reviewable-orders`);
             const data = await response.json();
             if (data.success) {
                 setReviewableOrders(data.orders || []);
@@ -234,7 +234,7 @@ export default function ConsumerDashboard() {
     const saveAddress = async () => {
         try {
             const addressToSave = editingAddress || newAddress;
-            const response = await authFetch(`/api/user/${user.uid}/address/save`, {
+            const response = await authFetch(`/consumer/${user.uid}/address`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: addressToSave })
@@ -262,7 +262,7 @@ export default function ConsumerDashboard() {
     const setAsDefaultAddress = async (addressIndex) => {
         try {
             const addressToUpdate = { ...addresses[addressIndex], id: addressIndex, isDefault: true };
-            const response = await authFetch(`/api/user/${user.uid}/address/save`, {
+            const response = await authFetch(`/consumer/${user.uid}/address`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: addressToUpdate })
@@ -278,7 +278,7 @@ export default function ConsumerDashboard() {
 
     const deleteAddress = async (addressId) => {
         try {
-            const response = await authFetch(`/api/user/${user.uid}/address/delete`, {
+            const response = await authFetch(`/consumer/${user.uid}/address/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ addressId })
@@ -294,7 +294,7 @@ export default function ConsumerDashboard() {
 
     const handleDownloadInvoice = async (orderId) => {
         try {
-            const response = await authFetch(`/api/invoice/${orderId}`);
+            const response = await authFetch(`/orders/invoice/${orderId}`);
             if (!response.ok) throw new Error('Failed to download invoice');
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
@@ -337,7 +337,7 @@ export default function ConsumerDashboard() {
 
             if (data.success && data.url) {
                 // Update Firestore user document
-                await authFetch(`/api/user/${user.uid}/profile/update`, {
+                await authFetch(`/consumer/${user.uid}/profile/update`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ profileData: { photoURL: data.url } })
