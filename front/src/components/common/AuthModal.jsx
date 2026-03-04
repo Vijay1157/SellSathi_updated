@@ -291,8 +291,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 otp: isTestNumber ? otp : undefined
             } : (isTestNumber ? { phone: phoneNumber, otp } : { idToken });
 
-            console.log('Sending payload to backend:', payload);
-
             const response = await authFetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

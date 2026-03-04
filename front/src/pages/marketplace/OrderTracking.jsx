@@ -2,8 +2,6 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Package, Truck, CheckCircle, FileText, MapPin, Download, XCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../config/firebase';
 import OrderTimeline from '../../components/common/OrderTimeline';
 import ShippingDetailsCard from '../../components/common/ShippingDetailsCard';
 import { mapOrderStatus } from '../../utils/orderUtils';
@@ -21,33 +19,20 @@ export default function OrderTracking() {
 
     useEffect(() => {
         const fetchOrder = async () => {
-            if (!orderId) {
-                setLoading(false);
-                return;
-            }
+            if (!orderId) { setLoading(false); return; }
 
             try {
-                // First, try to find by document ID
-                let orderDoc = await getDoc(doc(db, 'orders', orderId));
-
-                if (orderDoc.exists()) {
-                    setOrder({ id: orderDoc.id, ...orderDoc.data() });
+                // ✅ Backend handles both docId and orderId field lookup
+                // Eliminates double Firestore read (getDoc → fallback query)
+                const res = await authFetch(`/api/orders/${orderId}`);
+                const data = await res.json();
+                if (data.success && data.order) {
+                    setOrder(data.order);
                 } else {
-                    // If not found by document ID, search by orderId field
-                    const ordersRef = collection(db, 'orders');
-                    const q = query(ordersRef, where('orderId', '==', orderId));
-                    const querySnapshot = await getDocs(q);
-
-                    if (!querySnapshot.empty) {
-                        const doc = querySnapshot.docs[0];
-                        setOrder({ id: doc.id, ...doc.data() });
-                    } else {
-                        console.log('Order not found with ID:', orderId);
-                        setOrder(null);
-                    }
+                    setOrder(null);
                 }
             } catch (error) {
-                console.error('Error fetching order:', error);
+                console.error('[OrderTracking] fetch error:', error);
             } finally {
                 setLoading(false);
             }
@@ -71,22 +56,23 @@ export default function OrderTracking() {
             const data = await response.json();
 
             if (data.success) {
-                // Refresh order data
-                const orderDoc = await getDoc(doc(db, 'orders', order.id));
-                if (orderDoc.exists()) {
-                    setOrder({ id: orderDoc.id, ...orderDoc.data() });
+                // ✅ Refresh via API not Firestore
+                const refreshRes = await authFetch(`/api/orders/${order.id}`);
+                const refreshData = await refreshRes.json();
+                if (refreshData.success && refreshData.order) {
+                    setOrder(refreshData.order);
                 }
-                
+
                 // Show refund information
                 const refundInfo = data.refundInfo;
                 if (refundInfo) {
                     alert(
                         `Order cancelled successfully!\n\n` +
                         `${refundInfo.message}\n\n` +
-                        (refundInfo.refundAmount > 0 ? 
+                        (refundInfo.refundAmount > 0 ?
                             `Refund Amount: ₹${refundInfo.refundAmount}\n` +
                             `Refund Method: ${refundInfo.refundMethod}\n` +
-                            `Processing Time: ${refundInfo.processingTime}` 
+                            `Processing Time: ${refundInfo.processingTime}`
                             : '')
                     );
                 } else {
@@ -96,7 +82,7 @@ export default function OrderTracking() {
                 alert(`Failed to cancel order: ${data.message}`);
             }
         } catch (error) {
-            console.error('Error cancelling order:', error);
+            console.error('[OrderTracking] cancel error:', error);
             alert('Failed to cancel order. Please try again.');
         } finally {
             setCancelling(false);
@@ -231,7 +217,7 @@ export default function OrderTracking() {
                                     </p>
                                 </div>
                             </div>
-                            
+
                             {order.refundStatus && order.refundStatus !== 'Not Applicable' && (
                                 <div style={{
                                     padding: '1rem',

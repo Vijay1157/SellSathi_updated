@@ -136,28 +136,16 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-// Test endpoint to debug Firebase Admin
-app.get("/test-firebase", async (req, res) => {
-    try {
-        console.log("[TEST] Firebase Admin initialized:", !!admin.auth());
-        console.log("[TEST] Project ID:", admin.app().options.projectId);
-
-        // Test token verification with a sample token
-        const testToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjMjdhZmY1YzlkNGU1MzAhYyR5pqhaFqs6z0CzOiqzqvLAuMfCIrZHQwFJgt57crBF-mA";
-
-        try {
-            const decoded = await admin.auth().verifyIdToken(testToken);
-            console.log("[TEST] Token verification successful:", decoded.uid);
-            res.json({ success: true, message: "Firebase Admin working correctly" });
-        } catch (error) {
-            console.error("[TEST] Token verification failed:", error);
-            res.status(500).json({ success: false, error: error.message });
-        }
-    } catch (error) {
-        console.error("[TEST] Firebase initialization error:", error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
+// DEV-only health check — not available in production
+if (IS_DEV) {
+    app.get('/test-firebase', async (req, res) => {
+        res.json({
+            success: true,
+            message: 'Firebase Admin initialized',
+            projectId: admin.app().options.projectId
+        });
+    });
+}
 
 // Root route
 app.get("/", (req, res) => {
@@ -174,6 +162,11 @@ app.get("/", (req, res) => {
         }
     });
 });
+// ========== ORDER API ENDPOINTS ==========
+// GET /api/orders/:orderId - Fetch single order by ID (used by OrderTracking page)
+app.get("/api/orders/:orderId", verifyAuth, orderController.getOrderById);
+
+// POST /api/orders/place
 
 // ========== AUTH MIDDLEWARE ==========
 
@@ -1414,53 +1407,55 @@ app.get("/api/user/:uid/reviewable-orders", verifyAuth, async (req, res) => {
 app.get("/admin/seller-analytics", verifyAuth, verifyAdmin, async (req, res) => {
     try {
         const sellersSnap = await db.collection("sellers").where("sellerStatus", "==", "APPROVED").get();
+
+        // ✅ Fetch all orders ONCE outside the loop, not N times inside it
+        const allOrdersSnap = await db.collection("orders").get();
+        const allOrders = allOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Build seller email map in one batch instead of N individual reads
+        const sellerUids = sellersSnap.docs.map(d => d.id);
+        const userEmailMap = {};
+        for (let i = 0; i < sellerUids.length; i += 10) {
+            const batch = sellerUids.slice(i, i + 10);
+            const usersSnap = await db.collection("users")
+                .where(admin.firestore.FieldPath.documentId(), "in", batch)
+                .get();
+            usersSnap.forEach(d => {
+                const u = d.data();
+                userEmailMap[d.id] = u.email || u.phone || "N/A";
+            });
+        }
+
         const sellers = [];
 
         for (const doc of sellersSnap.docs) {
             const sellerData = doc.data();
             const uid = doc.id;
 
-            // Get Products for this seller
             const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
             let totalProducts = 0;
             let totalStockLeft = 0;
             let totalProductValue = 0;
+            let productStats = {};
 
             productsSnap.forEach(p => {
                 const prod = p.data();
                 totalProducts++;
                 totalStockLeft += (prod.stock || 0);
                 totalProductValue += (prod.price || 0) * (prod.stock || 0);
+                productStats[p.id] = { id: p.id, name: prod.title, price: prod.price || 0, stock: prod.stock || 0, sold: 0, revenue: 0 };
             });
 
-            // Get Orders and calculate units sold & revenue
+            // ✅ Filter pre-fetched orders instead of re-querying Firestore per seller
             let unitsSold = 0;
             let grossRevenue = 0;
-            let productStats = {}; // Map of productId -> { name, price, stock, sold, revenue }
-
-            productsSnap.forEach(p => {
-                const prod = p.data();
-                productStats[p.id] = {
-                    id: p.id,
-                    name: prod.title,
-                    price: prod.price || 0,
-                    stock: prod.stock || 0,
-                    sold: 0,
-                    revenue: 0
-                };
-            });
-
-            const ordersSnap = await db.collection("orders").get();
-            ordersSnap.forEach(o => {
-                const order = o.data();
+            allOrders.forEach(order => {
                 if (order.items && Array.isArray(order.items)) {
                     order.items.forEach(item => {
                         if (item.sellerId === uid) {
                             unitsSold += (item.quantity || 1);
                             const revenue = (item.price || 0) * (item.quantity || 1);
                             grossRevenue += revenue;
-
-                            // Update product specific stats if product still exists
                             if (item.productId && productStats[item.productId]) {
                                 productStats[item.productId].sold += (item.quantity || 1);
                                 productStats[item.productId].revenue += revenue;
@@ -1473,23 +1468,11 @@ app.get("/admin/seller-analytics", verifyAuth, verifyAdmin, async (req, res) => 
             sellers.push({
                 uid,
                 shopName: sellerData.shopName,
-                email: sellerData.email || "", // we'll backfill below
+                email: userEmailMap[uid] || "N/A",
                 category: sellerData.category,
-                metrics: {
-                    totalProducts,
-                    totalStockLeft,
-                    totalProductValue,
-                    unitsSold,
-                    grossRevenue
-                },
+                metrics: { totalProducts, totalStockLeft, totalProductValue, unitsSold, grossRevenue },
                 productMatrix: Object.values(productStats).sort((a, b) => b.revenue - a.revenue)
             });
-        }
-
-        // Populate emails from users collection
-        for (let s of sellers) {
-            const userSnap = await db.collection("users").doc(s.uid).get();
-            s.email = userSnap.data()?.email || userSnap.data()?.phone || "N/A";
         }
 
         return res.status(200).json({ success: true, analytics: sellers });
@@ -2065,50 +2048,58 @@ app.get("/seller/:uid/stats", verifyAuth, async (req, res) => {
     try {
         const { uid } = req.params;
 
-        // Products
+        // Products count
         const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
         const totalProducts = productsSnap.size;
 
-        // Orders (This is simplified. Ideally orders should store sellerId per item or we query subcollections)
-        // For this hackathon scope, we'll scan all orders and filter in code or assume orders structure
-        // Let's assume we search for all orders where items array contains a product with sellerId = uid
-        // Fetching all orders is not scalable but works for small demo
-        const allOrdersSnap = await db.collection("orders").get();
+        // Get seller's product IDs to filter orders efficiently
+        const productIds = productsSnap.docs.map(d => d.id);
+
         let totalSales = 0;
         let newOrdersCount = 0;
         let pendingOrdersCount = 0;
 
-        allOrdersSnap.forEach(doc => {
-            const order = doc.data();
-            // Check if any item in this order belongs to the seller
-            const sellerItems = order.items?.filter(item => item.sellerId === uid) || [];
-
-            if (sellerItems.length > 0) {
-                // Calculate sales from these items
-                const orderSales = sellerItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-                totalSales += orderSales;
-
-                if (order.status === 'Processing') newOrdersCount++; // Assuming 'Processing' is new
-                if (order.status === 'Pending') pendingOrdersCount++;
+        if (productIds.length > 0) {
+            // Filter orders by items containing any of the seller's product IDs
+            // Process in batches of 10 due to Firestore 'in' query limit
+            const batches = [];
+            for (let i = 0; i < productIds.length; i += 10) {
+                batches.push(productIds.slice(i, i + 10));
             }
-        });
+
+            const orderSnaps = await Promise.all(
+                batches.map(batch =>
+                    db.collection("orders")
+                        .where("productIds", "array-contains-any", batch)
+                        .get()
+                        .catch(() => ({ docs: [] })) // Graceful fallback if field doesn't exist
+                )
+            );
+
+            const seenOrderIds = new Set();
+            for (const snap of orderSnaps) {
+                for (const doc of snap.docs) {
+                    if (seenOrderIds.has(doc.id)) continue;
+                    seenOrderIds.add(doc.id);
+                    const order = doc.data();
+                    const sellerItems = (order.items || []).filter(item => item.sellerId === uid);
+                    if (sellerItems.length > 0) {
+                        totalSales += sellerItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+                        if (order.status === 'Processing') newOrdersCount++;
+                        if (order.status === 'Pending') pendingOrdersCount++;
+                    }
+                }
+            }
+        }
 
         return res.status(200).json({
             success: true,
-            stats: {
-                totalSales, // Value in currency
-                totalProducts,
-                newOrders: newOrdersCount,
-                pendingOrders: pendingOrdersCount
-            }
+            stats: { totalSales, totalProducts, newOrders: newOrdersCount, pendingOrders: pendingOrdersCount }
         });
 
     } catch (error) {
         console.error("SELLER STATS ERROR:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch seller stats"
-        });
+        return res.status(500).json({ success: false, message: "Failed to fetch seller stats" });
     }
 });
 
