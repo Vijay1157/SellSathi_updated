@@ -112,30 +112,29 @@ export default function ConsumerDashboard() {
             if (currentUser) {
                 setUser(currentUser);
 
-                // Fetch real user name from Firestore (not Firebase Auth displayName which can be stale)
+                // Single read for user doc — used for name, photo AND addresses
+                // Previously called twice: once here + once in fetchAddresses()
                 try {
                     const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
                     if (userDoc.exists()) {
                         const userData = userDoc.data();
                         setUserName(userData.name || userData.fullName || currentUser.displayName || 'User');
                         setUserPhoto(userData.photoURL || currentUser.photoURL || null);
+                        setAddresses(userData.addresses || []);
                     } else {
-                        // Fallback: check localStorage
                         const localUser = JSON.parse(localStorage.getItem('user') || '{}');
                         setUserName(localUser.fullName || currentUser.displayName || 'User');
                     }
                 } catch (e) {
-                    console.log('Error fetching user name from Firestore:', e);
                     const localUser = JSON.parse(localStorage.getItem('user') || '{}');
                     setUserName(localUser.fullName || currentUser.displayName || 'User');
                 }
 
-                // Fetch data in parallel with timeout
+                // Fetch orders and reviewable orders in parallel
                 try {
                     await Promise.race([
                         Promise.all([
                             fetchOrders(currentUser.uid),
-                            fetchAddresses(currentUser.uid),
                             fetchReviewableOrders(currentUser.uid)
                         ]),
                         new Promise((_, reject) =>
@@ -143,19 +142,14 @@ export default function ConsumerDashboard() {
                         )
                     ]);
                 } catch (error) {
-                    console.error('Error loading dashboard data:', error);
+                    console.error('[Dashboard] Error loading data:', error);
                 }
 
-                // Use wishlist listener
                 wishlistUnsubscribe = listenToWishlist((items) => {
-                    if (mounted) {
-                        setWishlist(items);
-                    }
+                    if (mounted) setWishlist(items);
                 });
 
-                if (mounted) {
-                    setLoading(false);
-                }
+                if (mounted) setLoading(false);
             } else {
                 navigate('/');
             }
@@ -172,50 +166,32 @@ export default function ConsumerDashboard() {
 
     const fetchOrders = async (userId) => {
         try {
-            console.log('[Dashboard] Fetching orders for userId:', userId);
             const ordersRef = collection(db, 'orders');
-            // Try both 'userId' and 'uid' fields
+            // Try userId first, then fallback to uid field
             const q1 = query(ordersRef, where('userId', '==', userId));
-            const q2 = query(ordersRef, where('uid', '==', userId));
-
             let ordersData = [];
-
             try {
-                const querySnapshot1 = await getDocs(q1);
-                console.log('[Dashboard] Query by userId found:', querySnapshot1.size, 'orders');
-                querySnapshot1.forEach((doc) => {
-                    ordersData.push({ id: doc.id, ...doc.data() });
-                });
-            } catch (e) {
-                console.log('Query with userId failed:', e.message);
-            }
+                const snap1 = await getDocs(q1);
+                snap1.forEach(d => ordersData.push({ id: d.id, ...d.data() }));
+            } catch (e) { /* field may not exist — try uid next */ }
 
             if (ordersData.length === 0) {
                 try {
-                    const querySnapshot2 = await getDocs(q2);
-                    console.log('[Dashboard] Query by uid found:', querySnapshot2.size, 'orders');
-                    querySnapshot2.forEach((doc) => {
-                        ordersData.push({ id: doc.id, ...doc.data() });
-                    });
-                } catch (e) {
-                    console.log('Query with uid also failed:', e.message);
-                }
+                    const q2 = query(ordersRef, where('uid', '==', userId));
+                    const snap2 = await getDocs(q2);
+                    snap2.forEach(d => ordersData.push({ id: d.id, ...d.data() }));
+                } catch (e) { /* silently ignore */ }
             }
 
             setOrders(ordersData);
-
             const total = ordersData.length;
             const pending = ordersData.filter(o => o.status === 'Pending' || o.status === 'Processing').length;
             const delivered = ordersData.filter(o => o.status === 'Delivered').length;
             const totalSpent = ordersData.reduce((sum, o) => sum + (o.total || 0), 0);
-
             setStats({ total, pending, delivered, totalSpent });
-
-            if (ordersData.length > 0) {
-                setSelectedOrder(ordersData[0]);
-            }
+            if (ordersData.length > 0) setSelectedOrder(ordersData[0]);
         } catch (error) {
-            console.error('Error fetching orders:', error);
+            console.error('[Dashboard] Error fetching orders:', error);
         }
     };
 
@@ -452,7 +428,15 @@ export default function ConsumerDashboard() {
                                         {localStorage.getItem('userName') || userName || 'User'}
                                     </p>
 
-                                    <p className="text-xs text-gray-500 mt-1">{user.email}</p>
+                                    {(() => {
+                                        const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+                                        const firebaseUser = JSON.parse(localStorage.getItem('firebaseUser') || '{}');
+                                        const dob = localUser.dateOfBirth || firebaseUser.dateOfBirth;
+                                        const age = calculateAge(dob);
+                                        return age ? (
+                                            <p className="text-xs text-gray-500 mt-1">Age: {age}</p>
+                                        ) : null;
+                                    })()}
                                     <div className="flex items-center gap-1 mt-2">
                                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                                         <span className="text-xs text-green-600 font-medium">Online</span>

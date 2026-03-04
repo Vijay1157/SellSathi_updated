@@ -139,36 +139,25 @@ export default function ProductListing() {
                 const snap = await getDocs(q);
                 let data = snap.docs.map(doc => {
                     const d = { id: doc.id, ...doc.data() };
-                    // Seller products store `title` instead of `name` — normalize here
                     if (!d.name && d.title) d.name = d.title;
                     return d;
                 });
 
-                // Merge and ensure all mock products are added even if database has items
                 const existingIds = new Set(data.map(p => p.id));
                 const newMocks = mockData.filter(m => !existingIds.has(m.id));
-                data = [...newMocks, ...data]; // Put mocks at the start for visibility
+                data = [...newMocks, ...data];
 
                 setProducts(data);
                 setLoading(false);
-
-                // Fetch reviews for all loaded products
-                fetchReviewsForProducts(data);
+                // ✅ Reviews fetched lazily on demand — not bulk-prefetched on page load
+                // Previously this fired 1 Firestore read per product (N+1 anti-pattern)
             } catch (err) {
-                console.error("Fetch Products Error:", err);
-                // Fallback to purely mock data if quota hit or other error
+                console.error('[ProductListing] fetch error:', err);
                 setProducts([...mockData]);
                 setLoading(false);
-
-                // Fetch reviews for mock data too
-                fetchReviewsForProducts(mockData);
             }
         };
         fetchProducts();
-
-        // Load wishlist
-        const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
-        setWishlist(saved);
     }, []);
 
     // Fetch reviews for products
@@ -255,51 +244,25 @@ export default function ProductListing() {
 
     // Listen to wishlist changes
     useEffect(() => {
-        console.log('🎬 ProductListing: Setting up wishlist listener');
-        const unsubscribe = listenToWishlist((items) => {
-            console.log('🔄 ProductListing: Received wishlist update with', items.length, 'items:', items.map(i => i.id));
-            setWishlist(items);
-        });
-        return () => {
-            console.log('🛑 ProductListing: Cleaning up wishlist listener');
-            unsubscribe();
-        };
+        const unsubscribe = listenToWishlist(setWishlist);
+        return () => unsubscribe();
     }, []);
 
     const toggleWishlist = async (e, p) => {
-        if (e) {
-            e.stopPropagation();
-            e.preventDefault();
-        }
-
+        if (e) { e.stopPropagation(); e.preventDefault(); }
         if (!auth.currentUser) {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
-
-        console.log('🎯 toggleWishlist clicked for product:', p.id);
         const isSaved = wishlist.some(item => item.id === p.id);
-
         try {
             if (isSaved) {
-                console.log('🎯 Removing from wishlist...');
-                const result = await removeFromWishlist(p.id);
-                if (result.success) {
-                    console.log('✅ Removed successfully');
-                } else {
-                    console.error('❌ Remove failed:', result.message);
-                }
+                await removeFromWishlist(p.id);
             } else {
-                console.log('🎯 Adding to wishlist...');
-                const result = await addToWishlist(p);
-                if (result.success) {
-                    console.log('✅ Added successfully');
-                } else {
-                    console.error('❌ Add failed:', result.message);
-                }
+                await addToWishlist(p);
             }
         } catch (error) {
-            console.error('❌ toggleWishlist error:', error);
+            console.error('[ProductListing] wishlist toggle error:', error);
         }
     };
 

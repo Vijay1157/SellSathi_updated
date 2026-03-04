@@ -138,8 +138,17 @@ export const listenToWishlist = (callback) => {
     window.addEventListener('wishlistUpdated', handleUpdate);
     window.addEventListener('userDataChanged', handleUpdate);
 
-    // Listen for Firebase Auth changes too
-    const unsubscribeAuth = auth.onAuthStateChanged(handleUpdate);
+    // Listen for Firebase Auth changes, but ONLY re-fetch if the UID actually
+    // changed (Firebase silently refreshes tokens every ~60 min which would
+    // otherwise trigger a needless Firestore read on every token refresh).
+    let _lastKnownUid = undefined; // undefined = not yet checked
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+        const currentUid = user?.uid ?? null;
+        if (currentUid !== _lastKnownUid) {
+            _lastKnownUid = currentUid;
+            handleUpdate();
+        }
+    });
 
     return () => {
         window.removeEventListener('wishlistUpdated', handleUpdate);

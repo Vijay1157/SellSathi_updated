@@ -89,26 +89,36 @@ export default function Footer() {
                         </div>
 
                         <div style={{ textAlign: 'right' }}>
-                            <h4 style={{ fontWeight: 800, marginBottom: '1.5rem' }}>Earn with Us</h4>
-                            <div style={{ marginTop: '0' }}>
-                                <button
-                                    onClick={handleBecomeSellerClick}
-                                    className="btn btn-primary"
-                                    style={{
-                                        cursor: 'pointer',
-                                        padding: '0.75rem 1.5rem',
-                                        fontSize: '0.9rem',
-                                        fontWeight: 700,
-                                        borderRadius: '99px',
-                                        background: '#2563eb', // Syncing with the new primary blue
-                                        border: 'none',
-                                        color: 'white'
-                                    }}
-                                >
-                                    Become a Seller
-                                </button>
-                                <p className="text-muted" style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}>Open your shop in minutes.</p>
-                            </div>
+                            {(() => {
+                                const rawUser = localStorage.getItem('user');
+                                const role = rawUser ? JSON.parse(rawUser).role : null;
+                                if (role === 'SELLER') return null;
+
+                                return (
+                                    <>
+                                        <h4 style={{ fontWeight: 800, marginBottom: '1.5rem' }}>Earn with Us</h4>
+                                        <div style={{ marginTop: '0' }}>
+                                            <button
+                                                onClick={handleBecomeSellerClick}
+                                                className="btn btn-primary"
+                                                style={{
+                                                    cursor: 'pointer',
+                                                    padding: '0.75rem 1.5rem',
+                                                    fontSize: '0.9rem',
+                                                    fontWeight: 700,
+                                                    borderRadius: '99px',
+                                                    background: '#2563eb',
+                                                    border: 'none',
+                                                    color: 'white'
+                                                }}
+                                            >
+                                                Become a Seller
+                                            </button>
+                                            <p className="text-muted" style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}>Open your shop in minutes.</p>
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
                     </div>
 

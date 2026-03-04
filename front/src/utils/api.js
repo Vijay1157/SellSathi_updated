@@ -1,7 +1,6 @@
 import { auth } from '../config/firebase';
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-console.log("API BASE:", API_BASE);
 
 /**
  * Authenticated fetch wrapper.
@@ -50,17 +49,11 @@ export async function authFetch(path, options = {}) {
     const currentUser = auth.currentUser;
     if (currentUser) {
         try {
-            // Force-refresh token to prevent 401 from expired tokens
             const idToken = await currentUser.getIdToken(true);
-            console.log("[authFetch] Generated token (first 50 chars):", idToken.substring(0, 50) + "...");
-            console.log("[authFetch] Full token length:", idToken.length);
             headers['Authorization'] = `Bearer ${idToken}`;
         } catch (err) {
             console.warn('[authFetch] Token refresh failed, falling back to X-Test-UID:', err.message);
-            // Firebase session is broken — fall back to stored UID
-            if (localUser?.uid) {
-                headers['X-Test-UID'] = localUser.uid;
-            }
+            if (localUser?.uid) headers['X-Test-UID'] = localUser.uid;
         }
         return fetch(url, { ...options, headers });
     }

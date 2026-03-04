@@ -35,17 +35,17 @@ export default function SellerLandingBanner() {
                         <p className="text-base md:text-lg text-gray-300 max-w-3xl mx-auto leading-relaxed">
                             Grow your business with confidence. Join thousands of trusted sellers expanding their reach through secure Aadhaar-based verification, seamless onboarding, and powerful selling tools designed for your success.
                         </p>
-                    </div>
-                </div>
 
-                {/* View Instructions Button - Top Right */}
-                <div className="absolute top-6 right-6 z-20">
-                    <button
-                        onClick={() => setShowInstructions(true)}
-                        className="px-6 py-3 border-2 border-white text-white font-semibold rounded-lg hover:bg-white hover:text-gray-900 transition-all duration-300 flex items-center gap-2"
-                    >
-                        View Instructions
-                    </button>
+                        {/* View Instructions Button - Below Content */}
+                        <div className="mt-6 flex justify-center">
+                            <button
+                                onClick={() => setShowInstructions(true)}
+                                className="btn btn-primary w-full py-5 text-lg font-bold flex items-center justify-center gap-2 shadow-lg"
+                            >
+                                View Instructions
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

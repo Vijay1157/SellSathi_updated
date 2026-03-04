@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Package, ShoppingBag, DollarSign, Plus, Edit2, Trash2, Truck, Loader, X, Home, Upload, Eye, AlertCircle, CheckCircle, Ruler, Palette, Cpu, Settings } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, DollarSign, Plus, Edit2, Trash2, Truck, Loader, X, Home, Upload, Eye, AlertCircle, CheckCircle, Ruler, Palette, Cpu, Settings, ImageIcon } from 'lucide-react';
+
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -328,18 +329,6 @@ export default function SellerDashboard() {
                             </button>
                         ))}
                     </nav>
-                </div>
-
-                <div style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div style={{ padding: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }}>
-                            <Edit2 size={14} className="text-white" />
-                        </div>
-                        <small style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quick Tip</small>
-                    </div>
-                    <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>
-                        Update your inventory daily to boost visibility.
-                    </p>
                 </div>
             </aside>
 
@@ -831,6 +820,9 @@ export default function SellerDashboard() {
                                             )}
                                         </div>
 
+
+
+
                                         {isEditing && (
                                             <div style={{ background: 'var(--surface)', padding: '1.25rem', borderRadius: '16px' }}>
                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -1118,22 +1110,68 @@ export default function SellerDashboard() {
                                                     <Palette size={14} /> Available Colors
                                                 </label>
                                                 {isEditing ? (
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                                        {(editData.colors || []).map(color => (
-                                                            <span key={color} style={{ padding: '0.4rem 0.85rem', borderRadius: '50px', background: '#db2777', color: 'white', fontSize: '0.82rem', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
-                                                                onClick={() => setEditData({ ...editData, colors: editData.colors.filter(c => c !== color) })}>
-                                                                {color} <X size={12} />
-                                                            </span>
-                                                        ))}
-                                                        <input type="text" placeholder="+ Add color" style={{ padding: '0.4rem 0.75rem', borderRadius: '50px', border: '1.5px dashed #f9a8d4', background: 'transparent', fontSize: '0.82rem', width: '110px', outline: 'none' }}
-                                                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const val = e.target.value.trim(); if (val && !editData.colors.includes(val)) { setEditData({ ...editData, colors: [...editData.colors, val] }); e.target.value = ''; } } }}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                                        {(editData.colors || []).map(color => {
+                                                            const vImg = (editData.variantImages || {})[color];
+                                                            return (
+                                                                <div key={color} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', background: 'white', borderRadius: '10px', border: '1px solid #fbcfe8' }}>
+                                                                    {/* Color image thumbnail */}
+                                                                    <div style={{ width: '44px', height: '44px', borderRadius: '8px', border: '1.5px solid #f9a8d4', overflow: 'hidden', flexShrink: 0, background: '#fce7f3', position: 'relative' }}>
+                                                                        {vImg
+                                                                            ? <img src={vImg} alt={color} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+                                                                            : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={18} style={{ color: '#f9a8d4' }} /></div>
+                                                                        }
+                                                                    </div>
+                                                                    {/* Color name */}
+                                                                    <span style={{ flex: 1, fontWeight: 600, fontSize: '0.88rem', color: '#be185d' }}>{color}</span>
+                                                                    {/* Upload button */}
+                                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', padding: '0.3rem 0.65rem', background: vImg ? '#f0fdf4' : 'var(--primary)', color: vImg ? '#16a34a' : 'white', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, border: vImg ? '1px solid #bbf7d0' : 'none', whiteSpace: 'nowrap' }}>
+                                                                        <Upload size={11} />{vImg ? 'Change' : 'Upload'}
+                                                                        <input type="file" accept="image/*" hidden onChange={async (e) => {
+                                                                            const file = e.target.files[0];
+                                                                            if (!file) return;
+                                                                            const fd = new FormData();
+                                                                            fd.append('image', file);
+                                                                            try {
+                                                                                const res = await authFetch('/seller/upload-image', { method: 'POST', body: fd });
+                                                                                const rd = await res.json();
+                                                                                if (rd.success) setEditData(prev => ({ ...prev, variantImages: { ...(prev.variantImages || {}), [color]: rd.url } }));
+                                                                                else alert('Upload failed: ' + rd.message);
+                                                                            } catch (err) { console.error(err); alert('Upload error'); }
+                                                                        }} />
+                                                                    </label>
+                                                                    {/* Remove color */}
+                                                                    <button type="button" onClick={() => {
+                                                                        const updatedColors = editData.colors.filter(c => c !== color);
+                                                                        const updatedImgs = { ...(editData.variantImages || {}) };
+                                                                        delete updatedImgs[color];
+                                                                        setEditData({ ...editData, colors: updatedColors, variantImages: updatedImgs });
+                                                                    }} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', padding: '0.3rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={13} /></button>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {/* Add new color */}
+                                                        <input type="text" placeholder="+ Add color (press Enter)" style={{ padding: '0.4rem 0.75rem', borderRadius: '8px', border: '1.5px dashed #f9a8d4', background: 'transparent', fontSize: '0.82rem', outline: 'none', width: '100%' }}
+                                                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const val = e.target.value.trim(); if (val && !(editData.colors || []).includes(val)) { setEditData({ ...editData, colors: [...(editData.colors || []), val] }); e.target.value = ''; } } }}
                                                         />
                                                     </div>
                                                 ) : (
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                                        {(selectedProduct.colors || []).map(color => (
-                                                            <span key={color} style={{ padding: '0.4rem 0.85rem', borderRadius: '50px', background: '#fce7f3', color: '#be185d', fontSize: '0.85rem', fontWeight: 500 }}>{color}</span>
-                                                        ))}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                        {(selectedProduct.colors || []).map(color => {
+                                                            const vImg = (selectedProduct.variantImages || {})[color];
+                                                            return (
+                                                                <div key={color} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4rem 0.75rem', background: 'white', borderRadius: '10px', border: '1px solid #fbcfe8' }}>
+                                                                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', border: '1.5px solid #f9a8d4', overflow: 'hidden', flexShrink: 0, background: '#fce7f3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                        {vImg
+                                                                            ? <img src={vImg} alt={color} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+                                                                            : <ImageIcon size={16} style={{ color: '#f9a8d4' }} />
+                                                                        }
+                                                                    </div>
+                                                                    <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#be185d' }}>{color}</span>
+                                                                    {!vImg && <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>No image</span>}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
@@ -1227,63 +1265,7 @@ export default function SellerDashboard() {
                                             </div>
                                         )}
 
-                                        {/* VARIANT IMAGES */}
-                                        {(() => {
-                                            const data = isEditing ? editData : selectedProduct;
-                                            const allVariantLabels = [
-                                                ...(data.colors || []),
-                                                ...(data.storage || []).map(v => v.label || v),
-                                                ...(data.memory || []).map(v => v.label || v),
-                                                ...(data.weight || []).map(v => v.label || v)
-                                            ];
-                                            if (allVariantLabels.length === 0) return null;
 
-                                            return (
-                                                <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '1.25rem', border: '1px solid #e2e8f0' }}>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontWeight: 600, color: '#3b82f6', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                                        <Upload size={14} /> Variant Images
-                                                    </label>
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                                        {allVariantLabels.map(label => (
-                                                            <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                                                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{label}</span>
-                                                                {((isEditing ? editData.variantImages : selectedProduct.variantImages) || {})[label] ? (
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                                        <img src={((isEditing ? editData.variantImages : selectedProduct.variantImages) || {})[label]} alt={label} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover', border: '1px solid #e2e8f0' }} />
-                                                                        {isEditing && (
-                                                                            <button type="button" onClick={() => {
-                                                                                const updated = { ...editData.variantImages };
-                                                                                delete updated[label];
-                                                                                setEditData({ ...editData, variantImages: updated });
-                                                                            }} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', padding: '0.3rem', cursor: 'pointer' }}><Trash2 size={12} /></button>
-                                                                        )}
-                                                                    </div>
-                                                                ) : (
-                                                                    isEditing ? (
-                                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', padding: '0.3rem 0.6rem', background: 'var(--primary)', color: 'white', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 600 }}>
-                                                                            <Upload size={12} /> Upload
-                                                                            <input type="file" accept="image/*" hidden onChange={async (e) => {
-                                                                                const file = e.target.files[0];
-                                                                                if (!file) return;
-                                                                                const formData = new FormData();
-                                                                                formData.append('image', file);
-                                                                                try {
-                                                                                    const response = await authFetch('/seller/upload-image', { method: 'POST', body: formData });
-                                                                                    const resData = await response.json();
-                                                                                    if (resData.success) { setEditData(prev => ({ ...prev, variantImages: { ...(prev.variantImages || {}), [label]: resData.url } })); }
-                                                                                } catch (err) { console.error(err); alert('Upload error'); }
-                                                                            }} />
-                                                                        </label>
-                                                                    ) : (
-                                                                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>None</span>
-                                                                    )
-                                                                )}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
 
                                         <div style={{ display: 'none' }}>{/* spacer */}</div>
 
@@ -1325,13 +1307,20 @@ export default function SellerDashboard() {
                         { key: 'DELIVERED', label: 'Delivered', desc: 'Delivered to customer' },
                     ];
                     const shippingToStage = (s) => {
+                        if (trackingOrder.status === 'Cancelled') return 'CANCELLED';
+                        if (trackingOrder.status === 'Delivered' || s === 'DELIVERED') return 'DELIVERED';
+                        if (['PACKING', 'SHIPPING', 'OUT_FOR_DELIVERY', 'PICKUP_SCHEDULED', 'PICKUP_COMPLETE', 'SHIPPED', 'IN_TRANSIT'].includes(s) || trackingOrder.status === 'Shipped') return 'PICKUP';
+                        if (trackingOrder.status === 'Processing') return 'PROCESSING';
                         if (!s || s === 'ORDERED') return 'ORDERED';
-                        if (['PACKING', 'SHIPPING', 'OUT_FOR_DELIVERY', 'PICKUP_SCHEDULED', 'PICKUP_COMPLETE', 'SHIPPED', 'IN_TRANSIT'].includes(s)) return 'PICKUP';
-                        if (s === 'DELIVERED') return 'DELIVERED';
                         return 'ORDERED';
                     };
                     const currentStage = shippingToStage(trackingOrder.shippingStatus);
-                    const currentIdx = SELLER_STAGES.findIndex(s => s.key === currentStage);
+                    let currentIdx = SELLER_STAGES.findIndex(s => s.key === currentStage);
+                    if (currentIdx === -1) {
+                        if (currentStage === 'CANCELLED') currentIdx = 0; // Just to avoid breaking progress bar UI entirely
+                        else if (currentStage === 'PROCESSING') currentIdx = 0.5; // Custom hack 
+                        else currentIdx = 0;
+                    }
 
                     return (
                         <div style={{
@@ -1408,7 +1397,12 @@ export default function SellerDashboard() {
                                     <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                         <Truck size={16} className="text-primary" /> Shipping Details
                                     </h4>
-                                    {trackingOrder.awbNumber ? (
+                                    {trackingOrder.status === 'Cancelled' ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--error)' }}>
+                                            <X size={18} />
+                                            <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Order cancelled.</p>
+                                        </div>
+                                    ) : trackingOrder.awbNumber ? (
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                             <div>
                                                 <p className="text-muted" style={{ fontSize: '0.75rem', margin: '0 0 0.2rem 0' }}>Courier Partner</p>

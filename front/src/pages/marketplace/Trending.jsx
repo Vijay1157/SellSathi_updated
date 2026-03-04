@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, Heart, Eye, ShoppingCart, TrendingUp } from 'lucide-react';
-import { collection, getDocs, query, limit } from 'firebase/firestore';
-import { db, auth } from '../../config/firebase';
+import { auth } from '../../config/firebase';
 import { addToCart } from '../../utils/cartUtils';
+import { addToWishlist, removeFromWishlist, listenToWishlist } from '../../utils/wishlistUtils';
+import { getCachedProducts } from '../../utils/productCache';
 import QuickViewModal from '../../components/common/QuickViewModal';
 
 export default function Trending() {
@@ -16,29 +17,27 @@ export default function Trending() {
     const [selectedQuickProduct, setSelectedQuickProduct] = useState(null);
 
     useEffect(() => {
-        const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
-        setWishlist(saved);
-    }, []);
-
-    useEffect(() => {
         const fetchTrending = async () => {
             try {
-                const q = query(collection(db, "products"), limit(12));
-                const snap = await getDocs(q);
-                const data = snap.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
+                // ✅ Shared 5-min cache — no extra reads if Deals/NewArrivals already loaded
+                const raw = await getCachedProducts(20);
+                const data = raw.map(p => ({
+                    ...p,
                     rating: (Math.random() * 0.4 + 4.6).toFixed(1),
                     reviews: Math.floor(Math.random() * 5000) + 1000
                 }));
                 setProducts(data);
                 setLoading(false);
             } catch (err) {
-                console.error(err);
+                console.error('[Trending] fetch failed:', err);
                 setLoading(false);
             }
         };
         fetchTrending();
+
+        // ✅ Use proper wishlist listener — stays in sync with other pages
+        const unsubscribe = listenToWishlist(setWishlist);
+        return () => unsubscribe();
     }, []);
 
     const handleAddToCart = async (e, p) => {
@@ -53,23 +52,19 @@ export default function Trending() {
         }
     };
 
-    const toggleWishlist = (e, product) => {
+    const toggleWishlist = async (e, product) => {
         if (e) e.stopPropagation();
         if (!auth.currentUser) {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
-        const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
-        const alreadySaved = saved.some(item => item.id === product.id);
-        let updated;
-        if (alreadySaved) {
-            updated = saved.filter(item => item.id !== product.id);
+        const isSaved = wishlist.some(item => item.id === product.id);
+        if (isSaved) {
+            await removeFromWishlist(product.id);
         } else {
-            updated = [...saved, product];
+            await addToWishlist(product);
         }
-        localStorage.setItem('wishlist', JSON.stringify(updated));
-        setWishlist(updated);
-        window.dispatchEvent(new CustomEvent('wishlistUpdated'));
+        // wishlist state updates automatically via the listenToWishlist listener
     };
 
     const openQuickView = (e, product) => {
