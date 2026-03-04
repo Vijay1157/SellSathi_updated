@@ -77,6 +77,34 @@ app.use(bodyParser.json());
 const db = admin.firestore();
 const orderController = require("./controllers/orderController");
 
+// ─── Server-Side In-Memory Cache ─────────────────────────────────────────────
+// Shared across all requests on this server process. TTL: 5 minutes.
+// This prevents repeated full collection scans on frequently-hit admin endpoints.
+const SERVER_CACHE = {
+    adminStats: { data: null, ts: 0 },
+    allSellers: { data: null, ts: 0 },
+    adminProducts: { data: null, ts: 0 },
+};
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Returns cached value if fresh, otherwise null (caller must re-fetch). */
+const getCache = (key) => {
+    const entry = SERVER_CACHE[key];
+    if (entry && entry.data && Date.now() - entry.ts < CACHE_TTL_MS) return entry.data;
+    return null;
+};
+/** Stores a value in the cache with the current timestamp. */
+const setCache = (key, data) => {
+    SERVER_CACHE[key] = { data, ts: Date.now() };
+};
+/** Invalidates all cache entries (call after any write that mutates aggregated data). */
+const invalidateCache = (...keys) => {
+    (keys.length ? keys : Object.keys(SERVER_CACHE)).forEach(k => {
+        if (SERVER_CACHE[k]) SERVER_CACHE[k].ts = 0;
+    });
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Helper function to format dates as dd/mm/yyyy
 const formatDateDDMMYYYY = (date) => {
     if (!date) return new Date().toLocaleDateString('en-GB');
@@ -770,35 +798,39 @@ app.post("/auth/test-login", async (req, res) => {
 // GET /admin/stats - Dashboard statistics
 app.get("/admin/stats", verifyAuth, verifyAdmin, async (req, res) => {
     try {
-        const [sellersSnap, productsSnap, ordersSnap] = await Promise.all([
-            db.collection("sellers").get(),
-            db.collection("products").get(),
-            db.collection("orders").get()
+        // ✅ Return from cache if still fresh (5-minute TTL, shared across all admins)
+        const cached = getCache('adminStats');
+        if (cached) return res.status(200).json({ success: true, stats: cached });
+
+        // Use count() aggregation — costs 1 read per query regardless of collection size
+        const [
+            totalSellersCount,
+            pendingSellersCount,
+            approvedSellersCount,
+            totalProductsCount,
+            totalOrdersCount,
+            ordersToDeliverCount
+        ] = await Promise.all([
+            db.collection("sellers").count().get(),
+            db.collection("sellers").where("sellerStatus", "==", "PENDING").count().get(),
+            db.collection("sellers").where("sellerStatus", "==", "APPROVED").count().get(),
+            db.collection("products").count().get(),
+            db.collection("orders").count().get(),
+            db.collection("orders").where("status", "in", ["Processing", "Shipped"]).count().get()
         ]);
 
-        // Count from sellers collection (single source of truth)
-        const totalSellers = sellersSnap.size;  // ALL who ever applied
-        const pendingSellers = sellersSnap.docs.filter(doc => doc.data().sellerStatus === "PENDING").length;
-        const approvedSellers = sellersSnap.docs.filter(doc => doc.data().sellerStatus === "APPROVED").length;
-        const totalProducts = productsSnap.size;
-        const totalOrders = ordersSnap.size;
-        const ordersToDeliver = ordersSnap.docs.filter(doc => {
-            const s = doc.data().status;
-            return s === 'Processing' || s === 'Shipped';
-        }).length;
+        const stats = {
+            totalSellers: totalSellersCount.data().count,
+            approvedSellers: approvedSellersCount.data().count,
+            totalProducts: totalProductsCount.data().count,
+            totalOrders: totalOrdersCount.data().count,
+            todayOrders: Math.floor(totalOrdersCount.data().count * 0.3),
+            pendingApprovals: pendingSellersCount.data().count,
+            ordersToDeliver: ordersToDeliverCount.data().count
+        };
 
-        return res.status(200).json({
-            success: true,
-            stats: {
-                totalSellers,          // all sellers ever registered
-                approvedSellers,       // only approved
-                totalProducts,
-                todayOrders: Math.floor(totalOrders * 0.3),
-                pendingApprovals: pendingSellers,
-                totalOrders,
-                ordersToDeliver
-            }
-        });
+        setCache('adminStats', stats);
+        return res.status(200).json({ success: true, stats });
     } catch (error) {
         console.error("STATS ERROR:", error);
         return res.status(500).json({
@@ -852,42 +884,49 @@ app.get("/admin/sellers", verifyAuth, verifyAdmin, async (req, res) => {
 // GET /admin/products - All products for review
 app.get("/admin/products", verifyAuth, verifyAdmin, async (req, res) => {
     try {
+        // ✅ Return from cache if still fresh
+        const cached = getCache('adminProducts');
+        if (cached) return res.status(200).json({ success: true, products: cached });
+
         const productsSnap = await db.collection("products").get();
+
+        // ✅ Collect all unique sellerIds, then batch-read users in one round-trip
+        // instead of N individual getDoc() calls (one per product)
+        const sellerIds = [...new Set(
+            productsSnap.docs.map(d => d.data().sellerId).filter(Boolean)
+        )];
+        const sellerPhoneMap = {};
+        for (let i = 0; i < sellerIds.length; i += 10) {
+            const batch = sellerIds.slice(i, i + 10);
+            try {
+                const usersSnap = await db.collection("users")
+                    .where(admin.firestore.FieldPath.documentId(), "in", batch).get();
+                usersSnap.forEach(d => {
+                    sellerPhoneMap[d.id] = d.data()?.phone || "Unknown";
+                });
+            } catch (e) {
+                console.warn("Batch seller fetch error:", e.message);
+            }
+        }
 
         const products = [];
         for (const doc of productsSnap.docs) {
             try {
                 const productData = doc.data() || {};
-                let sellerPhone = "Unknown";
-
-                // Safe sellerId check — prevents 500 when sellerId is missing
-                if (productData.sellerId) {
-                    try {
-                        const sellerSnap = await db.collection("users").doc(productData.sellerId).get();
-                        if (sellerSnap.exists) {
-                            sellerPhone = sellerSnap.data()?.phone || "Unknown";
-                        }
-                    } catch (e) {
-                        console.warn(`Could not fetch seller for product ${doc.id}:`, e.message);
-                    }
-                }
-
-                let dateStr = formatDateDDMMYYYY(productData.createdAt);
-
+                const sellerPhone = sellerPhoneMap[productData.sellerId] || "Unknown";
                 const price = Number(productData.price) || 0;
                 const discountPrice = productData.discountPrice ? Number(productData.discountPrice) : null;
-
                 products.push({
                     id: doc.id,
                     title: productData.title || productData.name || "Untitled",
                     seller: sellerPhone,
-                    price: price,
-                    discountPrice: discountPrice,
-                    discountedPrice: discountPrice, // For backward compatibility
+                    price,
+                    discountPrice,
+                    discountedPrice: discountPrice, // backward compat
                     stock: Number(productData.stock) || 0,
                     category: productData.category || "N/A",
                     status: productData.status || "Active",
-                    date: dateStr
+                    date: formatDateDDMMYYYY(productData.createdAt)
                 });
             } catch (docErr) {
                 console.error(`Skipping malformed product ${doc.id}:`, docErr.message);
@@ -895,11 +934,8 @@ app.get("/admin/products", verifyAuth, verifyAdmin, async (req, res) => {
         }
 
         products.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        return res.status(200).json({
-            success: true,
-            products
-        });
+        setCache('adminProducts', products);
+        return res.status(200).json({ success: true, products });
     } catch (error) {
         console.error("GET PRODUCTS ERROR:", error);
         return res.status(500).json({
@@ -913,56 +949,71 @@ app.get("/admin/products", verifyAuth, verifyAdmin, async (req, res) => {
 // GET /admin/all-sellers - All sellers regardless of status
 app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
     try {
-        const sellersSnap = await db.collection("sellers").get();
-        // Prefetch delivered orders to avoid querying per seller inside the loop
-        const ordersSnap = await db.collection("orders").where("status", "==", "Delivered").get();
-        const deliveredOrders = [];
-        ordersSnap.forEach(o => deliveredOrders.push(o.data()));
+        // ✅ Return from cache if still fresh
+        const cached = getCache('allSellers');
+        if (cached) return res.status(200).json({ success: true, sellers: cached });
 
-        const sellers = [];
-        for (const doc of sellersSnap.docs) {
-            const sellerData = doc.data();
-            const userSnap = await db.collection("users").doc(doc.id).get();
-            const userData = userSnap.data();
+        // Fetch all seller docs + delivered orders in parallel (2 reads total)
+        const [sellersSnap, ordersSnap] = await Promise.all([
+            db.collection("sellers").get(),
+            db.collection("orders").where("status", "==", "Delivered").get()
+        ]);
 
-            // Get product count for this seller
-            const productsSnap = await db.collection("products").where("sellerId", "==", doc.id).get();
-            const totalProducts = productsSnap.size;
+        const deliveredOrders = ordersSnap.docs.map(o => o.data());
+        const sellerIds = sellersSnap.docs.map(d => d.id);
 
-            // Debug logging for specific seller
-            if (sellerData.shopName && sellerData.shopName.toLowerCase().includes('rahul')) {
-                console.log(`[ALL-SELLERS] Seller: ${sellerData.shopName}, UID: ${doc.id}, Products: ${totalProducts}`);
-                if (totalProducts > 0) {
-                    const sampleProducts = productsSnap.docs.slice(0, 3).map(p => ({
-                        id: p.id,
-                        title: p.data().title || p.data().name,
-                        sellerId: p.data().sellerId
-                    }));
-                    console.log(`[ALL-SELLERS] Sample products:`, JSON.stringify(sampleProducts));
-                }
-            }
+        // ✅ Batch-fetch user docs using `in` queries (10 IDs per query = Firestore limit)
+        // Avoids N individual getDoc() calls — reads all N user docs in ceil(N/10) queries
+        const userMap = {};
+        for (let i = 0; i < sellerIds.length; i += 10) {
+            const batch = sellerIds.slice(i, i + 10);
+            const usersSnap = await db.collection("users")
+                .where(admin.firestore.FieldPath.documentId(), "in", batch).get();
+            usersSnap.forEach(d => { userMap[d.id] = d.data(); });
+        }
 
-            let totalRevenue = 0;
-            let deliveredCount = 0;
-
-            deliveredOrders.forEach(order => {
-                if (order.items && Array.isArray(order.items)) {
-                    let hasSellerItem = false;
-                    order.items.forEach(item => {
-                        if (item.sellerId === doc.id) {
-                            totalRevenue += (item.price || 0) * (item.quantity || 1);
-                            hasSellerItem = true;
-                        }
-                    });
-                    if (hasSellerItem) deliveredCount++;
-                }
+        // ✅ Batch-fetch product counts per seller
+        // Each batch query counts products for up to 10 sellers at once using `in`
+        const productCountMap = {};
+        for (let i = 0; i < sellerIds.length; i += 10) {
+            const batch = sellerIds.slice(i, i + 10);
+            const productsSnap = await db.collection("products")
+                .where("sellerId", "in", batch).get();
+            productsSnap.forEach(d => {
+                const sid = d.data().sellerId;
+                if (sid) productCountMap[sid] = (productCountMap[sid] || 0) + 1;
             });
+        }
 
-            sellers.push({
+        // Build financial summary from in-memory delivered orders (no extra Firestore reads)
+        const financialsMap = {};
+        deliveredOrders.forEach(order => {
+            if (!order.items || !Array.isArray(order.items)) return;
+            const sellerHits = {};
+            order.items.forEach(item => {
+                if (!item.sellerId) return;
+                if (!sellerHits[item.sellerId]) {
+                    sellerHits[item.sellerId] = { rev: 0 };
+                    financialsMap[item.sellerId] = financialsMap[item.sellerId] ||
+                        { totalRevenue: 0, deliveredCount: 0 };
+                }
+                sellerHits[item.sellerId].rev += (item.price || 0) * (item.quantity || 1);
+            });
+            Object.entries(sellerHits).forEach(([sid, { rev }]) => {
+                financialsMap[sid].totalRevenue += rev;
+                financialsMap[sid].deliveredCount += 1;
+            });
+        });
+
+        const sellers = sellersSnap.docs.map(doc => {
+            const sellerData = doc.data();
+            const userData = userMap[doc.id] || {};
+            const fin = financialsMap[doc.id] || { totalRevenue: 0, deliveredCount: 0 };
+            return {
                 uid: doc.id,
                 name: sellerData.shopName,
-                email: userData?.email || userData?.phone || "N/A",
-                phone: userData?.phone || "N/A",
+                email: userData.email || userData.phone || "N/A",
+                phone: userData.phone || "N/A",
                 type: "Individual",
                 status: sellerData.sellerStatus,
                 joined: formatDateDDMMYYYY(sellerData.appliedAt),
@@ -976,14 +1027,15 @@ app.get("/admin/all-sellers", verifyAuth, verifyAdmin, async (req, res) => {
                 extractedName: sellerData.extractedName,
                 isBlocked: sellerData.isBlocked || false,
                 financials: {
-                    totalProducts,
-                    totalRevenue,
-                    deliveredCount
+                    totalProducts: productCountMap[doc.id] || 0,
+                    totalRevenue: fin.totalRevenue,
+                    deliveredCount: fin.deliveredCount
                 }
-            });
-        }
+            };
+        });
 
-        console.log(`[ALL-SELLERS] Total sellers returned: ${sellers.length}`);
+        setCache('allSellers', sellers);
+        console.log(`[ALL-SELLERS] Returned ${sellers.length} sellers (from Firestore)`);
         return res.status(200).json({ success: true, sellers });
     } catch (error) {
         console.error("GET ALL SELLERS ERROR:", error);
@@ -1006,6 +1058,7 @@ app.post("/admin/seller/:uid/block", verifyAuth, verifyAdmin, async (req, res) =
             blockedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         await db.collection("users").doc(uid).update({ isActive: false, isBlocked: true });
+        invalidateCache('adminStats', 'allSellers');
         return res.status(200).json({ success: true, message: "Seller blocked" });
     } catch (error) {
         console.error("BLOCK SELLER ERROR:", error);
@@ -1962,6 +2015,9 @@ app.post("/admin/seller/:uid/approve", verifyAuth, verifyAdmin, async (req, res)
             role: "SELLER"
         });
 
+        // Invalidate admin caches so next request fetches fresh data
+        invalidateCache('adminStats', 'allSellers');
+
         return res.status(200).json({
             success: true,
             message: "Seller approved successfully"
@@ -1985,6 +2041,9 @@ app.post("/admin/seller/:uid/reject", verifyAuth, verifyAdmin, async (req, res) 
             sellerStatus: "REJECTED",
             rejectedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+
+        // Invalidate admin caches so next request reflects the rejection
+        invalidateCache('adminStats', 'allSellers');
 
         return res.status(200).json({
             success: true,
@@ -2132,6 +2191,8 @@ app.post("/seller/product/add", verifyAuth, async (req, res) => {
         }
 
         const docRef = await db.collection("products").add(newProduct);
+        // Invalidate the admin products cache so the new product appears immediately
+        invalidateCache('adminProducts', 'allSellers', 'adminStats');
 
         return res.status(200).json({
             success: true,
@@ -2152,6 +2213,8 @@ app.delete("/seller/product/:id", verifyAuth, async (req, res) => {
     try {
         const { id } = req.params;
         await db.collection("products").doc(id).delete();
+        // Invalidate admin caches after product deletion
+        invalidateCache('adminProducts', 'allSellers', 'adminStats');
 
         return res.status(200).json({
             success: true,

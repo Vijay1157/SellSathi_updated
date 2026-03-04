@@ -2,10 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingCart, User, Search, LogOut, ChevronDown, ArrowRight, MapPin, Languages, IndianRupee, DollarSign, Heart, ShoppingBag } from 'lucide-react';
 import AuthModal from '../common/AuthModal';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, limit } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { listenToCart } from '../../utils/cartUtils';
 import { listenToWishlist } from '../../utils/wishlistUtils';
+
+// ─── Module-level cache for Mega Menu product data ───────────────────────────
+// Shared across all Navbar instances; survives page navigations within the same
+// browser session. TTL: 10 minutes. Eliminates repeated full collection scans.
+let _megaMenuCache = null;
+let _megaMenuCacheTs = 0;
+const MEGA_MENU_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+// ─────────────────────────────────────────────────────────────────────────────
 
 const MAIN_CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", 'Home & Living', 'Beauty', 'Sports', 'Accessories', "Today's Deals", 'New Arrivals', 'Trending'];
 
@@ -73,7 +81,15 @@ export default function Navbar() {
     useEffect(() => {
         const fetchMegaData = async () => {
             try {
-                const snap = await getDocs(collection(db, "products"));
+                // ✅ Return cached result if still fresh (avoids full collection scan on every page)
+                if (_megaMenuCache && Date.now() - _megaMenuCacheTs < MEGA_MENU_CACHE_TTL) {
+                    setDynamicMegaData(_megaMenuCache);
+                    return;
+                }
+
+                // Limit to 50 products — enough for a rich mega menu, not the entire catalogue
+                const q = query(collection(db, "products"), limit(50));
+                const snap = await getDocs(q);
                 let products = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
                 // Fallback demo data if DB is empty to ensure mega menu is visible
@@ -201,6 +217,9 @@ export default function Navbar() {
                         };
                     }
                 });
+                // Persist in module-level cache
+                _megaMenuCache = mega;
+                _megaMenuCacheTs = Date.now();
                 setDynamicMegaData(mega);
             } catch (err) {
                 console.error("Error fetching mega menu data:", err);
