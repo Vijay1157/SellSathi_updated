@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, CreditCard, Phone, MapPin, Store, Tag, CheckCircle2, Upload, Camera, Loader } from 'lucide-react';
+import { authFetch } from '@/modules/shared/utils/api';
 
 const SellerOnboarding = () => {
   const location = useLocation();
@@ -17,16 +18,16 @@ const SellerOnboarding = () => {
     aadhaarNumber: '',
     phoneNumber: '',
     age: '',
-    
+
     // Shop Details
     shopAddress: '',
     shopName: '',
     shopCategory: '',
-    
+
     // GST Details
     hasGST: null, // 'yes' or 'no'
     gstNumber: '',
-    
+
     // EID Details (for non-GST)
     panNumber: '',
     nameAsPerPAN: '',
@@ -37,19 +38,19 @@ const SellerOnboarding = () => {
     city: '',
     buildingNumber: '',
     streetLocality: '',
-    
+
     // Pickup Address
     pickupAddress: '',
     pickupCity: '',
     pickupState: '',
     pickupPincode: '',
-    
+
     // Bank Details
     bankAccountName: '',
     accountNumber: '',
     ifscCode: '',
     upiId: '',
-    
+
     // Supplier Details
     supplierName: '',
     businessType: '',
@@ -59,16 +60,18 @@ const SellerOnboarding = () => {
 
   // Handle Aadhaar extracted data
   useEffect(() => {
-    const extractedData = location.state?.extractedData || 
-                        JSON.parse(localStorage.getItem('sellerAadhaarData') || '{}');
-    
+    const extractedData = location.state?.extractedData ||
+      JSON.parse(localStorage.getItem('sellerAadhaarData') || '{}');
+
     if (extractedData.fullName || extractedData.aadhaarNumber) {
       setSellerData(prev => ({
         ...prev,
         fullName: extractedData.fullName || prev.fullName,
         aadhaarNumber: extractedData.aadhaarNumber || prev.aadhaarNumber,
+        phoneNumber: extractedData.phoneNumber || prev.phoneNumber,
         age: extractedData.age || prev.age,
-        shopAddress: extractedData.shopAddress || prev.shopAddress
+        shopAddress: extractedData.shopAddress || prev.shopAddress,
+        pincode: extractedData.pincode || prev.pincode
       }));
     }
   }, [location.state]);
@@ -78,31 +81,41 @@ const SellerOnboarding = () => {
   };
 
   const validateStep = (currentStep) => {
-    switch(currentStep) {
-      case 1:
-        return sellerData.fullName && 
-               sellerData.aadhaarNumber && 
-               sellerData.phoneNumber && 
-               sellerData.age && 
-               sellerData.shopAddress && 
-               sellerData.shopName && 
-               sellerData.shopCategory;
-      case 2:
-        return sellerData.hasGST === 'yes' ? sellerData.gstNumber : true;
-      case 3:
-        return sellerData.pickupAddress && 
-               sellerData.pickupCity && 
-               sellerData.pickupState && 
-               sellerData.pickupPincode;
-      case 4:
-        return sellerData.bankAccountName && 
-               sellerData.accountNumber && 
-               sellerData.ifscCode;
-      case 5:
-        return sellerData.supplierName && 
-               sellerData.businessType && 
-               sellerData.productCategory && 
-               sellerData.contactEmail;
+    switch (currentStep) {
+      case 1: // Personal Details & PAN
+        return sellerData.fullName &&
+          sellerData.aadhaarNumber?.length === 12 &&
+          sellerData.phoneNumber?.length === 10 &&
+          sellerData.age &&
+          sellerData.shopAddress &&
+          sellerData.panNumber?.length === 10 &&
+          sellerData.nameAsPerPAN &&
+          sellerData.emailId &&
+          sellerData.state &&
+          sellerData.pincode?.length === 6 &&
+          sellerData.district &&
+          sellerData.city &&
+          sellerData.buildingNumber &&
+          sellerData.streetLocality;
+      case 2: // Business & GST Details
+        const isBaseValid = sellerData.shopName && sellerData.shopCategory && sellerData.hasGST;
+
+        if (!isBaseValid) return false;
+
+        if (sellerData.hasGST === 'yes') {
+          return sellerData.gstNumber?.length === 15;
+        }
+
+        return true; // if hasGST is 'no', all required EID info is already captured in step 1
+      case 3: // Pickup Address
+        return sellerData.pickupAddress &&
+          sellerData.pickupCity &&
+          sellerData.pickupState &&
+          sellerData.pickupPincode?.length === 6;
+      case 4: // Bank Details
+        return sellerData.bankAccountName &&
+          sellerData.accountNumber &&
+          sellerData.ifscCode?.length === 11;
       default:
         return true;
     }
@@ -113,7 +126,7 @@ const SellerOnboarding = () => {
       setError('Please fill all required fields');
       return;
     }
-    if (step < 5) setStep(step + 1);
+    if (step < 4) setStep(step + 1);
   };
 
   const prevStep = () => {
@@ -121,22 +134,28 @@ const SellerOnboarding = () => {
   };
 
   const handleSubmitApplication = async () => {
-    if (!validateStep(5)) {
+    if (!validateStep(4)) {
       setError('Please fill all required fields');
       return;
     }
 
     setLoading(true);
     setError('');
-    
+
     try {
-      // Send seller data to backend
-      const response = await fetch('/api/seller/register', {
+      // Send seller data to backend using authenticated fetch
+      const response = await authFetch('/auth/apply-seller', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ sellerData }),
+        body: JSON.stringify({
+          sellerDetails: {
+            ...sellerData,
+            category: sellerData.shopCategory,
+            address: sellerData.shopAddress
+          }
+        }),
       });
 
       const result = await response.json();
@@ -157,17 +176,15 @@ const SellerOnboarding = () => {
   };
 
   const renderStep = () => {
-    switch(step) {
+    switch (step) {
       case 1:
         return <PersonalDetailsStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} />;
       case 2:
-        return <GSTSelectionStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} />;
+        return <BusinessAndGSTStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} prevStep={prevStep} />;
       case 3:
         return <PickupAddressStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} prevStep={prevStep} />;
       case 4:
-        return <BankDetailsStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} prevStep={prevStep} />;
-      case 5:
-        return <SupplierDetailsStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} prevStep={prevStep} />;
+        return <BankDetailsStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={handleSubmitApplication} prevStep={prevStep} loading={loading} />;
       default:
         return <PersonalDetailsStep sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} />;
     }
@@ -175,16 +192,15 @@ const SellerOnboarding = () => {
 
   const steps = [
     { id: 1, name: 'Personal Details' },
-    { id: 2, name: 'GST Verification' },
+    { id: 2, name: 'Business & GST' },
     { id: 3, name: 'Pickup Address' },
-    { id: 4, name: 'Bank Details' },
-    { id: 5, name: 'Supplier Details' }
+    { id: 4, name: 'Bank Details' }
   ];
 
   return (
     <div className="min-h-screen relative">
       {/* Background Gradient and Illustration */}
-      <div 
+      <div
         className="absolute inset-0"
         style={{
           background: 'linear-gradient(135deg, #1e3a8a, #4f46e5)',
@@ -194,14 +210,14 @@ const SellerOnboarding = () => {
         }}
       >
         {/* Dark overlay for better text contrast */}
-        <div 
+        <div
           className="absolute inset-0"
           style={{
             background: 'rgba(0,0,0,0.35)'
           }}
         />
       </div>
-      
+
       {/* Back Button */}
       <button
         onClick={() => navigate('/seller')}
@@ -219,13 +235,12 @@ const SellerOnboarding = () => {
               {steps.map((stepItem, index) => (
                 <React.Fragment key={stepItem.id}>
                   <div
-                    className={`flex items-center px-4 py-2 rounded-full transition-all ${
-                      step === stepItem.id 
-                        ? 'bg-indigo-600 text-white font-semibold' 
-                        : step > stepItem.id 
-                        ? 'text-white' 
+                    className={`flex items-center px-4 py-2 rounded-full transition-all ${step === stepItem.id
+                      ? 'bg-indigo-600 text-white font-semibold'
+                      : step > stepItem.id
+                        ? 'text-white'
                         : 'bg-gray-200 text-gray-700'
-                    }`}
+                      }`}
                   >
                     <span className="text-sm font-medium">
                       {step > stepItem.id ? '✓' : stepItem.id}
@@ -235,9 +250,8 @@ const SellerOnboarding = () => {
                     </span>
                   </div>
                   {index < steps.length - 1 && (
-                    <div className={`w-8 h-0.5 mx-2 ${
-                      step > stepItem.id ? 'bg-white' : 'bg-gray-300'
-                    }`} />
+                    <div className={`w-8 h-0.5 mx-2 ${step > stepItem.id ? 'bg-white' : 'bg-gray-300'
+                      }`} />
                   )}
                 </React.Fragment>
               ))}
@@ -311,15 +325,21 @@ const SellerOnboarding = () => {
   );
 };
 
-// Personal Details Step Component
 const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
-  const isFormValid = sellerData.fullName && 
-                     sellerData.aadhaarNumber && 
-                     sellerData.phoneNumber && 
-                     sellerData.age && 
-                     sellerData.shopAddress && 
-                     sellerData.shopName && 
-                     sellerData.shopCategory;
+  const isFormValid = sellerData.fullName &&
+    sellerData.aadhaarNumber?.length === 12 &&
+    sellerData.phoneNumber?.length === 10 &&
+    sellerData.age &&
+    sellerData.shopAddress &&
+    sellerData.panNumber?.length === 10 &&
+    sellerData.nameAsPerPAN &&
+    sellerData.emailId &&
+    sellerData.state &&
+    sellerData.pincode?.length === 6 &&
+    sellerData.district &&
+    sellerData.city &&
+    sellerData.buildingNumber &&
+    sellerData.streetLocality;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8">
@@ -348,10 +368,11 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
             </label>
             <input
               type="text"
+              maxLength={12}
               value={sellerData.aadhaarNumber}
-              onChange={(e) => updateSellerData('aadhaarNumber', e.target.value)}
+              onChange={(e) => updateSellerData('aadhaarNumber', e.target.value.replace(/\D/g, ''))}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter Aadhaar number"
+              placeholder="Enter 12-digit Aadhaar number"
             />
           </div>
         </div>
@@ -363,10 +384,11 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
             </label>
             <input
               type="tel"
+              maxLength={10}
               value={sellerData.phoneNumber}
-              onChange={(e) => updateSellerData('phoneNumber', e.target.value)}
+              onChange={(e) => updateSellerData('phoneNumber', e.target.value.replace(/\D/g, ''))}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter phone number"
+              placeholder="Enter 10-digit phone number"
             />
           </div>
           <div>
@@ -383,53 +405,105 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
           </div>
         </div>
 
-        <div className="border-t pt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Shop Details</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Shop Address *
-              </label>
-              <textarea
-                rows={3}
-                value={sellerData.shopAddress}
-                onChange={(e) => updateSellerData('shopAddress', e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="Enter shop address"
-              />
-            </div>
+        <div className="border-t pt-8">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6">PAN & Address Details</h3>
+
+          <div className="bg-blue-50 text-blue-800 text-sm p-4 rounded-xl border border-blue-100 mb-6 flex gap-3">
+            <CheckCircle2 size={24} className="shrink-0 text-blue-600" />
+            <p>This strict identity data (EID) permits you to safely sell without a GST certificate later on if entering a tax exempt category.</p>
+          </div>
+
+          <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Shop Name *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">PAN Number *</label>
                 <input
                   type="text"
-                  value={sellerData.shopName}
-                  onChange={(e) => updateSellerData('shopName', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Enter shop name"
+                  maxLength={10}
+                  value={sellerData.panNumber}
+                  onChange={(e) => updateSellerData('panNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="10-character PAN number"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Shop Category *
-                </label>
-                <select
-                  value={sellerData.shopCategory}
-                  onChange={(e) => updateSellerData('shopCategory', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="">Select Category</option>
-                  <option value="electronics">Electronics</option>
-                  <option value="fashion">Fashion</option>
-                  <option value="home">Home & Kitchen</option>
-                  <option value="beauty">Beauty & Health</option>
-                  <option value="food">Food & Beverages</option>
-                  <option value="books">Books & Media</option>
-                  <option value="sports">Sports & Fitness</option>
-                  <option value="toys">Toys & Games</option>
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Name as per PAN *</label>
+                <input
+                  type="text"
+                  value={sellerData.nameAsPerPAN}
+                  onChange={(e) => updateSellerData('nameAsPerPAN', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter strict legal name"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Business Email ID *</label>
+                <input
+                  type="email"
+                  value={sellerData.emailId}
+                  onChange={(e) => updateSellerData('emailId', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Contact Email ID"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Room / Building Number *</label>
+                <input
+                  type="text"
+                  value={sellerData.buildingNumber}
+                  onChange={(e) => updateSellerData('buildingNumber', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Building / Appt Number"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Street / Locality Landmark *</label>
+              <input
+                type="text"
+                value={sellerData.streetLocality}
+                onChange={(e) => updateSellerData('streetLocality', e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                placeholder="Detailed area street data"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Detailed Shop Address *</label>
+                <textarea
+                  rows={4}
+                  value={sellerData.shopAddress}
+                  onChange={(e) => updateSellerData('shopAddress', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter complete shop address"
+                />
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">City *</label>
+                    <input type="text" value={sellerData.city} onChange={(e) => updateSellerData('city', e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="City" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                    <input type="text" value={sellerData.state} onChange={(e) => updateSellerData('state', e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="State" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">District *</label>
+                    <input type="text" value={sellerData.district} onChange={(e) => updateSellerData('district', e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="District" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Pincode *</label>
+                    <input type="text" maxLength={6} value={sellerData.pincode} onChange={(e) => updateSellerData('pincode', e.target.value.replace(/\D/g, ''))} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Pincode" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -449,277 +523,118 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
   );
 };
 
-// GST Selection Step Component
-const GSTSelectionStep = ({ sellerData, updateSellerData, nextStep }) => {
-  const [showGSTInput, setShowGSTInput] = useState(false);
-  const [showEIDModal, setShowEIDModal] = useState(false);
+// Business & GST Details Step Component
+const BusinessAndGSTStep = ({ sellerData, updateSellerData, nextStep, prevStep }) => {
+  const handleGSTSelection = (hasGST) => updateSellerData('hasGST', hasGST);
 
-  const handleGSTSelection = (hasGST) => {
-    updateSellerData('hasGST', hasGST);
-    if (hasGST === 'yes') {
-      setShowGSTInput(true);
-      setShowEIDModal(false);
-    } else {
-      setShowGSTInput(false);
-      setShowEIDModal(true);
-    }
+  const isFormValid = () => {
+    const isBaseValid = sellerData.shopName && sellerData.shopCategory && sellerData.hasGST;
+    if (!isBaseValid) return false;
+
+    if (sellerData.hasGST === 'yes') return sellerData.gstNumber?.length === 15;
+
+    // If NO, they can safely proceed because step 1 enforces all PAN/EID rules now
+    return true;
   };
-
-  if (showEIDModal) {
-    return <EIDModal sellerData={sellerData} updateSellerData={updateSellerData} nextStep={nextStep} onClose={() => setShowEIDModal(false)} />;
-  }
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Do you have a GST number?</h2>
-        
-        <div className="flex justify-center gap-8 mb-8">
-          <button
-            onClick={() => handleGSTSelection('yes')}
-            className={`px-8 py-4 rounded-lg font-medium transition-all ${
-              sellerData.hasGST === 'yes' 
-                ? 'bg-indigo-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Yes
-          </button>
-          <button
-            onClick={() => handleGSTSelection('no')}
-            className={`px-8 py-4 rounded-lg font-medium transition-all ${
-              sellerData.hasGST === 'no' 
-                ? 'bg-indigo-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            No
-          </button>
-        </div>
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Business & GST Details</h2>
+        <p className="text-gray-600">Tell us about your shop and tax compliance</p>
+      </div>
 
-        {showGSTInput && (
-          <div className="max-w-md mx-auto">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              GST Number
-            </label>
+      <div className="space-y-8">
+        {/* Core Shop Definition Block */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Shop Name *</label>
             <input
               type="text"
-              value={sellerData.gstNumber}
-              onChange={(e) => updateSellerData('gstNumber', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter GST number"
+              value={sellerData.shopName}
+              onChange={(e) => updateSellerData('shopName', e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              placeholder="Enter your shop name"
             />
-            <button
-              onClick={nextStep}
-              className="w-full mt-4 px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              Verify GST
-            </button>
           </div>
-        )}
-
-        {sellerData.hasGST === 'no' && !showEIDModal && (
-          <div className="max-w-md mx-auto text-left">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Sell without GST in minutes</h3>
-            <div className="space-y-3 mb-6">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="text-green-500" size={20} />
-                <span className="text-gray-700">PAN number</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="text-green-500" size={20} />
-                <span className="text-gray-700">Full Name</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="text-green-500" size={20} />
-                <span className="text-gray-700">Email ID</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="text-green-500" size={20} />
-                <span className="text-gray-700">Full Address</span>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowEIDModal(true)}
-              className="w-full px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Shop Category *</label>
+            <select
+              value={sellerData.shopCategory}
+              onChange={(e) => updateSellerData('shopCategory', e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
             >
-              Proceed to add details
-            </button>
+              <option value="">Select Category</option>
+              <option value="electronics">Electronics</option>
+              <option value="fashion">Fashion</option>
+              <option value="home">Home & Kitchen</option>
+              <option value="beauty">Beauty & Health</option>
+              <option value="food">Food & Beverages</option>
+              <option value="books">Books & Media</option>
+              <option value="sports">Sports & Fitness</option>
+              <option value="toys">Toys & Games</option>
+            </select>
           </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// EID Modal Component
-const EIDModal = ({ sellerData, updateSellerData, nextStep, onClose }) => {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Create your EID</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            ✕
-          </button>
         </div>
 
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            {[1, 2].map((num) => (
-              <div
-                key={num}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  num === 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'
+        {/* GST Toggle Form */}
+        <div className="border-t pt-8">
+          <label className="block text-lg font-medium text-gray-900 mb-4 text-center">Do you have a GST Number? *</label>
+          <div className="flex justify-center gap-6 mb-8">
+            <button
+              onClick={() => handleGSTSelection('yes')}
+              className={`px-8 py-3 rounded-lg font-medium transition-all ${sellerData.hasGST === 'yes' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
-              >
-                {num}
-              </div>
-            ))}
-            <span className="text-gray-500 text-sm ml-2">— Add Details</span>
-            <span className="text-gray-500 text-sm ml-2">— Verify OTP</span>
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => handleGSTSelection('no')}
+              className={`px-8 py-3 rounded-lg font-medium transition-all ${sellerData.hasGST === 'no' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+            >
+              No
+            </button>
           </div>
+
+          {/* Conditional Rendering Blocks */}
+          {sellerData.hasGST === 'yes' && (
+            <div className="max-w-md mx-auto space-y-4 animate-in fade-in zoom-in duration-200">
+              <label className="block text-sm font-medium text-gray-700">GST Number *</label>
+              <input
+                type="text"
+                maxLength={15}
+                value={sellerData.gstNumber}
+                onChange={(e) => updateSellerData('gstNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                placeholder="Enter 15-character GST number"
+              />
+            </div>
+          )}
+
+          {sellerData.hasGST === 'no' && (
+            <div className="space-y-6 pt-4 border-t border-gray-100 animate-in slide-in-from-bottom-4 duration-300">
+              <div className="bg-blue-50 text-blue-800 text-sm p-4 rounded-xl border border-blue-100 mb-6 flex items-center justify-center gap-3">
+                <CheckCircle2 size={24} className="shrink-0 text-blue-600" />
+                <p>Tax-exempt flow. PAN verified in previous step.</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">PAN and Contact Details</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  PAN Number
-                </label>
-                <input
-                  type="text"
-                  value={sellerData.panNumber}
-                  onChange={(e) => updateSellerData('panNumber', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Enter PAN number"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Name as per PAN
-                </label>
-                <input
-                  type="text"
-                  value={sellerData.nameAsPerPAN}
-                  onChange={(e) => updateSellerData('nameAsPerPAN', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Enter name as per PAN"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email ID
-                </label>
-                <input
-                  type="email"
-                  value={sellerData.emailId}
-                  onChange={(e) => updateSellerData('emailId', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Enter email ID"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Address Details</h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    State
-                  </label>
-                  <input
-                    type="text"
-                    value={sellerData.state}
-                    onChange={(e) => updateSellerData('state', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Enter state"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pincode
-                  </label>
-                  <input
-                    type="text"
-                    value={sellerData.pincode}
-                    onChange={(e) => updateSellerData('pincode', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Enter pincode"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    District
-                  </label>
-                  <input
-                    type="text"
-                    value={sellerData.district}
-                    onChange={(e) => updateSellerData('district', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Enter district"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    City
-                  </label>
-                  <input
-                    type="text"
-                    value={sellerData.city}
-                    onChange={(e) => updateSellerData('city', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Enter city"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Room/Floor/Building Number
-                </label>
-                <input
-                  type="text"
-                  value={sellerData.buildingNumber}
-                  onChange={(e) => updateSellerData('buildingNumber', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Enter building number"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Street/Locality/Landmark
-                </label>
-                <input
-                  type="text"
-                  value={sellerData.streetLocality}
-                  onChange={(e) => updateSellerData('streetLocality', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Enter street/locality"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <p className="text-sm text-gray-600 text-center">
-              <strong>Captcha Security Check</strong> - Please complete the security verification below
-            </p>
-          </div>
-
+        <div className="flex justify-between mt-8 border-t pt-8">
+          <button
+            onClick={prevStep}
+            className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Back
+          </button>
           <button
             onClick={nextStep}
-            className="w-full px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            disabled={!isFormValid()}
+            className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Submit Details
+            Next
           </button>
         </div>
       </div>
@@ -729,10 +644,10 @@ const EIDModal = ({ sellerData, updateSellerData, nextStep, onClose }) => {
 
 // Pickup Address Step Component
 const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep }) => {
-  const isFormValid = sellerData.pickupAddress && 
-                     sellerData.pickupCity && 
-                     sellerData.pickupState && 
-                     sellerData.pickupPincode;
+  const isFormValid = sellerData.pickupAddress &&
+    sellerData.pickupCity &&
+    sellerData.pickupState &&
+    sellerData.pickupPincode;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8">
@@ -788,10 +703,11 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
           </label>
           <input
             type="text"
+            maxLength={6}
             value={sellerData.pickupPincode}
-            onChange={(e) => updateSellerData('pickupPincode', e.target.value)}
+            onChange={(e) => updateSellerData('pickupPincode', e.target.value.replace(/\D/g, ''))}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            placeholder="Enter pincode"
+            placeholder="Enter 6-digit pincode"
           />
         </div>
       </div>
@@ -816,10 +732,10 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
 };
 
 // Bank Details Step Component
-const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep }) => {
-  const isFormValid = sellerData.bankAccountName && 
-                     sellerData.accountNumber && 
-                     sellerData.ifscCode;
+const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loading }) => {
+  const isFormValid = sellerData.bankAccountName &&
+    sellerData.accountNumber &&
+    sellerData.ifscCode;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8">
@@ -848,8 +764,9 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep }) =
           </label>
           <input
             type="text"
+            maxLength={18}
             value={sellerData.accountNumber}
-            onChange={(e) => updateSellerData('accountNumber', e.target.value)}
+            onChange={(e) => updateSellerData('accountNumber', e.target.value.replace(/\D/g, ''))}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             placeholder="Enter account number"
           />
@@ -862,22 +779,23 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep }) =
             </label>
             <input
               type="text"
+              maxLength={11}
               value={sellerData.ifscCode}
-              onChange={(e) => updateSellerData('ifscCode', e.target.value)}
+              onChange={(e) => updateSellerData('ifscCode', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter IFSC code"
+              placeholder="Enter 11-char IFSC code"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              UPI ID
+              UPI ID (Optional)
             </label>
             <input
               type="text"
               value={sellerData.upiId}
-              onChange={(e) => updateSellerData('upiId', e.target.value)}
+              onChange={(e) => updateSellerData('upiId', e.target.value.replace(/[^a-zA-Z0-9.\-@]/g, '').toLowerCase())}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter UPI ID"
+              placeholder="e.g. name@bank"
             />
           </div>
         </div>
@@ -886,16 +804,24 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep }) =
       <div className="flex justify-between mt-8">
         <button
           onClick={prevStep}
-          className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          disabled={loading}
+          className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
         >
           Back
         </button>
         <button
           onClick={nextStep}
-          disabled={!isFormValid}
-          className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!isFormValid || loading}
+          className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          Next
+          {loading ? (
+            <React.Fragment>
+              <Loader className="animate-spin" size={18} />
+              Submitting...
+            </React.Fragment>
+          ) : (
+            'Submit Application'
+          )}
         </button>
       </div>
     </div>
@@ -904,10 +830,10 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep }) =
 
 // Supplier Details Step Component
 const SupplierDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep }) => {
-  const isFormValid = sellerData.supplierName && 
-                     sellerData.businessType && 
-                     sellerData.productCategory && 
-                     sellerData.contactEmail;
+  const isFormValid = sellerData.supplierName &&
+    sellerData.businessType &&
+    sellerData.productCategory &&
+    sellerData.contactEmail;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8">

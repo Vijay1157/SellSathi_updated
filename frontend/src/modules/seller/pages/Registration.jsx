@@ -57,11 +57,12 @@ export default function SellerRegistration() {
             const result = await response.json();
 
             if (result.success) {
-                // Update form with extracted data - PRESERVED LOGIC
+                // Update form with extracted data - SYNCHRONIZED WITH BACKEND
                 setFormData({
                     ...formData,
                     fullName: result.data.name || '',
-                    aadhaarNumber: result.data.aadhaarNumber || '',
+                    aadhaarNumber: result.data.aadharNumber || '', // Matches backend 'aadharNumber'
+                    phoneNumber: result.data.phone || '',           // Matches backend 'phone'
                     age: result.data.age || '',
                     shopAddress: result.data.address || '',
                     aadhaarImageUrl: result.data.imageUrl || ''
@@ -159,12 +160,12 @@ export default function SellerRegistration() {
                 {/* Abstract Circles Background */}
                 <div className="absolute top-[-10%] left-[-10%] w-[60%] aspect-square rounded-full bg-white/10 blur-3xl" />
                 <div className="absolute bottom-[10%] right-[-10%] w-[50%] aspect-square rounded-full bg-white/5 blur-3xl" />
-                
+
                 <div className="relative z-10">
                     <Link to="/seller" className="inline-flex items-center gap-2 text-white/80 hover:text-white mb-12 transition-colors">
                         <ArrowLeft size={20} /> Back to SellSathi
                     </Link>
-                    
+
                     <div className="flex items-center gap-3 mb-12">
                         <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
                             <Store size={24} />
@@ -207,7 +208,7 @@ export default function SellerRegistration() {
 
             {/* Right Side - Form (Reference UI with Existing Logic) */}
             <div className="flex-1 bg-gray-50 flex items-center justify-center p-6 lg:p-12">
-                <motion.div 
+                <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="w-full max-w-xl bg-white rounded-[2.5rem] shadow-2xl shadow-purple-100 p-8 lg:p-12 border border-gray-100"
@@ -228,7 +229,7 @@ export default function SellerRegistration() {
                         <div className="text-center">
                             <h2 className="text-3xl font-bold text-gray-900 mb-4">Verify Your Identity</h2>
                             <p className="text-gray-500 mb-10">Upload your Aadhaar card for quick verification and automatic field filling.</p>
-                            
+
                             <div className="space-y-6">
                                 <label className="block">
                                     <div className="w-full h-48 rounded-3xl border-2 border-dashed border-purple-200 bg-purple-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-all group">
@@ -246,11 +247,11 @@ export default function SellerRegistration() {
                                                 <p className="text-xs text-gray-400 mt-2">Supports JPG, PNG, PDF</p>
                                             </>
                                         )}
-                                        <input 
-                                            type="file" 
-                                            className="hidden" 
-                                            onChange={handleAadhaarUpload} 
-                                            accept="image/*" 
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            onChange={handleAadhaarUpload}
+                                            accept="image/*"
                                             disabled={isExtracting}
                                         />
                                     </div>
@@ -265,7 +266,7 @@ export default function SellerRegistration() {
                                     </div>
                                 </div>
 
-                                <button 
+                                <button
                                     onClick={handleManualEntry}
                                     disabled={isExtracting}
                                     className="w-full rounded-2xl border-2 border-brand py-4 font-bold text-brand hover:bg-brand/5 transition-all disabled:opacity-50"
@@ -287,10 +288,10 @@ export default function SellerRegistration() {
                                         <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                             <User size={16} /> Full Name *
                                         </label>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             value={formData.fullName}
-                                            onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                                            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                                             className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
                                         />
                                     </div>
@@ -298,10 +299,10 @@ export default function SellerRegistration() {
                                         <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                             <Phone size={16} /> Phone Number
                                         </label>
-                                        <input 
-                                            type="tel" 
+                                        <input
+                                            type="tel"
                                             value={formData.phoneNumber}
-                                            onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
+                                            onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
                                             placeholder="Enter phone number"
                                             className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
                                         />
@@ -310,8 +311,8 @@ export default function SellerRegistration() {
                                         <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                             <CreditCard size={16} /> Aadhaar Number (Locked)
                                         </label>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             value={formData.aadhaarNumber}
                                             readOnly
                                             className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
@@ -321,8 +322,8 @@ export default function SellerRegistration() {
                                         <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                             <User size={16} /> Age (Locked)
                                         </label>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             value={formData.age}
                                             readOnly
                                             className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
@@ -334,10 +335,10 @@ export default function SellerRegistration() {
                                     <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                         <MapPin size={16} /> Shop Address (Required) *
                                     </label>
-                                    <textarea 
+                                    <textarea
                                         rows={3}
                                         value={formData.shopAddress}
-                                        onChange={(e) => setFormData({...formData, shopAddress: e.target.value})}
+                                        onChange={(e) => setFormData({ ...formData, shopAddress: e.target.value })}
                                         className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all resize-none"
                                     />
                                 </div>
@@ -347,10 +348,10 @@ export default function SellerRegistration() {
                                         <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                             <Store size={16} /> Shop Name *
                                         </label>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             value={formData.shopName}
-                                            onChange={(e) => setFormData({...formData, shopName: e.target.value})}
+                                            onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
                                             placeholder="e.g. Rahul's Gadgets"
                                             className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
                                         />
@@ -359,9 +360,9 @@ export default function SellerRegistration() {
                                         <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                             <Tag size={16} /> Shop Category *
                                         </label>
-                                        <select 
+                                        <select
                                             value={formData.shopCategory}
-                                            onChange={(e) => setFormData({...formData, shopCategory: e.target.value})}
+                                            onChange={(e) => setFormData({ ...formData, shopCategory: e.target.value })}
                                             className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all bg-white"
                                         >
                                             <option value="">Select Category</option>
@@ -379,7 +380,7 @@ export default function SellerRegistration() {
                                         <div className="relative rounded-2xl overflow-hidden border border-gray-200 aspect-[1.6/1]">
                                             <img src={aadhaarPreview} alt="Aadhaar Card Preview" className="w-full h-full object-cover" />
                                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                                                <button 
+                                                <button
                                                     onClick={() => { setAadhaarPreview(null); setStep('upload'); }}
                                                     className="flex items-center gap-2 bg-white text-gray-900 px-4 py-2 rounded-full font-bold text-sm"
                                                 >
@@ -390,7 +391,7 @@ export default function SellerRegistration() {
                                     </div>
                                 )}
 
-                                <button 
+                                <button
                                     type="submit"
                                     disabled={loading}
                                     className="w-full rounded-full bg-brand py-4 font-bold text-white shadow-xl shadow-brand/20 hover:bg-brand-hover transition-all active:scale-[0.98] disabled:opacity-50 mt-4"

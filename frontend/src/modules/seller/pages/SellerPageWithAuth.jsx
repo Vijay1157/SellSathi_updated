@@ -12,8 +12,8 @@ import { auth } from '@/modules/shared/config/firebase';
 import { authFetch } from '@/modules/shared/utils/api';
 
 const categories = [
-  "Sell Sarees Online", "Sell Jewellery Online", "Sell Tshirts Online", 
-  "Sell Shirts Online", "Sell Watches Online", "Sell Electronics Online", 
+  "Sell Sarees Online", "Sell Jewellery Online", "Sell Tshirts Online",
+  "Sell Shirts Online", "Sell Watches Online", "Sell Electronics Online",
   "Sell Clothes Online", "Sell Socks Online"
 ];
 
@@ -21,10 +21,10 @@ export default function SellerPageWithAuth() {
   const location = useLocation();
   const navigate = useNavigate();
   const currentPath = location.pathname;
-  
+
   // Explicit routing logic - show registration page ONLY for /seller/register
   const isRegisterPage = currentPath === '/seller/register';
-  
+
   const [step, setStep] = useState('upload');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -76,18 +76,20 @@ export default function SellerPageWithAuth() {
       const result = await response.json();
 
       if (result.success) {
-        // Update form with extracted data - PRESERVED LOGIC
+        // Update form with extracted data - SYNCHRONIZED WITH BACKEND KEYS
         const extractedData = {
           fullName: result.data.name || '',
-          aadhaarNumber: result.data.aadhaarNumber || '',
+          aadhaarNumber: result.data.aadharNumber || '', // Backend sends 'aadharNumber' (single a)
+          phoneNumber: result.data.phone || '',          // Backend sends 'phone'
           age: result.data.age || '',
           shopAddress: result.data.address || '',
+          pincode: result.data.pincode || '',
           aadhaarImageUrl: result.data.imageUrl || ''
         };
-        
+
         // Store extracted data in localStorage for onboarding flow
         localStorage.setItem('sellerAadhaarData', JSON.stringify(extractedData));
-        
+
         // Navigate to onboarding flow with extracted data
         navigate('/seller/onboarding', { state: { extractedData } });
       } else {
@@ -185,11 +187,11 @@ export default function SellerPageWithAuth() {
             <h1 className="text-4xl font-bold mb-6">
               Grow your business with SellSathi
             </h1>
-            
+
             <p className="mb-8 text-lg">
               Reach millions of customers and scale your brand with powerful selling tools.
             </p>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 rounded-xl bg-white/10 backdrop-blur-md">
                 <p className="text-sm font-semibold">Sales Analytics</p>
@@ -209,7 +211,7 @@ export default function SellerPageWithAuth() {
 
         {/* Right Side - Verification Form */}
         <div className="w-full md:w-1/2 flex items-center justify-center bg-gray-50">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white shadow-xl rounded-xl p-8 w-full max-w-md"
@@ -230,7 +232,7 @@ export default function SellerPageWithAuth() {
               <div className="text-center">
                 <h2 className="text-3xl font-bold text-gray-900 mb-4">Verify Your Identity</h2>
                 <p className="text-gray-500 mb-10">Upload your Aadhaar card for quick verification and automatic field filling.</p>
-                
+
                 <div className="space-y-6">
                   <label className="block">
                     <div className="w-full h-48 rounded-3xl border-2 border-dashed border-purple-200 bg-purple-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-all group">
@@ -248,11 +250,11 @@ export default function SellerPageWithAuth() {
                           <p className="text-xs text-gray-400 mt-2">Supports JPG, PNG, PDF</p>
                         </>
                       )}
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        onChange={handleAadhaarUpload} 
-                        accept="image/*" 
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={handleAadhaarUpload}
+                        accept="image/*"
                         disabled={isExtracting}
                       />
                     </div>
@@ -267,7 +269,7 @@ export default function SellerPageWithAuth() {
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     onClick={handleManualEntry}
                     disabled={isExtracting}
                     className="w-full py-3 rounded-lg border-2 border-indigo-500 text-indigo-600 font-semibold hover:bg-indigo-50 transition disabled:opacity-50"
@@ -289,10 +291,10 @@ export default function SellerPageWithAuth() {
                       <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                         <User size={16} /> Full Name *
                       </label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={formData.fullName}
-                        onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                         className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
                       />
                     </div>
@@ -300,10 +302,10 @@ export default function SellerPageWithAuth() {
                       <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                         <Phone size={16} /> Phone Number
                       </label>
-                      <input 
-                        type="tel" 
+                      <input
+                        type="tel"
                         value={formData.phoneNumber}
-                        onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
                         placeholder="Enter phone number"
                         className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
                       />
@@ -312,8 +314,8 @@ export default function SellerPageWithAuth() {
                       <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                         <CreditCard size={16} /> Aadhaar Number (Locked)
                       </label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={formData.aadhaarNumber}
                         readOnly
                         className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
@@ -323,8 +325,8 @@ export default function SellerPageWithAuth() {
                       <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                         <User size={16} /> Age (Locked)
                       </label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={formData.age}
                         readOnly
                         className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
@@ -336,10 +338,10 @@ export default function SellerPageWithAuth() {
                     <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                       <MapPin size={16} /> Shop Address (Required) *
                     </label>
-                    <textarea 
+                    <textarea
                       rows={3}
                       value={formData.shopAddress}
-                      onChange={(e) => setFormData({...formData, shopAddress: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, shopAddress: e.target.value })}
                       className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all resize-none"
                     />
                   </div>
@@ -349,10 +351,10 @@ export default function SellerPageWithAuth() {
                       <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                         <Store size={16} /> Shop Name *
                       </label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={formData.shopName}
-                        onChange={(e) => setFormData({...formData, shopName: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
                         placeholder="e.g. Rahul's Gadgets"
                         className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
                       />
@@ -361,9 +363,9 @@ export default function SellerPageWithAuth() {
                       <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                         <Tag size={16} /> Shop Category *
                       </label>
-                      <select 
+                      <select
                         value={formData.shopCategory}
-                        onChange={(e) => setFormData({...formData, shopCategory: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, shopCategory: e.target.value })}
                         className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all bg-white"
                       >
                         <option value="">Select Category</option>
@@ -381,7 +383,7 @@ export default function SellerPageWithAuth() {
                       <div className="relative rounded-2xl overflow-hidden border border-gray-200 aspect-[1.6/1]">
                         <img src={aadhaarPreview} alt="Aadhaar Card Preview" className="w-full h-full object-cover" />
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                          <button 
+                          <button
                             onClick={() => { setAadhaarPreview(null); setStep('upload'); }}
                             className="flex items-center gap-2 bg-white text-gray-900 px-4 py-2 rounded-full font-bold text-sm"
                           >
@@ -392,7 +394,7 @@ export default function SellerPageWithAuth() {
                     </div>
                   )}
 
-                  <button 
+                  <button
                     type="submit"
                     disabled={loading}
                     className="w-full rounded-full bg-brand py-4 font-bold text-white shadow-xl shadow-brand/20 hover:bg-brand-hover transition-all active:scale-[0.98] disabled:opacity-50 mt-4"
@@ -419,12 +421,12 @@ export default function SellerPageWithAuth() {
   return (
     <div className="min-h-screen bg-white">
       <SellerHeader />
-      
+
       {/* Hero Section */}
       <section className="relative pt-16 pb-24 lg:pt-24 lg:pb-32 overflow-hidden bg-gradient-to-b from-brand/5 to-white">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex-1 text-center lg:text-left"
@@ -435,7 +437,7 @@ export default function SellerPageWithAuth() {
               <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto lg:mx-0">
                 Become a SellSathi seller and grow your business across India.
               </p>
-              
+
               {/* START SELLING BUTTON */}
               <button
                 onClick={() => navigate('/seller/register')}
@@ -454,7 +456,7 @@ export default function SellerPageWithAuth() {
               >
                 Start Selling
               </button>
-              
+
               {/* GST NOTE */}
               <p className="text-sm text-gray-500">
                 <span className="bg-brand text-white text-[10px] font-bold px-2 py-0.5 rounded mr-2">NEW</span>
@@ -462,18 +464,18 @@ export default function SellerPageWithAuth() {
                 <Link to="#" className="text-brand font-semibold hover:underline">Know more</Link>
               </p>
             </motion.div>
-            
+
             {/* RIGHT SIDE IMAGE */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.2 }}
               className="flex-1 w-full max-w-xl"
             >
               <div className="relative rounded-[2rem] overflow-hidden shadow-2xl aspect-square lg:aspect-video">
-                <img 
-                  src="https://picsum.photos/seed/seller-hero/1200/800" 
-                  alt="Seller Success" 
+                <img
+                  src="https://picsum.photos/seed/seller-hero/1200/800"
+                  alt="Seller Success"
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />

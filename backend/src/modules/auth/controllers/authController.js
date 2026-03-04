@@ -67,11 +67,17 @@ const login = async (req, res) => {
         if (sellerSnap.exists) {
             const sellerData = sellerSnap.data();
             const sellerStatus = sellerData.sellerStatus || "PENDING";
-            if (userData.role !== "SELLER") try { await userRef.update({ role: "SELLER" }); } catch (_) { }
 
-            if (sellerStatus === "APPROVED") return res.status(200).json({ success: true, uid, role: "SELLER", status: "APPROVED", sellerStatus: "APPROVED", shopName: sellerData.shopName, message: "Seller login successful" });
-            if (sellerStatus === "REJECTED") return res.status(403).json({ success: false, uid, role: "SELLER", status: "REJECTED", message: "Your seller application was rejected." });
-            return res.status(200).json({ success: true, uid, role: "SELLER", status: "PENDING", sellerStatus: "PENDING", shopName: sellerData.shopName, message: "Seller approval pending" });
+            if (sellerStatus === "APPROVED") {
+                if (userData.role !== "SELLER") try { await userRef.update({ role: "SELLER" }); } catch (_) { }
+                return res.status(200).json({ success: true, uid, role: "SELLER", status: "APPROVED", sellerStatus: "APPROVED", shopName: sellerData.shopName, message: "Seller login successful" });
+            }
+
+            // Pending or Rejected should remain CONSUMER
+            if (userData.role !== "CONSUMER") try { await userRef.update({ role: "CONSUMER" }); } catch (_) { }
+
+            if (sellerStatus === "REJECTED") return res.status(403).json({ success: false, uid, role: "CONSUMER", status: "REJECTED", message: "Your seller application was rejected." });
+            return res.status(200).json({ success: true, uid, role: "CONSUMER", status: "PENDING", sellerStatus: "PENDING", shopName: sellerData.shopName, message: "Seller approval pending" });
         }
 
         return res.status(200).json({ success: true, uid, role: "CONSUMER", status: "AUTHORIZED", fullName: userData.fullName || fullName, message: "Consumer login successful" });
@@ -155,7 +161,9 @@ const applySeller = async (req, res) => {
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        await userRef.update({ role: "SELLER", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        // DO NOT change the user role to SELLER here. 
+        // Admin approval will handle the role upgrade.
+        await userRef.update({ updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
         return res.status(200).json({ success: true, uid, message: "Applied successfully", status: "PENDING" });
     } catch (error) {
@@ -175,7 +183,8 @@ const extractAadhar = async (req, res) => {
         const { Readable } = require('stream');
 
         // AI Extraction
-        const extractedData = await geminiService.extractFromImage(req.file.buffer, req.file.mimetype);
+        const extractedData = await geminiService.extractAadhaarData(req.file.buffer, req.file.mimetype);
+        console.log("[ExtractAadhar] Raw Data from Gemini:", JSON.stringify(extractedData, null, 2));
 
         // Upload to Cloudinary
         const uploadResult = await new Promise((resolve, reject) => {
@@ -186,15 +195,40 @@ const extractAadhar = async (req, res) => {
             Readable.from([req.file.buffer]).pipe(uploadStream);
         });
 
+        // Calculate age from DOB if present
+        let age = "";
+        if (extractedData.dob && typeof extractedData.dob === 'string') {
+            const parts = extractedData.dob.split('/');
+            const dobYear = parts.length > 0 ? parts.pop() : null;
+            if (dobYear && dobYear.length === 4 && !isNaN(dobYear)) {
+                const currentYear = new Date().getFullYear();
+                age = String(currentYear - parseInt(dobYear));
+            }
+        }
+
+        const responseData = {
+            name: extractedData.name || "",
+            aadharNumber: extractedData.aadhaar_no ? String(extractedData.aadhaar_no).replace(/\D/g, '') : "",
+            age: age || "",
+            phone: extractedData.phone ? String(extractedData.phone).replace(/\D/g, '') : "",
+            address: extractedData.address || "",
+            pincode: extractedData.pincode || "",
+            imageUrl: uploadResult.secure_url
+        };
+
+        console.log("[ExtractAadhar] Mapped Response Data:", JSON.stringify(responseData, null, 2));
+
         return res.status(200).json({
             success: true,
-            data: {
-                ...extractedData,
-                imageUrl: uploadResult.secure_url
-            }
+            data: responseData
         });
     } catch (error) {
-        console.error("[ExtractAadhar] ERROR:", error);
+        console.error("[ExtractAadhar] ERROR:", error.message || error);
+
+        if (error.isQuotaError) {
+            return res.status(429).json({ success: false, message: error.message });
+        }
+
         return res.status(500).json({ success: false, message: "Aadhaar processing failed" });
     }
 };
@@ -315,25 +349,15 @@ const googleLogin = async (req, res) => {
                 const sellerData = sellerSnap.data();
                 const sellerStatus = sellerData.sellerStatus || "PENDING";
 
-                // Update role to SELLER if not already
-                if (userData.role !== "SELLER") {
-                    try {
-                        await userRef.update({ role: "SELLER" });
-                    } catch (updateError) {
-                        console.error("[GoogleAuth] Firestore role update failed:", {
-                            error: updateError.message,
-                            code: updateError.code,
-                            uid: uid.substring(0, 8) + "...",
-                            timestamp: new Date().toISOString()
-                        });
-                        return res.status(500).json({
-                            success: false,
-                            message: "Authentication failed. Please try again."
-                        });
-                    }
-                }
-
                 if (sellerStatus === "APPROVED") {
+                    // Update role to SELLER if approved
+                    if (userData.role !== "SELLER") {
+                        try {
+                            await userRef.update({ role: "SELLER" });
+                        } catch (updateError) {
+                            console.error("[GoogleAuth] Firestore role update failed", updateError);
+                        }
+                    }
                     return res.status(200).json({
                         success: true,
                         uid,
@@ -345,26 +369,33 @@ const googleLogin = async (req, res) => {
                         email,
                         message: "Seller login successful"
                     });
-                } else if (sellerStatus === "REJECTED") {
-                    return res.status(403).json({
-                        success: false,
-                        uid,
-                        role: "SELLER",
-                        status: "REJECTED",
-                        message: "Your seller application was rejected."
-                    });
                 } else {
-                    return res.status(200).json({
-                        success: true,
-                        uid,
-                        role: "SELLER",
-                        status: "PENDING",
-                        sellerStatus: "PENDING",
-                        shopName: sellerData.shopName,
-                        fullName: userData.fullName || name,
-                        email,
-                        message: "Seller approval pending"
-                    });
+                    // Pending or Rejected should remain CONSUMER
+                    if (userData.role !== "CONSUMER") {
+                        try { await userRef.update({ role: "CONSUMER" }); } catch (_) { }
+                    }
+
+                    if (sellerStatus === "REJECTED") {
+                        return res.status(403).json({
+                            success: false,
+                            uid,
+                            role: "CONSUMER",
+                            status: "REJECTED",
+                            message: "Your seller application was rejected."
+                        });
+                    } else {
+                        return res.status(200).json({
+                            success: true,
+                            uid,
+                            role: "CONSUMER",
+                            status: "PENDING",
+                            sellerStatus: "PENDING",
+                            shopName: sellerData.shopName,
+                            fullName: userData.fullName || name,
+                            email,
+                            message: "Seller approval pending"
+                        });
+                    }
                 }
             }
 
