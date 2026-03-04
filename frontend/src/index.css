@@ -3,6 +3,11 @@
 @tailwind components;
 @tailwind utilities;
 
+
+html {
+  scroll-behavior: smooth;
+}
+
 :root {
   --primary: #4f46e5;
   --secondary: #6366f1;
@@ -25,6 +30,8 @@
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-full: 9999px;
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
 }
 
 * {

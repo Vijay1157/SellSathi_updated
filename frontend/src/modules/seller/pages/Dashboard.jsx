@@ -207,12 +207,12 @@ export default function SellerDashboard() {
         }
     };
 
-    const statCards = [
-        { label: 'Total Sales', value: `₹${stats.totalSales.toLocaleString()}`, icon: <DollarSign />, color: 'var(--success)' },
-        { label: 'Active Products', value: stats.totalProducts, icon: <Package />, color: 'var(--primary)' },
-        { label: 'New Orders', value: stats.newOrders, icon: <ShoppingBag />, color: 'var(--secondary)' },
-        { label: 'Pending', value: stats.pendingOrders, icon: <Truck />, color: 'var(--warning)' },
-    ];
+   const statCards = [
+    { label: 'Total Sales', value: `₹${stats?.totalSales?.toLocaleString() || 0}`, icon: <DollarSign />, color: 'var(--success)' },
+    { label: 'Active Products', value: stats?.totalProducts || 0, icon: <Package />, color: 'var(--primary)' },
+    { label: 'New Orders', value: stats?.newOrders || 0, icon: <ShoppingBag />, color: 'var(--secondary)' },
+    { label: 'Pending', value: stats?.pendingOrders || 0, icon: <Truck />, color: 'var(--warning)' },
+   ];
 
     if (loading) {
         return (
