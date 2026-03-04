@@ -127,19 +127,21 @@ const getAllSellers = async (req, res) => {
     }
 };
 
+const adminService = require('../services/adminService');
+
 /**
  * Approve a seller.
  */
 const approveSeller = async (req, res) => {
     try {
         const { uid } = req.params;
-        await db.collection("sellers").doc(uid).update({
-            sellerStatus: "APPROVED",
-            approvedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        await db.collection("users").doc(uid).update({ role: "SELLER" });
-        cache.invalidate('adminStats', 'allSellers');
-        return res.status(200).json({ success: true, message: "Seller approved successfully" });
+        const result = await adminService.approveSeller(uid);
+
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to approve seller" });
     }
@@ -151,12 +153,14 @@ const approveSeller = async (req, res) => {
 const rejectSeller = async (req, res) => {
     try {
         const { uid } = req.params;
-        await db.collection("sellers").doc(uid).update({
-            sellerStatus: "REJECTED",
-            rejectedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        cache.invalidate('adminStats', 'allSellers');
-        return res.status(200).json({ success: true, message: "Seller rejected successfully" });
+        const { reason } = req.body;
+        const result = await adminService.rejectSeller(uid, reason);
+
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to reject seller" });
     }
