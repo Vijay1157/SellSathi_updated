@@ -1,0 +1,53 @@
+{
+  "nav": {
+    "brand": "সেলসাথি",
+    "deliverTo": "ডেলিভারি করুন",
+    "selectLocation": "অবস্থান নির্বাচন করুন",
+    "searchPlaceholder": "পণ্য, ব্র্যান্ড এবং আরও অনেক কিছু খুঁজুন...",
+    "cart": "কার্ট",
+    "wishlist": "উইশলিস্ট",
+    "profile": "প্রোফাইল",
+    "myDashboard": "আমার ড্যাশবোর্ড",
+    "switchAccount": "অ্যাকাউন্ট পরিবর্তন করুন",
+    "signOut": "সাইন আউট",
+    "login": "লগইন"
+  },
+  "categories": {
+    "electronics": "ইলেকট্রনিক্স",
+    "mensFashion": "পুরুষদের ফ্যাশন",
+    "womensFashion": "মহিলাদের ফ্যাশন",
+    "homeLiving": "বাড়ি এবং জীবনযাপন",
+    "beauty": "সৌন্দর্য",
+    "sports": "ক্রীড়া",
+    "accessories": "আনুষাঙ্গিক",
+    "todaysDeals": "আজকের ডিল",
+    "newArrivals": "নতুন আগমন",
+    "trending": "ট্রেন্ডিং"
+  },
+  "product": {
+    "addToCart": "কার্টে যোগ করুন",
+    "buyNow": "এখনই কিনুন",
+    "inStock": "স্টকে আছে",
+    "outOfStock": "স্টকে নেই",
+    "units": "ইউনিট",
+    "save": "সংরক্ষণ করুন",
+    "saved": "সংরক্ষিত",
+    "share": "শেয়ার করুন",
+    "writeReview": "পর্যালোচনা লিখুন",
+    "selectSize": "আকার নির্বাচন করুন",
+    "sizeGuide": "আকার গাইড",
+    "color": "রঙ",
+    "storage": "স্টোরেজ",
+    "memory": "মেমরি"
+  },
+  "common": {
+    "home": "হোম",
+    "loading": "লোড হচ্ছে...",
+    "error": "ত্রুটি",
+    "success": "সফলতা",
+    "cancel": "বাতিল করুন",
+    "confirm": "নিশ্চিত করুন",
+    "save": "সংরক্ষণ করুন",
+    "delete": "মুছুন"
+  }
+}

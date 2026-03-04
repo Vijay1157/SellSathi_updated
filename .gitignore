@@ -1,18 +1,23 @@
 # Node modules
 node_modules/
-back/node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Old folder structure (deprecated - use backend/frontend instead)
+back/
+front/
 
 # Environment files
 .env
 .env.*
-back/.env
+backend/.env
 services/.env
 _.env
 _ (1).env
 
 # Firebase secret key
 serviceAccountKey.json
-back/serviceAccountKey.json
+backend/serviceAccountKey.json
 services/serviceAccountKey.json
 serviceAccountKey copy.json
 
@@ -28,12 +33,12 @@ Thumbs.db
 # Build directories
 dist/
 build/
-front/dist/
-front/build/
+frontend/dist/
+frontend/build/
 
 # Generated files
 invoices/*.pdf
-back/invoices/*.pdf
+backend/invoices/*.pdf
 
 # IDE files
 .vscode/
@@ -45,5 +50,13 @@ back/invoices/*.pdf
 # Temporary files
 *.tmp
 *.temp
+
+# Documentation and cleanup folders
+deletefiles/
 CLEANUP_SUMMARY.md
-*.md
+RESTRUCTURE_PLAN.md
+
+# Keep essential README files
+!README.md
+!frontend/README.md
+!backend/README.md

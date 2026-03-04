@@ -1,0 +1,54 @@
+{
+  "nav": {
+    "brand": "ಸೆಲ್‌ಸಾಥಿ",
+    "deliverTo": "ಡೆಲಿವರಿ ಮಾಡಿ",
+    "selectLocation": "ಸ್ಥಳವನ್ನು ಆಯ್ಕೆಮಾಡಿ",
+    "searchPlaceholder": "ಉತ್ಪನ್ನಗಳು, ಬ್ರಾಂಡ್‌ಗಳು ಮತ್ತು ಹೆಚ್ಚಿನದನ್ನು ಹುಡುಕಿ...",
+    "cart": "ಕಾರ್ಟ್",
+    "wishlist": "ವಿಶ್‌ಲಿಸ್ಟ್",
+    "profile": "ಪ್ರೊಫೈಲ್",
+    "myDashboard": "ನನ್ನ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
+    "switchAccount": "ಖಾತೆಯನ್ನು ಬದಲಾಯಿಸಿ",
+    "signOut": "ಸೈನ್ ಔಟ್",
+    "login": "ಲಾಗಿನ್"
+  },
+  "categories": {
+    "electronics": "ಎಲೆಕ್ಟ್ರಾನಿಕ್ಸ್",
+    "mensFashion": "ಪುರುಷರ ಫ್ಯಾಷನ್",
+    "womensFashion": "ಮಹಿಳೆಯರ ಫ್ಯಾಷನ್",
+    "homeLiving": "ಮನೆ ಮತ್ತು ಜೀವನ",
+    "beauty": "ಸೌಂದರ್ಯ",
+    "sports": "ಕ್ರೀಡೆಗಳು",
+    "accessories": "ಪರಿಕರಗಳು",
+    "todaysDeals": "ಇಂದಿನ ಡೀಲ್‌ಗಳು",
+    "newArrivals": "ಹೊಸ ಆಗಮನಗಳು",
+    "trending": "ಟ್ರೆಂಡಿಂಗ್"
+  },
+  "product": {
+    "addToCart": "ಕಾರ್ಟ್‌ಗೆ ಸೇರಿಸಿ",
+    "buyNow": "ಈಗ ಖರೀದಿಸಿ",
+    "inStock": "ಸ್ಟಾಕ್‌ನಲ್ಲಿದೆ",
+    "outOfStock": "ಸ್ಟಾಕ್‌ನಲ್ಲಿಲ್ಲ",
+    "units": "ಘಟಕಗಳು",
+    "save": "ಉಳಿಸಿ",
+    "saved": "ಉಳಿಸಲಾಗಿದೆ",
+    "share": "ಹಂಚಿಕೊಳ್ಳಿ",
+    "writeReview": "ವಿಮರ್ಶೆ ಬರೆಯಿರಿ",
+    "selectSize": "ಗಾತ್ರವನ್ನು ಆಯ್ಕೆಮಾಡಿ",
+    "sizeGuide": "ಗಾತ್ರ ಮಾರ್ಗದರ್ಶಿ",
+    "color": "ಬಣ್ಣ",
+    "storage": "ಸಂಗ್ರಹಣೆ",
+    "memory": "ಮೆಮೊರಿ"
+  },
+  "common": {
+    "home": "ಮುಖಪುಟ",
+    "loading": "ಲೋಡ್ ಆಗುತ್ತಿದೆ...",
+    "error": "ದೋಷ",
+    "success": "ಯಶಸ್ಸು",
+    "cancel": "ರದ್ದುಮಾಡಿ",
+    "confirm": "ದೃಢೀಕರಿಸಿ",
+    "save": "ಉಳಿಸಿ",
+    "delete": "ಅಳಿಸಿ"
+  }
+}
+

@@ -31,14 +31,14 @@ npm install
 **Step 3. Install Backend Dependencies** 
 Navigate into the backend folder and install its specific dependencies.
 ```bash
-cd back
+cd backend
 npm install
 ```
 
 **Step 4. Install Frontend Dependencies** 
 Navigate into the frontend folder from the backend folder, and install its packages.
 ```bash
-cd ../front
+cd ../frontend
 npm install
 ```
 
@@ -49,7 +49,7 @@ cd ..
 ```
 - Open the `.env.example` file (if available) or create a new `.env` file in the root and appropriate subfolders.
 - Add your API keys (Razorpay, Firebase, Nodemailer config) following the examples provided in the Environment Variables section.
-- Crucially, place your Firebase Admin `serviceAccountKey.json` inside the `back/` directory so the backend can communicate with your Firestore database.
+- Crucially, place your Firebase Admin `serviceAccountKey.json` inside the `backend/` directory so the backend can communicate with your Firestore database.
 
 **Step 6. Start the development servers** 
 From the main project root directory (`Sellsathi/`), you can launch both the frontend and backend instantly with one command:

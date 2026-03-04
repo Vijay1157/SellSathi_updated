@@ -1,0 +1,53 @@
+{
+  "nav": {
+    "brand": "सेलसाथी",
+    "deliverTo": "डिलिव्हरी करा",
+    "selectLocation": "स्थान निवडा",
+    "searchPlaceholder": "उत्पादने, ब्रँड आणि बरेच काही शोधा...",
+    "cart": "कार्ट",
+    "wishlist": "विशलिस्ट",
+    "profile": "प्रोफाइल",
+    "myDashboard": "माझे डॅशबोर्ड",
+    "switchAccount": "खाते बदला",
+    "signOut": "साइन आउट",
+    "login": "लॉगिन"
+  },
+  "categories": {
+    "electronics": "इलेक्ट्रॉनिक्स",
+    "mensFashion": "पुरुषांचे फॅशन",
+    "womensFashion": "महिलांचे फॅशन",
+    "homeLiving": "घर आणि राहणी",
+    "beauty": "सौंदर्य",
+    "sports": "क्रीडा",
+    "accessories": "उपकरणे",
+    "todaysDeals": "आजचे डील",
+    "newArrivals": "नवीन आगमन",
+    "trending": "ट्रेंडिंग"
+  },
+  "product": {
+    "addToCart": "कार्टमध्ये जोडा",
+    "buyNow": "आता खरेदी करा",
+    "inStock": "स्टॉकमध्ये आहे",
+    "outOfStock": "स्टॉकमध्ये नाही",
+    "units": "युनिट्स",
+    "save": "जतन करा",
+    "saved": "जतन केले",
+    "share": "शेअर करा",
+    "writeReview": "पुनरावलोकन लिहा",
+    "selectSize": "आकार निवडा",
+    "sizeGuide": "आकार मार्गदर्शक",
+    "color": "रंग",
+    "storage": "स्टोरेज",
+    "memory": "मेमरी"
+  },
+  "common": {
+    "home": "होम",
+    "loading": "लोड होत आहे...",
+    "error": "त्रुटी",
+    "success": "यश",
+    "cancel": "रद्द करा",
+    "confirm": "पुष्टी करा",
+    "save": "जतन करा",
+    "delete": "हटवा"
+  }
+}
