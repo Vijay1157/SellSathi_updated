@@ -123,7 +123,7 @@ export default function AdminLoginModal({ isOpen, onClose }) {
                 idToken = await result.user.getIdToken();
             }
 
-            const response = await authFetch(isTestNumber ? '/auth/test-login' : '/auth/login', {
+            const response = await authFetch('/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(isTestNumber ? { phone: formattedPhone, otp } : { idToken }),

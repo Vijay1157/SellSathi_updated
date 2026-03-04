@@ -35,6 +35,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
     const [isEmailLogin, setIsEmailLogin] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [dobFocused, setDobFocused] = useState(false);
     const navigate = useNavigate();
 
     const cleanupRecaptcha = () => {
@@ -279,8 +280,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 idToken = await result.user.getIdToken();
             }
 
-            const endpoint = isRegistering ? '/auth/register' :
-                (isTestNumber ? '/auth/test-login' : '/auth/login');
+            const endpoint = isRegistering ? '/auth/register' : '/auth/login';
 
             const payload = isRegistering ? {
                 idToken,
@@ -352,12 +352,71 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
     };
 
     const handleGoogleSignIn = async () => {
-        if (isRegistering) {
-            setIsEmailSignup(true);
-        } else {
-            setIsEmailLogin(true);
-        }
+        setLoading(true);
         setError('');
+
+        try {
+            const provider = new GoogleAuthProvider();
+            const result = await signInWithPopup(auth, provider);
+            const idToken = await result.user.getIdToken();
+
+            const response = await authFetch('/auth/google-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const userData = {
+                    uid: data.uid,
+                    role: data.role,
+                    email: data.email,
+                    fullName: data.fullName,
+                    status: data.status,
+                    sellerStatus: data.sellerStatus,
+                    shopName: data.shopName
+                };
+                localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('userName', data.fullName || '');
+                window.dispatchEvent(new CustomEvent('userDataChanged', { detail: userData }));
+
+                // Navigate based on role
+                if (data.role === 'ADMIN') {
+                    navigate('/admin');
+                } else if (data.role === 'SELLER' && (data.status === 'APPROVED' || data.sellerStatus === 'APPROVED')) {
+                    navigate('/seller/dashboard');
+                } else if (data.role === 'SELLER' && (data.status === 'PENDING' || data.sellerStatus === 'PENDING')) {
+                    alert(`⏳ Your seller application for "${data.shopName || 'your shop'}" is pending admin approval. You will be notified once approved.`);
+                    navigate('/');
+                } else {
+                    navigate('/');
+                }
+
+                if (onSuccess) onSuccess(data);
+                handleClose();
+            } else {
+                setError(data.message || 'Google authentication failed');
+            }
+        } catch (err) {
+            console.error('Google Sign-In Error:', err);
+            
+            // Handle specific error codes
+            if (err.code === 'auth/popup-closed-by-user') {
+                setError('Authentication cancelled. Please try again.');
+            } else if (err.code === 'auth/popup-blocked') {
+                setError('Popup blocked. Please allow popups for this site.');
+            } else if (err.code === 'auth/network-request-failed') {
+                setError('Network error. Please check your connection.');
+            } else if (err.code === 'auth/internal-error') {
+                setError('Authentication service error. Please try again.');
+            } else {
+                setError('Google authentication failed. Please try again.');
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleEmailLogin = async (e) => {
@@ -516,13 +575,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                                 required
                                             />
                                         </div>
-                                        <div className="auth-input-group">
+                                        <div className="auth-input-group date-input-wrapper">
                                             <Calendar size={18} className="auth-field-icon" />
+                                            {!formData.dob && !dobFocused && <span className="date-placeholder">DOB</span>}
                                             <input
                                                 type="date"
-                                                placeholder="Date of Birth"
                                                 value={formData.dob}
                                                 onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                onFocus={() => setDobFocused(true)}
+                                                onBlur={() => setDobFocused(false)}
                                                 max={new Date().toISOString().split('T')[0]}
                                                 required
                                             />
@@ -576,13 +637,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                                 required
                                             />
                                         </div>
-                                        <div className="auth-input-group">
+                                        <div className="auth-input-group date-input-wrapper">
                                             <Calendar size={18} className="auth-field-icon" />
+                                            {!formData.dob && !dobFocused && <span className="date-placeholder">DOB</span>}
                                             <input
                                                 type="date"
-                                                placeholder="Date of Birth"
                                                 value={formData.dob}
                                                 onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                onFocus={() => setDobFocused(true)}
+                                                onBlur={() => setDobFocused(false)}
                                                 max={new Date().toISOString().split('T')[0]}
                                                 required
                                             />
@@ -656,13 +719,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                                                             required
                                                         />
                                                     </div>
-                                                    <div className="auth-input-group">
+                                                    <div className="auth-input-group date-input-wrapper">
                                                         <Calendar size={18} className="auth-field-icon" />
+                                                        {!formData.dob && !dobFocused && <span className="date-placeholder">DOB</span>}
                                                         <input
                                                             type="date"
-                                                            placeholder="Date of Birth"
                                                             value={formData.dob}
                                                             onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                                            onFocus={() => setDobFocused(true)}
+                                                            onBlur={() => setDobFocused(false)}
+                                                            max={new Date().toISOString().split('T')[0]}
                                                             required
                                                         />
                                                     </div>
@@ -824,7 +890,8 @@ const modalStyles = `
     align-items: center;
     justify-content: center;
     z-index: 3000;
-    padding: 1.5rem;
+    padding: 1rem;
+    overflow-y: auto;
 }
 
 /* Hide native browser password reveal icon */
@@ -839,9 +906,39 @@ input::-webkit-credentials-auto-fill-button {
     background: var(--background);
     border: 1px solid var(--border);
     border-radius: 24px;
-    padding: 2.5rem;
+    padding: 2rem 2.5rem;
     position: relative;
     box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    max-height: 95vh;
+    overflow-y: auto;
+    margin: auto;
+    scrollbar-gutter: stable;
+}
+
+/* Custom scrollbar for modal */
+.auth-modal-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.auth-modal-content::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 8px 0;
+}
+
+.auth-modal-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.auth-modal-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--secondary) 0%, var(--primary) 100%);
+}
+
+/* Firefox scrollbar */
+.auth-modal-content {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) transparent;
 }
 
 .auth-close-btn {
@@ -870,37 +967,37 @@ input::-webkit-credentials-auto-fill-button {
 
 .auth-header {
     text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
 }
 
 .auth-icon-container {
-    width: 56px;
-    height: 56px;
-    border-radius: 14px;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
     background: var(--primary);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 1.25rem;
+    margin: 0 auto 1rem;
     box-shadow: 0 8px 16px rgba(var(--primary-rgb), 0.2);
 }
 
 .auth-header h2 {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
+    font-size: 1.4rem;
+    margin-bottom: 0.4rem;
 }
 
 .auth-header p {
     color: var(--text-muted);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
 }
 
 .auth-error-msg {
     background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
-    padding: 0.75rem;
+    padding: 0.65rem;
     border-radius: 12px;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
     font-size: 0.85rem;
     text-align: center;
 }
@@ -908,7 +1005,7 @@ input::-webkit-credentials-auto-fill-button {
 .auth-fields-grid {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.85rem;
 }
 
 .auth-input-group {
@@ -925,19 +1022,79 @@ input::-webkit-credentials-auto-fill-button {
 
 .auth-input-group input {
     width: 100%;
-    padding: 0.8rem 1rem 0.8rem 3rem;
+    padding: 0.7rem 1rem 0.7rem 3rem;
     border-radius: 12px;
     border: 1.5px solid var(--border);
     background: var(--surface);
     transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+/* Date input wrapper and placeholder */
+.date-input-wrapper {
+    position: relative;
+}
+
+.date-placeholder {
+    position: absolute;
+    left: 3rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.date-input-wrapper input[type="date"] {
+    color: var(--text);
+}
+
+/* Hide dd/mm/yyyy format by default (when not focused and empty) */
+.date-input-wrapper input[type="date"]:not(:focus):invalid::-webkit-datetime-edit,
+.date-input-wrapper input[type="date"]:not(:focus):invalid::-webkit-datetime-edit-fields-wrapper {
+    color: transparent;
+}
+
+.date-input-wrapper input[type="date"]:not(:focus):invalid::-webkit-datetime-edit-text,
+.date-input-wrapper input[type="date"]:not(:focus):invalid::-webkit-datetime-edit-month-field,
+.date-input-wrapper input[type="date"]:not(:focus):invalid::-webkit-datetime-edit-day-field,
+.date-input-wrapper input[type="date"]:not(:focus):invalid::-webkit-datetime-edit-year-field {
+    color: transparent;
+}
+
+/* Show dd/mm/yyyy format when focused */
+.date-input-wrapper input[type="date"]:focus::-webkit-datetime-edit-text,
+.date-input-wrapper input[type="date"]:focus::-webkit-datetime-edit-month-field,
+.date-input-wrapper input[type="date"]:focus::-webkit-datetime-edit-day-field,
+.date-input-wrapper input[type="date"]:focus::-webkit-datetime-edit-year-field {
+    color: var(--text-muted);
+}
+
+/* Show the actual date value when selected */
+.date-input-wrapper input[type="date"]:valid::-webkit-datetime-edit-text,
+.date-input-wrapper input[type="date"]:valid::-webkit-datetime-edit-month-field,
+.date-input-wrapper input[type="date"]:valid::-webkit-datetime-edit-day-field,
+.date-input-wrapper input[type="date"]:valid::-webkit-datetime-edit-year-field {
+    color: var(--text);
+}
+
+.date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
 }
 
 .auth-form-footer {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.75rem;
-    margin-top: 1rem;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
 }
 
 .auth-form-footer p {
@@ -978,21 +1135,23 @@ input::-webkit-credentials-auto-fill-button {
 }
 
 .phone-prefix-box {
-    padding: 0.8rem 0.5rem 0.8rem 3rem;
+    padding: 0.7rem 0.5rem 0.7rem 3rem;
     font-weight: 700;
     color: var(--primary);
     border-right: 1px solid var(--border);
     background: rgba(var(--primary-rgb), 0.05);
     min-width: 85px;
     text-align: right;
+    font-size: 0.9rem;
 }
 
 .phone-main-input {
     border: none !important;
     background: transparent !important;
-    padding: 0.8rem 1rem !important;
+    padding: 0.7rem 1rem !important;
     flex: 1;
     font-weight: 700;
+    font-size: 0.9rem !important;
 }
 
 .phone-main-input:focus {
@@ -1005,10 +1164,10 @@ input::-webkit-credentials-auto-fill-button {
 }
 
 .auth-submit-btn {
-    margin-top: 1rem;
+    margin-top: 0.75rem;
     background: var(--primary);
     color: white;
-    padding: 1rem;
+    padding: 0.85rem 1rem;
     border-radius: 12px;
     font-weight: 600;
     display: flex;
@@ -1017,6 +1176,7 @@ input::-webkit-credentials-auto-fill-button {
     gap: 8px;
     border: none;
     cursor: pointer;
+    font-size: 0.95rem;
 }
 
 .auth-submit-btn:disabled {
@@ -1046,10 +1206,10 @@ input::-webkit-credentials-auto-fill-button {
 }
 
 .auth-toggle {
-    margin-top: 1.5rem;
+    margin-top: 1.25rem;
     text-align: center;
     font-size: 0.9rem;
-    padding-top: 1.5rem;
+    padding-top: 1.25rem;
     border-top: 1px solid var(--border);
 }
 
@@ -1064,7 +1224,7 @@ input::-webkit-credentials-auto-fill-button {
 .auth-divider {
     display: flex;
     align-items: center;
-    margin: 1.5rem 0;
+    margin: 1.25rem 0;
     color: var(--text-muted);
     font-size: 0.8rem;
     font-weight: 600;

@@ -166,4 +166,29 @@ const rejectSeller = async (req, res) => {
     }
 };
 
-module.exports = { getStats, getAllSellers, approveSeller, rejectSeller };
+/**
+ * Block a seller.
+ */
+const blockSeller = async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const { blockDuration } = req.body;
+        const sellerRef = db.collection("sellers").doc(uid);
+        const sellerSnap = await sellerRef.get();
+        if (!sellerSnap.exists) return res.status(404).json({ success: false, message: "Seller not found" });
+        await sellerRef.update({
+            sellerStatus: "REJECTED",
+            isBlocked: true,
+            blockDuration: blockDuration,
+            blockedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        await db.collection("users").doc(uid).update({ isActive: false, isBlocked: true });
+        cache.invalidate('adminStats', 'allSellers');
+        return res.status(200).json({ success: true, message: "Seller blocked" });
+    } catch (error) {
+        console.error("BLOCK SELLER ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to block seller" });
+    }
+};
+
+module.exports = { getStats, getAllSellers, approveSeller, rejectSeller, blockSeller };

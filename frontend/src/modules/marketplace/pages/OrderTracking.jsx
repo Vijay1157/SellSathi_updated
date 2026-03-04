@@ -24,7 +24,7 @@ export default function OrderTracking() {
             try {
                 // ✅ Backend handles both docId and orderId field lookup
                 // Eliminates double Firestore read (getDoc → fallback query)
-                const res = await authFetch(`/api/orders/${orderId}`);
+                const res = await authFetch(`/orders/${orderId}`);
                 const data = await res.json();
                 if (data.success && data.order) {
                     setOrder(data.order);
@@ -46,7 +46,7 @@ export default function OrderTracking() {
 
         setCancelling(true);
         try {
-            const response = await authFetch(`/api/orders/${order.id}/cancel`, {
+            const response = await authFetch(`/orders/${order.id}/cancel`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -57,7 +57,7 @@ export default function OrderTracking() {
 
             if (data.success) {
                 // ✅ Refresh via API not Firestore
-                const refreshRes = await authFetch(`/api/orders/${order.id}`);
+                const refreshRes = await authFetch(`/orders/${order.id}`);
                 const refreshData = await refreshRes.json();
                 if (refreshData.success && refreshData.order) {
                     setOrder(refreshData.order);

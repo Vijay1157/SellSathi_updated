@@ -234,7 +234,7 @@ export default function Checkout() {
                                             ...shippingAddress,
                                             isDefault: setAsDefault
                                         };
-                                        await authFetch(`/api/user/${user.uid}/address/save`, {
+                                        await authFetch(`/consumer/${user.uid}/address`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ address: newAddress })
@@ -328,7 +328,7 @@ export default function Checkout() {
                             ...shippingAddress,
                             isDefault: setAsDefault
                         };
-                        await authFetch(`/api/user/${user.uid}/address/save`, {
+                        await authFetch(`/consumer/${user.uid}/address`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ address: newAddress })
@@ -428,7 +428,8 @@ export default function Checkout() {
     const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
     const handleAnimationComplete = () => {
-        navigate(`/track?orderId=${orderId}`);
+        setShowAnimation(false);
+        setIsOrdered(true);
     };
 
     if (isOrdered) {
@@ -480,7 +481,7 @@ export default function Checkout() {
 
                     <div className="flex flex-col sm:flex-row gap-4 pt-4">
                         <button
-                            onClick={() => window.location.href = `/track?orderId=${orderId}`}
+                            onClick={() => navigate(`/track?orderId=${orderId}`)}
                             className="flex-1 py-5 bg-primary text-white rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
                         >
                             Track Detailed Status

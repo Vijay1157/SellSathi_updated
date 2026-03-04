@@ -21,8 +21,33 @@ const getCart = async (req, res) => {
 const updateCart = async (req, res) => {
     try {
         const { uid } = req.params;
-        const { cart } = req.body;
-        await db.collection('users').doc(uid).update({ cart });
+        const { cart, action, item, itemId } = req.body;
+
+        const userRef = db.collection('users').doc(uid);
+
+        if (cart) {
+            // Overwrite entire cart
+            await userRef.update({ cart });
+        } else if (action) {
+            const userDoc = await userRef.get();
+            let currentCart = userDoc.data()?.cart || [];
+
+            if (action === 'add' && item) {
+                const existingIdx = currentCart.findIndex(i => i.id === item.id);
+                if (existingIdx > -1) {
+                    currentCart[existingIdx].quantity += (item.quantity || 1);
+                } else {
+                    currentCart.push(item);
+                }
+            } else if (action === 'remove' && itemId) {
+                currentCart = currentCart.filter(i => i.id !== itemId);
+            } else if (action === 'clear') {
+                currentCart = [];
+            }
+
+            await userRef.update({ cart: currentCart });
+        }
+
         return res.json({ success: true, message: "Cart updated" });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to update cart" });
@@ -66,4 +91,67 @@ const saveAddress = async (req, res) => {
     }
 };
 
-module.exports = { getCart, updateCart, getAddresses, saveAddress };
+/**
+ * Get user wishlist.
+ */
+const getWishlist = async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const snapshot = await db.collection("users").doc(uid).collection("wishlist").get();
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        return res.status(200).json({ success: true, items });
+    } catch (error) {
+        console.error("Error fetching wishlist:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch wishlist", items: [] });
+    }
+};
+
+/**
+ * Add to user wishlist.
+ */
+const addToWishlist = async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const { product } = req.body;
+
+        if (!product || !product.id) {
+            return res.status(400).json({ success: false, message: "Invalid product data" });
+        }
+
+        await db.collection("users").doc(uid).collection("wishlist").doc(product.id).set(product);
+        return res.status(200).json({ success: true, message: "Added to wishlist" });
+    } catch (error) {
+        console.error("Error adding to wishlist:", error);
+        return res.status(500).json({ success: false, message: "Failed to add to wishlist" });
+    }
+};
+
+/**
+ * Remove from user wishlist.
+ */
+const removeFromWishlist = async (req, res) => {
+    try {
+        const { uid, productId } = req.params;
+
+        if (!productId) {
+            return res.status(400).json({ success: false, message: "Invalid product ID" });
+        }
+
+        await db.collection("users").doc(uid).collection("wishlist").doc(productId).delete();
+        return res.status(200).json({ success: true, message: "Removed from wishlist" });
+    } catch (error) {
+        console.error("Error removing from wishlist:", error);
+        return res.status(500).json({ success: false, message: "Failed to remove from wishlist" });
+    }
+};
+
+module.exports = {
+    getCart,
+    updateCart,
+    getAddresses,
+    saveAddress,
+    getWishlist,
+    addToWishlist,
+    removeFromWishlist
+};

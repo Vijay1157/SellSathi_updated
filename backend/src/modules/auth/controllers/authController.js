@@ -222,5 +222,239 @@ const uploadImage = async (req, res) => {
     }
 };
 
-module.exports = { login, register, applySeller, extractAadhar, uploadImage };
+/**
+ * Handles Google OAuth login.
+ */
+const googleLogin = async (req, res) => {
+    try {
+        const { idToken } = req.body;
+
+        // Validate input
+        if (!idToken) {
+            return res.status(400).json({
+                success: false,
+                message: "ID token is required"
+            });
+        }
+
+        // Verify token with Firebase
+        let decodedToken;
+        try {
+            decodedToken = await admin.auth().verifyIdToken(idToken);
+        } catch (verifyError) {
+            console.error("[GoogleAuth] Token verification failed:", {
+                error: verifyError.message,
+                code: verifyError.code,
+                timestamp: new Date().toISOString()
+                // Note: Not logging token for security
+            });
+            return res.status(401).json({
+                success: false,
+                message: "Invalid or expired token"
+            });
+        }
+
+        const { uid, email, name, picture } = decodedToken;
+
+        // Validate required fields
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: "Email not provided by Google"
+            });
+        }
+
+        // Check if user exists
+        const userRef = db.collection("users").doc(uid);
+        let userSnap;
+        try {
+            userSnap = await userRef.get();
+        } catch (queryError) {
+            console.error("[GoogleAuth] Firestore user query failed:", {
+                error: queryError.message,
+                code: queryError.code,
+                uid: uid.substring(0, 8) + "...", // Log partial uid for debugging
+                timestamp: new Date().toISOString()
+            });
+            return res.status(500).json({
+                success: false,
+                message: "Authentication failed. Please try again."
+            });
+        }
+
+        if (userSnap.exists) {
+            // Existing user login
+            const userData = userSnap.data();
+
+            // Check if account is active
+            if (userData.isActive === false) {
+                return res.status(403).json({
+                    success: false,
+                    role: userData.role,
+                    message: "Account is disabled. Contact support."
+                });
+            }
+
+            // Check for seller status
+            let sellerSnap;
+            try {
+                sellerSnap = await db.collection("sellers").doc(uid).get();
+            } catch (sellerQueryError) {
+                console.error("[GoogleAuth] Firestore seller query failed:", {
+                    error: sellerQueryError.message,
+                    code: sellerQueryError.code,
+                    uid: uid.substring(0, 8) + "...",
+                    timestamp: new Date().toISOString()
+                });
+                return res.status(500).json({
+                    success: false,
+                    message: "Authentication failed. Please try again."
+                });
+            }
+            if (sellerSnap.exists) {
+                const sellerData = sellerSnap.data();
+                const sellerStatus = sellerData.sellerStatus || "PENDING";
+
+                // Update role to SELLER if not already
+                if (userData.role !== "SELLER") {
+                    try {
+                        await userRef.update({ role: "SELLER" });
+                    } catch (updateError) {
+                        console.error("[GoogleAuth] Firestore role update failed:", {
+                            error: updateError.message,
+                            code: updateError.code,
+                            uid: uid.substring(0, 8) + "...",
+                            timestamp: new Date().toISOString()
+                        });
+                        return res.status(500).json({
+                            success: false,
+                            message: "Authentication failed. Please try again."
+                        });
+                    }
+                }
+
+                if (sellerStatus === "APPROVED") {
+                    return res.status(200).json({
+                        success: true,
+                        uid,
+                        role: "SELLER",
+                        status: "APPROVED",
+                        sellerStatus: "APPROVED",
+                        shopName: sellerData.shopName,
+                        fullName: userData.fullName || name,
+                        email,
+                        message: "Seller login successful"
+                    });
+                } else if (sellerStatus === "REJECTED") {
+                    return res.status(403).json({
+                        success: false,
+                        uid,
+                        role: "SELLER",
+                        status: "REJECTED",
+                        message: "Your seller application was rejected."
+                    });
+                } else {
+                    return res.status(200).json({
+                        success: true,
+                        uid,
+                        role: "SELLER",
+                        status: "PENDING",
+                        sellerStatus: "PENDING",
+                        shopName: sellerData.shopName,
+                        fullName: userData.fullName || name,
+                        email,
+                        message: "Seller approval pending"
+                    });
+                }
+            }
+
+            // Check for admin role
+            if (userData.role === "ADMIN") {
+                return res.status(200).json({
+                    success: true,
+                    uid,
+                    role: "ADMIN",
+                    status: "AUTHORIZED",
+                    fullName: userData.fullName || name,
+                    email,
+                    message: "Admin login successful"
+                });
+            }
+
+            // Regular consumer login
+            return res.status(200).json({
+                success: true,
+                uid,
+                role: "CONSUMER",
+                status: "AUTHORIZED",
+                fullName: userData.fullName || name,
+                email,
+                message: "Consumer login successful"
+            });
+
+        } else {
+            // New user - create account
+            const newUserData = {
+                uid,
+                email,
+                fullName: name || email.split('@')[0],
+                photoURL: picture || null,
+                role: "CONSUMER",
+                isActive: true,
+                authProvider: "google",
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                await userRef.set(newUserData);
+            } catch (writeError) {
+                console.error("[GoogleAuth] Firestore user creation failed:", {
+                    error: writeError.message,
+                    code: writeError.code,
+                    uid: uid.substring(0, 8) + "...",
+                    timestamp: new Date().toISOString()
+                });
+                return res.status(500).json({
+                    success: false,
+                    message: "Authentication failed. Please try again."
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                uid,
+                role: "CONSUMER",
+                status: "NEW_USER",
+                fullName: newUserData.fullName,
+                email,
+                message: "New user created as CONSUMER"
+            });
+        }
+
+    } catch (error) {
+        console.error("[GoogleAuth] Unexpected error:", {
+            error: error.message,
+            code: error.code,
+            stack: error.stack?.split('\n')[0], // Log only first line of stack
+            timestamp: new Date().toISOString()
+        });
+
+        // Handle quota exceeded errors
+        if (error.code === 8 || error.message?.includes('RESOURCE_EXHAUSTED')) {
+            return res.status(503).json({
+                success: false,
+                quotaExceeded: true,
+                message: "Service temporarily unavailable. Please try again later."
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: "Authentication failed. Please try again."
+        });
+    }
+};
+
+module.exports = { login, register, applySeller, extractAadhar, uploadImage, googleLogin };
 

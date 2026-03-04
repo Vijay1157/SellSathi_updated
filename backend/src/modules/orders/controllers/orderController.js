@@ -97,4 +97,194 @@ const getOrderById = async (req, res) => {
     }
 };
 
-module.exports = { placeOrder, getUserOrders, getOrderById };
+/**
+ * Cancel an order.
+ */
+const cancelOrder = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const uid = req.user.uid;
+
+        const orderRef = db.collection("orders").doc(orderId);
+        const orderSnap = await orderRef.get();
+
+        if (!orderSnap.exists) {
+            return res.status(404).json({ success: false, message: "Order not found" });
+        }
+
+        const orderData = orderSnap.data();
+
+        // Ensure the user owns the order
+        if (orderData.uid !== uid && orderData.userId !== uid) {
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
+
+        // Check if order can be cancelled
+        if (["Shipped", "Delivered", "Cancelled"].includes(orderData.status)) {
+            return res.status(400).json({ success: false, message: `Cannot cancel order in ${orderData.status} state` });
+        }
+
+        // Handle Shiprocket cancellation if applicable
+        if (orderData.shiprocketOrderId) {
+            const shiprocketResult = await shiprocketService.cancelShipment([orderData.awbNumber || orderData.shiprocketOrderId]);
+            if (!shiprocketResult.success) {
+                console.error("Failed to cancel Shiprocket order:", shiprocketResult.error);
+                // Decide whether to fail the whole cancel operation or log and continue
+                // For now, continue but log the error
+            }
+        }
+
+        // Update status
+        await orderRef.update({
+            status: "Cancelled",
+            cancelledAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Invalidate caches
+        cache.invalidate(`orders_${uid}`);
+        if (orderData.sellerId) {
+            cache.invalidate(`sellerDash_${orderData.sellerId}`);
+        }
+        cache.invalidate('adminStats', 'allSellers');
+
+        // Optional: Send cancellation email
+        if (orderData.email) {
+            emailService.sendOrderCancellation(orderData.email, {
+                orderId: orderData.orderId,
+                customerName: orderData.customerName,
+                total: orderData.total,
+                items: orderData.items
+            }).catch(e => console.error("Cancellation email error:", e));
+        }
+
+        return res.status(200).json({ success: true, message: "Order cancelled successfully" });
+    } catch (error) {
+        console.error("CANCEL ORDER ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to cancel order" });
+    }
+};
+
+/**
+ * Get reviewable orders for a user
+ */
+const getReviewableOrders = async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const snapshot = await db.collection("orders")
+            .where("userId", "==", uid)
+            .where("status", "==", "Delivered")
+            .get();
+
+        const reviewableOrders = [];
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            for (const item of data.items || []) {
+                if (!item.reviewed) {
+                    reviewableOrders.push({
+                        orderId: data.orderId || doc.id,
+                        productId: item.productId || item.id,
+                        productName: item.name,
+                        productImage: item.imageUrl || item.image,
+                        deliveredAt: data.deliveredAt || data.updatedAt || data.createdAt
+                    });
+                }
+            }
+        }
+        return res.status(200).json({ success: true, orders: reviewableOrders });
+    } catch (error) {
+        console.error("Fetch Reviewable orders error:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch reviewable orders" });
+    }
+}
+
+/**
+ * Download Invoice
+ */
+const downloadInvoice = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const query = await db.collection("orders").where("orderId", "==", orderId).limit(1).get();
+
+        let docSnap;
+        if (query.empty) {
+            docSnap = await db.collection("orders").doc(orderId).get();
+            if (!docSnap.exists) return res.status(404).json({ success: false, message: "Order not found" });
+        } else {
+            docSnap = query.docs[0];
+        }
+
+        const order = docSnap.data();
+        if (!order.invoicePath) {
+            // Generate it on the fly if missing
+            const invPath = await invoiceService.generateInvoice({ ...order, documentId: docSnap.id });
+            await docSnap.ref.update({ invoiceGenerated: true, invoicePath: invPath });
+            return res.sendFile(invPath);
+        }
+
+        if (fs.existsSync(order.invoicePath)) {
+            return res.sendFile(order.invoicePath);
+        } else {
+            // Generate if file is missing from disk
+            const invPath = await invoiceService.generateInvoice({ ...order, documentId: docSnap.id });
+            await docSnap.ref.update({ invoiceGenerated: true, invoicePath: invPath });
+            return res.sendFile(invPath);
+        }
+    } catch (error) {
+        console.error("Invoice download error:", error);
+        return res.status(500).json({ success: false, message: "Failed to download invoice" });
+    }
+}
+
+/**
+ * Fetch shipping label for an order.
+ */
+const getShippingLabel = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const orderDoc = await db.collection("orders").doc(orderId).get();
+
+        if (!orderDoc.exists) {
+            return res.status(404).json({ success: false, message: "Order not found" });
+        }
+
+        const orderData = orderDoc.data();
+
+        if (!orderData.shipmentId) {
+            return res.status(400).json({
+                success: false,
+                message: "Shipment not yet created for this order. AWB must be generated first."
+            });
+        }
+
+        // Return cached label URL if already fetched
+        if (orderData.labelUrl) {
+            return res.status(200).json({ success: true, labelUrl: orderData.labelUrl });
+        }
+
+        const labelResult = await shiprocketService.getShippingLabel([orderData.shipmentId]);
+
+        if (labelResult.success && labelResult.labelUrl) {
+            // Cache result in Firestore
+            await db.collection("orders").doc(orderId).update({ labelUrl: labelResult.labelUrl });
+            return res.status(200).json({ success: true, labelUrl: labelResult.labelUrl });
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: labelResult.error || "Failed to generate shipping label"
+            });
+        }
+    } catch (error) {
+        console.error("[LABEL] Error:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch shipping label" });
+    }
+};
+
+module.exports = {
+    placeOrder,
+    getUserOrders,
+    getOrderById,
+    cancelOrder,
+    getReviewableOrders,
+    downloadInvoice,
+    getShippingLabel
+};

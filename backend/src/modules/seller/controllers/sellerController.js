@@ -2,6 +2,7 @@
 const { admin, db } = require('../../../config/firebase');
 const cache = require('../../../utils/cache');
 const { formatDateDDMMYYYY } = require('../../../utils/dateFormat');
+const shiprocketService = require('../../../shared/services/shiprocketService');
 
 const SELLER_DASH_TTL = 3 * 60 * 1000; // 3 minutes
 
@@ -105,4 +106,86 @@ const addProduct = async (req, res) => {
     }
 };
 
-module.exports = { getDashboardData, addProduct };
+/**
+ * Create Seller Pickup Address in Shiprocket
+ */
+const createPickupAddress = async (req, res) => {
+    try {
+        const { sellerData } = req.body;
+
+        if (!sellerData) {
+            return res.status(400).json({ success: false, message: "Seller data is required" });
+        }
+
+        const requiredFields = ['pickup_location', 'name', 'email', 'phone', 'address', 'city', 'state', 'country', 'pin_code'];
+        const missingFields = requiredFields.filter(field => !sellerData[field]);
+
+        if (missingFields.length > 0) {
+            return res.status(400).json({ success: false, message: `Missing required fields: ${missingFields.join(', ')}` });
+        }
+
+        const result = await shiprocketService.createPickupAddress(sellerData);
+
+        if (result.success) {
+            return res.status(200).json({ success: true, message: result.message, pickupId: result.pickupId });
+        } else {
+            return res.status(400).json({ success: false, message: result.error, details: result.details });
+        }
+    } catch (error) {
+        console.error("CREATE PICKUP ADDRESS ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to create pickup address", error: error.message });
+    }
+};
+
+/**
+ * Get public seller profile for product pages.
+ */
+const getPublicProfile = async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const [sellerSnap, userSnap] = await Promise.all([
+            db.collection("sellers").doc(uid).get(),
+            db.collection("users").doc(uid).get()
+        ]);
+
+        if (!sellerSnap.exists) return res.status(404).json({ success: false, message: "Seller not found" });
+        const sellerData = sellerSnap.data();
+        const userData = userSnap.exists ? userSnap.data() : {};
+
+        // Only return data for APPROVED sellers
+        if (sellerData.sellerStatus !== 'APPROVED') {
+            return res.status(404).json({ success: false, message: "Seller not found" });
+        }
+
+        // Parse city from address
+        let city = "India";
+        if (sellerData.address) {
+            const parts = sellerData.address.split(',').map(p => p.trim()).filter(p => p.length > 0);
+            const vtcPart = parts.find(p => p.startsWith('VTC:'));
+            if (vtcPart) {
+                city = vtcPart.replace('VTC:', '').trim();
+            } else if (parts.length >= 2) {
+                const lastParts = parts.filter(p => !p.startsWith('State:') && !/^\d{6}$/.test(p));
+                city = lastParts.length > 0 ? lastParts[lastParts.length - 1] : parts[parts.length - 1];
+            } else {
+                city = parts[0];
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            seller: {
+                name: userData?.fullName || userData?.name || sellerData.extractedName || "Verified Seller",
+                shopName: sellerData.shopName || "SellSathi Partner",
+                category: sellerData.category || "General",
+                city: city,
+                joinedAt: sellerData.approvedAt || sellerData.appliedAt
+            }
+        });
+    } catch (error) {
+        console.error("PUBLIC SELLER PROFILE ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch seller info" });
+    }
+};
+
+module.exports = { getDashboardData, addProduct, createPickupAddress, getPublicProfile };

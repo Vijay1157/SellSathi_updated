@@ -40,7 +40,7 @@ export const getWishlist = async () => {
             return { success: true, items: _wishlistCache };
         }
 
-        const response = await authFetch(`/api/user/${uid}/wishlist`);
+        const response = await authFetch(`/consumer/${uid}/wishlist`);
         const data = await response.json();
 
         if (data.success) {
@@ -89,7 +89,7 @@ export const addToWishlist = async (product) => {
             if (_isCacheFresh() && _wishlistCache.length >= WISHLIST_MAX_ITEMS) {
                 return { success: false, message: `Wishlist is full (max ${WISHLIST_MAX_ITEMS} items)` };
             }
-            const response = await authFetch(`/api/user/${uid}/wishlist/add`, {
+            const response = await authFetch(`/consumer/${uid}/wishlist/add`, {
                 method: 'POST',
                 body: JSON.stringify({ product: productToAdd })
             });
@@ -121,9 +121,8 @@ export const removeFromWishlist = async (productId) => {
             const updated = localWishlist.filter(i => i.id !== productId);
             localStorage.setItem('localWishlist', JSON.stringify(updated));
         } else {
-            const response = await authFetch(`/api/user/${uid}/wishlist/remove`, {
-                method: 'POST',
-                body: JSON.stringify({ productId })
+            const response = await authFetch(`/consumer/${uid}/wishlist/${productId}`, {
+                method: 'DELETE'
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.message || 'Failed to remove from backend');
