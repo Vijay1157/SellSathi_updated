@@ -1,0 +1,103 @@
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+
+const ADMIN_PHONE = '+917483743936';
+
+export default function ProtectedRoute({ children, requiredRole = null }) {
+    const navigate = useNavigate();
+    const [isAuthorized, setIsAuthorized] = useState(null);
+
+    useEffect(() => {
+        const checkAuthorization = () => {
+            const user = localStorage.getItem('user');
+
+            if (!user) {
+                console.log('No user in localStorage - Unauthorized');
+                setIsAuthorized(false);
+                return;
+            }
+
+            try {
+                const userData = JSON.parse(user);
+
+                // Check for admin access
+                if (requiredRole === 'ADMIN') {
+                    // Role must be ADMIN. Phone check is secondary/master-only.
+                    if (userData.role !== 'ADMIN') {
+                        console.warn(`Unauthorized admin access - Role: ${userData.role}`);
+                        setIsAuthorized(false);
+                        return;
+                    }
+                }
+
+                // Check for seller access
+                if (requiredRole === 'SELLER') {
+                    if (userData.role !== 'SELLER') {
+                        console.warn(`Unauthorized seller access - Role: ${userData.role}`);
+                        setIsAuthorized(false);
+                        return;
+                    }
+                }
+
+                // Check for consumer access
+                if (requiredRole === 'CONSUMER') {
+                    if (userData.role !== 'CONSUMER') {
+                        console.warn(`Unauthorized consumer access - Role: ${userData.role}`);
+                        setIsAuthorized(false);
+                        return;
+                    }
+                }
+
+                setIsAuthorized(true);
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+                localStorage.removeItem('user');
+                setIsAuthorized(false);
+            }
+        };
+
+        // Check authorization on mount
+        checkAuthorization();
+
+        // Listen for custom userDataChanged event
+        const handleUserChange = () => {
+            console.log('User data changed - Re-checking authorization');
+            checkAuthorization();
+        };
+
+        window.addEventListener('userDataChanged', handleUserChange);
+
+        return () => {
+            window.removeEventListener('userDataChanged', handleUserChange);
+        };
+    }, [requiredRole]);
+
+    // Navigate to home if authorization is lost
+    useEffect(() => {
+        if (isAuthorized === false) {
+            console.log('Authorization lost - Navigating to home');
+            navigate('/', { replace: true });
+
+            // Only trigger the login modal for general consumer routes
+            if (requiredRole === 'CONSUMER' || !requiredRole) {
+                // Short timeout to ensure navigation completed
+                setTimeout(() => {
+                    window.dispatchEvent(new Event('openLoginModal'));
+                }, 100);
+            }
+        }
+    }, [isAuthorized, navigate, requiredRole]);
+
+    if (isAuthorized === null) {
+        return null; // Loading state
+    }
+
+    if (isAuthorized === false) {
+        return <Navigate to="/" replace />;
+    }
+
+    return children;
+}
+
+
+
