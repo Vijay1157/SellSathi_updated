@@ -139,35 +139,86 @@ const register = async (req, res) => {
  * Handles seller application.
  */
 const applySeller = async (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const logFile = path.join(__dirname, '../../../../debug-gemini.log');
+
+    const logLocal = (msg) => {
+        const line = `[${new Date().toISOString()}] [applySeller] ${msg}\n`;
+        fs.appendFileSync(logFile, line);
+        console.log(`[applySeller] ${msg}`);
+    };
+
     try {
         const { sellerDetails } = req.body;
-        const uid = req.user.uid;
+        const uid = req.user?.uid;
+
+        logLocal(`Request received for UID: ${uid}`);
+
+        if (!uid) {
+            logLocal(`ERROR: UID is missing from request`);
+            return res.status(401).json({ success: false, message: "Unauthorized: Missing identity" });
+        }
 
         if (!sellerDetails?.shopName || !sellerDetails?.category || !sellerDetails?.address) {
+            logLocal(`ERROR: Missing required fields in sellerDetails`);
             return res.status(400).json({ success: false, message: "Missing required details" });
         }
 
         const userRef = db.collection("users").doc(uid);
+        logLocal(`Fetching user document for: ${uid}`);
         const userSnap = await userRef.get();
-        if (!userSnap.exists) return res.status(404).json({ success: false, message: "User not found" });
+
+        if (!userSnap.exists) {
+            logLocal(`ERROR: User not found in DB`);
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
 
         const userData = userSnap.data();
-        if (userData.role === "SELLER") return res.status(400).json({ success: false, message: "Already a seller" });
+        if (userData.role === "SELLER") {
+            logLocal(`ERROR: User is already a SELLER`);
+            return res.status(400).json({ success: false, message: "Already a seller" });
+        }
 
         const sellerRef = db.collection("sellers").doc(uid);
+
+        // Scrub undefined values to prevent Firestore errors
+        const finalData = JSON.parse(JSON.stringify(sellerDetails));
+
+        logLocal(`Storing seller data in DB...`);
         await sellerRef.set({
-            uid, ...sellerDetails,
+            uid, ...finalData,
             sellerStatus: "PENDING",
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        // DO NOT change the user role to SELLER here. 
-        // Admin approval will handle the role upgrade.
+        logLocal(`Updating user document...`);
         await userRef.update({ updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
+        logLocal(`SUCCESS: Application stored for UID: ${uid}`);
         return res.status(200).json({ success: true, uid, message: "Applied successfully", status: "PENDING" });
+
     } catch (error) {
-        return res.status(500).json({ success: false, message: "Application failed" });
+        logLocal(`CRITICAL ERROR: ${error.message}`);
+        console.error("[applySeller] FULL ERROR:", error);
+
+        // Specific check for Firestore Quota
+        const isQuota = error.code === 8 || error.code === 4 || error.message?.includes('RESOURCE_EXHAUSTED') || error.message?.includes('Quota exceeded');
+
+        if (isQuota) {
+            logLocal("ALERT: Firestore Quota Exceeded detected!");
+            return res.status(503).json({
+                success: false,
+                message: "Database capacity reached. Please try again after 24 hours (Daily Quota).",
+                isQuotaError: true
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: "Application failed",
+            error: error.message
+        });
     }
 };
 

@@ -23,6 +23,12 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Global Logger (Diagnostic)
+app.use((req, res, next) => {
+    console.log(`[REQUEST] ${req.method} ${req.url} | UID: ${req.headers['x-test-uid'] || 'NONE'}`);
+    next();
+});
+
 // Domain Routes
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);

@@ -180,237 +180,261 @@ export default function SellerPageWithAuth() {
   // If this is the registration page, show the registration form
   if (isRegisterPage) {
     return (
-      <div className="flex min-h-screen">
-        {/* Left Side - Seller Promotion Panel */}
-        <div className="hidden md:flex w-1/2 bg-gradient-to-br from-blue-600 to-purple-600 items-center justify-center text-white">
-          <div className="text-center space-y-6 px-8">
-            <h1 className="text-4xl font-bold mb-6">
+      <div className="min-h-screen bg-white flex flex-col lg:flex-row overflow-hidden font-sans">
+        {/* Left Side - Branding & Info (Full Height) */}
+        <div className="lg:w-1/2 bg-[#6A3FD8] p-8 lg:p-16 text-white flex flex-col justify-center relative min-h-[40vh] lg:min-h-screen">
+          {/* Clean background with subtle gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[#7B4DDB] to-[#5A32C8] opacity-50" />
+
+          <div className="relative z-10">
+            <Link to="/seller" className="inline-flex items-center gap-2 text-white/80 hover:text-white mb-12 transition-colors">
+              <ArrowLeft size={20} /> Back to SellSathi
+            </Link>
+
+            <div className="flex items-center gap-3 mb-12">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                <Store size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">Seller Center</h3>
+                <p className="text-white/60 text-sm">SellSathi for Business</p>
+              </div>
+            </div>
+
+            <h1 className="text-5xl lg:text-6xl font-bold leading-tight mb-8">
               Grow your business with SellSathi
             </h1>
-
-            <p className="mb-8 text-lg">
+            <p className="text-xl text-white/80 max-w-md mb-12">
               Reach millions of customers and scale your brand with powerful selling tools.
             </p>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl bg-white/10 backdrop-blur-md">
-                <p className="text-sm font-semibold">Sales Analytics</p>
-              </div>
-              <div className="p-4 rounded-xl bg-white/10 backdrop-blur-md">
-                <p className="text-sm font-semibold">Inventory Mgmt</p>
-              </div>
-              <div className="p-4 rounded-xl bg-white/10 backdrop-blur-md">
-                <p className="text-sm font-semibold">Growth Insights</p>
-              </div>
-              <div className="p-4 rounded-xl bg-white/10 backdrop-blur-md">
-                <p className="text-sm font-semibold">Fast Payouts</p>
-              </div>
+              {['Sales Analytics', 'Inventory Mgmt', 'Growth Insights', 'Fast Payouts'].map(feat => (
+                <div key={feat} className="p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10">
+                  <p className="text-sm font-semibold">{feat}</p>
+                </div>
+              ))}
             </div>
+          </div>
+
+          <div className="relative z-10 pt-12">
+            <p className="text-sm text-white/60">
+              By logging in, you agree to SellSathi's Seller <Link to="#" className="underline">Terms of Service</Link>
+            </p>
           </div>
         </div>
 
-        {/* Right Side - Verification Form */}
-        <div className="w-full md:w-1/2 flex items-center justify-center bg-gray-50">
+        {/* Right Side - Form (Full Width Container) */}
+        <div className="lg:w-1/2 bg-gray-50 flex items-center justify-center p-6 lg:p-12 overflow-y-auto lg:h-screen">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white shadow-xl rounded-xl p-8 w-full max-w-md"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-8 lg:p-10 border border-gray-100 flex flex-col max-h-[90vh]"
           >
-            {error && (
-              <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-                {error}
-              </div>
-            )}
+            <div className="overflow-y-auto pr-2 custom-scrollbar">
+              {error && (
+                <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {error}
+                </div>
+              )}
 
-            {success && (
-              <div className="mb-6 p-4 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm">
-                {success}
-              </div>
-            )}
+              {success && (
+                <div className="mb-6 p-4 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm">
+                  {success}
+                </div>
+              )}
 
-            {step === 'upload' ? (
-              <div className="text-center">
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">Verify Your Identity</h2>
-                <p className="text-gray-500 mb-10">Upload your Aadhaar card for quick verification and automatic field filling.</p>
+              {step === 'upload' ? (
+                <div className="text-center">
+                  <h2 className="text-3xl font-bold text-gray-900 mb-4">Verify Your Identity</h2>
+                  <p className="text-gray-500 mb-10">Upload your Aadhaar card for quick verification and automatic field filling.</p>
 
-                <div className="space-y-6">
-                  <label className="block">
-                    <div className="w-full h-48 rounded-3xl border-2 border-dashed border-purple-200 bg-purple-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-all group">
-                      {isExtracting ? (
-                        <div className="flex flex-col items-center">
-                          <Loader className="animate-spin text-brand mb-2" size={32} />
-                          <p className="font-bold text-brand">Extracting...</p>
+                  <div className="space-y-6">
+                    <label className="block">
+                      <div
+                        className="w-full h-48 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all group"
+                        style={{ borderColor: '#7B4DDB', backgroundColor: 'rgba(123, 77, 219, 0.05)' }}
+                      >
+                        {isExtracting ? (
+                          <div className="flex flex-col items-center">
+                            <Loader className="animate-spin mb-2" style={{ color: '#7B4DDB' }} size={32} />
+                            <p className="font-bold" style={{ color: '#7B4DDB' }}>Extracting...</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform" style={{ color: '#7B4DDB' }}>
+                              <Upload size={28} />
+                            </div>
+                            <p className="font-bold" style={{ color: '#7B4DDB' }}>Upload Aadhaar Card</p>
+                            <p className="text-xs text-gray-400 mt-2">Supports JPG, PNG, PDF</p>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={handleAadhaarUpload}
+                          accept="image/*"
+                          disabled={isExtracting}
+                        />
+                      </div>
+                    </label>
+
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-200"></div>
+                      </div>
+                      <div className="relative flex justify-center text-sm">
+                        <span className="px-4 bg-white text-gray-400">OR</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleManualEntry}
+                      disabled={isExtracting}
+                      style={{ borderColor: '#7B4DDB', color: '#7B4DDB' }}
+                      className="w-full rounded-2xl border-2 py-4 font-bold hover:bg-opacity-5 transition-all disabled:opacity-50"
+                    >
+                      Enter Details Manually
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="mb-8">
+                    <h2 className="text-3xl font-bold text-gray-900 mb-2">Review & Submit</h2>
+                    <p className="text-gray-500">Check your details and provide shop information below.</p>
+                  </div>
+
+                  <form className="space-y-6" onSubmit={handleSubmitSellerApplication}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                          <User size={16} /> Full Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.fullName}
+                          onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 transition-all shadow-sm"
+                          style={{ '--tw-ring-color': '#7B4DDB33' }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                          <Phone size={16} /> Phone Number
+                        </label>
+                        <input
+                          type="tel"
+                          value={formData.phoneNumber}
+                          onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                          placeholder="Enter phone number"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 transition-all shadow-sm"
+                          style={{ '--tw-ring-color': '#7B4DDB33' }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                          <CreditCard size={16} /> Aadhaar Number (Locked)
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.aadhaarNumber}
+                          readOnly
+                          className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                          <User size={16} /> Age (Locked)
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.age}
+                          readOnly
+                          className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                        <MapPin size={16} /> Shop Address (Required) *
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={formData.shopAddress}
+                        onChange={(e) => setFormData({ ...formData, shopAddress: e.target.value })}
+                        className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all resize-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                          <Store size={16} /> Shop Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.shopName}
+                          onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
+                          placeholder="e.g. Rahul's Gadgets"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                          <Tag size={16} /> Shop Category *
+                        </label>
+                        <select
+                          value={formData.shopCategory}
+                          onChange={(e) => setFormData({ ...formData, shopCategory: e.target.value })}
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all bg-white"
+                        >
+                          <option value="">Select Category</option>
+                          <option value="electronics">Electronics</option>
+                          <option value="fashion">Fashion</option>
+                          <option value="home">Home & Kitchen</option>
+                          <option value="beauty">Beauty & Health</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {aadhaarPreview && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700">Aadhaar Preview</label>
+                        <div className="relative rounded-2xl overflow-hidden border border-gray-200 aspect-[1.6/1]">
+                          <img src={aadhaarPreview} alt="Aadhaar Card Preview" className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => { setAadhaarPreview(null); setStep('upload'); }}
+                              className="flex items-center gap-2 bg-white text-gray-900 px-4 py-2 rounded-full font-bold text-sm"
+                            >
+                              <Camera size={16} /> Retake Photo
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      style={{ backgroundColor: '#7B4DDB' }}
+                      className="w-full rounded-2xl py-4 font-bold text-white shadow-xl hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 mt-4"
+                    >
+                      {loading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <Loader className="animate-spin" size={20} />
+                          Submitting...
                         </div>
                       ) : (
-                        <>
-                          <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center text-brand mb-4 shadow-sm group-hover:scale-110 transition-transform">
-                            <Upload size={28} />
-                          </div>
-                          <p className="font-bold text-brand">Upload Aadhaar Card</p>
-                          <p className="text-xs text-gray-400 mt-2">Supports JPG, PNG, PDF</p>
-                        </>
+                        'Apply for Seller Account'
                       )}
-                      <input
-                        type="file"
-                        className="hidden"
-                        onChange={handleAadhaarUpload}
-                        accept="image/*"
-                        disabled={isExtracting}
-                      />
-                    </div>
-                  </label>
-
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-gray-200"></div>
-                    </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="px-4 bg-white text-gray-400">OR</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleManualEntry}
-                    disabled={isExtracting}
-                    className="w-full py-3 rounded-lg border-2 border-indigo-500 text-indigo-600 font-semibold hover:bg-indigo-50 transition disabled:opacity-50"
-                  >
-                    Enter Details Manually
-                  </button>
+                    </button>
+                  </form>
                 </div>
-              </div>
-            ) : (
-              <div>
-                <div className="mb-8">
-                  <h2 className="text-3xl font-bold text-gray-900 mb-2">Review & Submit</h2>
-                  <p className="text-gray-500">Check your details and provide shop information below.</p>
-                </div>
-
-                <form className="space-y-6" onSubmit={handleSubmitSellerApplication}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                        <User size={16} /> Full Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.fullName}
-                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                        className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                        <Phone size={16} /> Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        value={formData.phoneNumber}
-                        onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                        placeholder="Enter phone number"
-                        className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                        <CreditCard size={16} /> Aadhaar Number (Locked)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.aadhaarNumber}
-                        readOnly
-                        className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                        <User size={16} /> Age (Locked)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.age}
-                        readOnly
-                        className="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-gray-500 cursor-not-allowed"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                      <MapPin size={16} /> Shop Address (Required) *
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={formData.shopAddress}
-                      onChange={(e) => setFormData({ ...formData, shopAddress: e.target.value })}
-                      className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all resize-none"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                        <Store size={16} /> Shop Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.shopName}
-                        onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
-                        placeholder="e.g. Rahul's Gadgets"
-                        className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                        <Tag size={16} /> Shop Category *
-                      </label>
-                      <select
-                        value={formData.shopCategory}
-                        onChange={(e) => setFormData({ ...formData, shopCategory: e.target.value })}
-                        className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all bg-white"
-                      >
-                        <option value="">Select Category</option>
-                        <option value="electronics">Electronics</option>
-                        <option value="fashion">Fashion</option>
-                        <option value="home">Home & Kitchen</option>
-                        <option value="beauty">Beauty & Health</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {aadhaarPreview && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-gray-700">Aadhaar Preview</label>
-                      <div className="relative rounded-2xl overflow-hidden border border-gray-200 aspect-[1.6/1]">
-                        <img src={aadhaarPreview} alt="Aadhaar Card Preview" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => { setAadhaarPreview(null); setStep('upload'); }}
-                            className="flex items-center gap-2 bg-white text-gray-900 px-4 py-2 rounded-full font-bold text-sm"
-                          >
-                            <Camera size={16} /> Retake Photo
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full rounded-full bg-brand py-4 font-bold text-white shadow-xl shadow-brand/20 hover:bg-brand-hover transition-all active:scale-[0.98] disabled:opacity-50 mt-4"
-                  >
-                    {loading ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <Loader className="animate-spin" size={20} />
-                        Submitting...
-                      </div>
-                    ) : (
-                      'Apply for Seller Account'
-                    )}
-                  </button>
-                </form>
-              </div>
-            )}
+              )}
+            </div>
           </motion.div>
         </div>
       </div>
@@ -432,7 +456,7 @@ export default function SellerPageWithAuth() {
               className="flex-1 text-center lg:text-left"
             >
               <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight mb-6">
-                Sell Online to Crores of Customers at <span className="text-brand">0% Commission</span>
+                Sell Online to Crores of Customers at <span style={{ color: '#7B4DDB' }}>0% Commission</span>
               </h1>
               <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto lg:mx-0">
                 Become a SellSathi seller and grow your business across India.
@@ -442,19 +466,21 @@ export default function SellerPageWithAuth() {
               <button
                 onClick={() => navigate('/seller/register')}
                 style={{
-                  backgroundColor: '#6C63FF',
+                  backgroundColor: '#7B4DDB',
                   color: 'white',
-                  padding: '12px 28px',
-                  borderRadius: '8px',
-                  fontWeight: '600',
+                  padding: '16px 36px',
+                  borderRadius: '16px',
+                  fontWeight: '700',
                   border: 'none',
                   cursor: 'pointer',
                   marginTop: '24px',
-                  fontSize: '16px',
-                  display: 'inline-block'
+                  fontSize: '18px',
+                  display: 'inline-block',
+                  boxShadow: '0 10px 25px -5px rgba(123, 77, 219, 0.3)'
                 }}
+                className="hover:brightness-110 transition-all active:scale-[0.98]"
               >
-                Start Selling
+                Start Selling Now
               </button>
 
               {/* GST NOTE */}
@@ -583,7 +609,7 @@ export default function SellerPageWithAuth() {
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-4">SellSathi Supplier Support Available 24/7</h2>
           <p className="text-gray-600 mb-8">Have questions? We're here to help you every step of the way.</p>
-          <a href="mailto:support@sellsathi.com" className="text-2xl font-bold text-brand hover:underline">
+          <a href="mailto:support@sellsathi.com" className="text-2xl font-bold hover:underline" style={{ color: '#7B4DDB' }}>
             support@sellsathi.com
           </a>
         </div>

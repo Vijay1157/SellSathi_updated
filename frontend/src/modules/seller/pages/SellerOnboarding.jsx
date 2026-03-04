@@ -198,125 +198,95 @@ const SellerOnboarding = () => {
   ];
 
   return (
-    <div className="min-h-screen relative">
-      {/* Background Gradient and Illustration */}
+    <div className="min-h-screen relative bg-white flex flex-col lg:flex-row overflow-hidden font-sans">
+      {/* 1. Branding Side (Left 50%) */}
       <div
-        className="absolute inset-0"
-        style={{
-          background: 'linear-gradient(135deg, #1e3a8a, #4f46e5)',
-          backgroundImage: 'url("data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23ffffff" fill-opacity="0.1"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
-          backgroundSize: '60px 60px',
-          opacity: 1
-        }}
+        className="lg:w-1/2 p-12 lg:p-20 text-white flex flex-col justify-center relative z-10 min-h-[40vh] lg:min-h-screen"
+        style={{ background: 'linear-gradient(135deg, #7B4DDB, #5A32C8)' }}
       >
-        {/* Dark overlay for better text contrast */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'rgba(0,0,0,0.35)'
-          }}
-        />
+        <div className="relative z-10">
+          <Link to="/" className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-12 transition-colors">
+            <ArrowLeft size={20} /> Back to SellSathi
+          </Link>
+
+          <div className="flex items-center gap-3 mb-12">
+            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+              <Store size={24} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold">Seller Center</h3>
+              <p className="text-white/60 text-sm">SellSathi for Business</p>
+            </div>
+          </div>
+
+          <h1 className="text-4xl lg:text-6xl font-bold leading-tight mb-8">
+            Grow your business with SellSathi
+          </h1>
+          <p className="text-xl text-white/80 max-w-md mb-12">
+            Reach millions of customers and scale your brand with powerful selling tools.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4 max-w-md">
+            {['Sales Analytics', 'Inventory Mgmt', 'Growth Insights', 'Fast Payouts'].map(feat => (
+              <div key={feat} className="p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10">
+                <p className="text-sm font-semibold">{feat}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Back Button */}
-      <button
-        onClick={() => navigate('/seller')}
-        className="absolute top-6 left-6 text-white flex items-center gap-2 font-medium z-10 hover:text-gray-200 transition-colors"
-      >
-        <ArrowLeft size={20} />
-        Back to SellSathi
-      </button>
-
-      {/* Progress Bar */}
-      <div className="relative z-10 pt-20 pb-8">
-        <div className="max-w-4xl mx-auto px-6">
+      {/* 2. Content Side (Right 50%) */}
+      <div className="lg:w-1/2 flex flex-col bg-gray-50 h-screen overflow-hidden">
+        {/* Fixed Header with Progress */}
+        <div className="z-20 pt-16 pb-6 px-8 bg-white border-b border-gray-100 flex flex-col gap-6">
           <div className="flex items-center justify-center">
-            <div className="flex items-center bg-white/20 backdrop-blur-sm rounded-full p-2">
+            <div className="flex items-center bg-gray-50 rounded-full p-1.5 border border-gray-100">
               {steps.map((stepItem, index) => (
                 <React.Fragment key={stepItem.id}>
                   <div
-                    className={`flex items-center px-4 py-2 rounded-full transition-all ${step === stepItem.id
-                      ? 'bg-indigo-600 text-white font-semibold'
-                      : step > stepItem.id
-                        ? 'text-white'
-                        : 'bg-gray-200 text-gray-700'
+                    className={`flex items-center px-4 py-2 rounded-full transition-all ${step === stepItem.id ? 'text-white font-semibold' :
+                      step > stepItem.id ? 'text-white' : 'text-gray-400'
                       }`}
+                    style={step >= stepItem.id ? { backgroundColor: '#7B4DDB' } : {}}
                   >
-                    <span className="text-sm font-medium">
+                    <span className="text-xs font-bold leading-none">
                       {step > stepItem.id ? '✓' : stepItem.id}
                     </span>
-                    <span className="ml-2 text-sm hidden sm:block">
+                    <span className="ml-2 text-[10px] hidden sm:block uppercase tracking-widest font-bold">
                       {stepItem.name}
                     </span>
                   </div>
                   {index < steps.length - 1 && (
-                    <div className={`w-8 h-0.5 mx-2 ${step > stepItem.id ? 'bg-white' : 'bg-gray-300'
-                      }`} />
+                    <div className={`w-4 h-0.5 mx-1 ${step > stepItem.id ? 'bg-[#7B4DDB]' : 'bg-gray-200'}`} />
                   )}
                 </React.Fragment>
               ))}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="relative z-10 flex items-center justify-center px-6 pb-12">
-        <div className="w-full max-w-4xl">
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
-            {/* Left Side - Illustration (40%) */}
-            <div className="lg:col-span-2 text-center lg:text-left relative z-10">
-              <div className="text-white space-y-6">
-                <h2 className="text-3xl lg:text-4xl font-bold leading-tight text-white font-semibold">
-                  Start Your Selling Journey
-                </h2>
-                <p className="text-white/90 text-lg">
-                  Join thousands of sellers who trust SellSathi to grow their business across India.
-                </p>
-                <div className="hidden lg:block">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="text-white" size={20} />
-                      <span className="text-white font-semibold">0% Commission</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="text-white" size={20} />
-                      <span className="text-white font-semibold">Fast Payments</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="text-white" size={20} />
-                      <span className="text-white font-semibold">24/7 Support</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="text-white" size={20} />
-                      <span className="text-white font-semibold">Easy Setup</span>
-                    </div>
-                  </div>
+        {/* Scrollable Form Body */}
+        <div className="flex-1 overflow-y-auto p-8 lg:p-12 scrollbar-hide">
+          <div className="w-full max-w-2xl mx-auto pb-12">
+            <div className="bg-white rounded-[2rem] shadow-xl p-8 lg:p-10 border border-gray-100">
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-medium">
+                  {error}
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Right Side - Form Card (60%) */}
-            <div className="lg:col-span-3">
-              <div className="bg-white rounded-xl shadow-lg p-8">
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-                    {error}
+              {success ? (
+                <div className="text-center py-10">
+                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <CheckCircle2 className="text-green-600" size={40} />
                   </div>
-                )}
-
-                {success ? (
-                  <div className="text-center py-12">
-                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <CheckCircle2 className="text-green-600" size={40} />
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Application Submitted!</h2>
-                    <p className="text-gray-600">{success}</p>
-                  </div>
-                ) : (
-                  renderStep()
-                )}
-              </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Application Submitted!</h2>
+                  <p className="text-gray-500">{success}</p>
+                </div>
+              ) : (
+                renderStep()
+              )}
             </div>
           </div>
         </div>
@@ -342,13 +312,13 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
     sellerData.streetLocality;
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-8">
+    <div className="bg-white">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Personal Details</h2>
-        <p className="text-gray-600">Please provide your personal information</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Personal Details</h2>
+        <p className="text-gray-500">Provide your legal information carefully</p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -509,13 +479,14 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
           </div>
         </div>
 
-        <div className="flex justify-end mt-8">
+        <div className="flex justify-end mt-8 border-t pt-6 bg-white sticky bottom-0">
           <button
             onClick={nextStep}
             disabled={!isFormValid}
-            className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: '#7B4DDB' }}
+            className="px-8 py-4 text-white font-bold rounded-2xl shadow-lg shadow-brand/20 hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Next
+            Next Step
           </button>
         </div>
       </div>
@@ -538,10 +509,10 @@ const BusinessAndGSTStep = ({ sellerData, updateSellerData, nextStep, prevStep }
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-8">
+    <div className="bg-white">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Business & GST Details</h2>
-        <p className="text-gray-600">Tell us about your shop and tax compliance</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Business & GST Details</h2>
+        <p className="text-gray-500">Tell us about your shop and tax compliance</p>
       </div>
 
       <div className="space-y-8">
@@ -583,15 +554,17 @@ const BusinessAndGSTStep = ({ sellerData, updateSellerData, nextStep, prevStep }
           <div className="flex justify-center gap-6 mb-8">
             <button
               onClick={() => handleGSTSelection('yes')}
-              className={`px-8 py-3 rounded-lg font-medium transition-all ${sellerData.hasGST === 'yes' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              className={`px-8 py-3 rounded-xl font-bold transition-all ${sellerData.hasGST === 'yes' ? 'text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
+              style={sellerData.hasGST === 'yes' ? { backgroundColor: '#7B4DDB' } : {}}
             >
               Yes
             </button>
             <button
               onClick={() => handleGSTSelection('no')}
-              className={`px-8 py-3 rounded-lg font-medium transition-all ${sellerData.hasGST === 'no' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              className={`px-8 py-3 rounded-xl font-bold transition-all ${sellerData.hasGST === 'no' ? 'text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
+              style={sellerData.hasGST === 'no' ? { backgroundColor: '#7B4DDB' } : {}}
             >
               No
             </button>
@@ -625,16 +598,17 @@ const BusinessAndGSTStep = ({ sellerData, updateSellerData, nextStep, prevStep }
         <div className="flex justify-between mt-8 border-t pt-8">
           <button
             onClick={prevStep}
-            className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-6 py-3 border border-gray-200 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors"
           >
             Back
           </button>
           <button
             onClick={nextStep}
             disabled={!isFormValid()}
-            className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: '#7B4DDB' }}
+            className="px-8 py-4 text-white font-bold rounded-2xl shadow-lg shadow-brand/20 hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Next
+            Next Step
           </button>
         </div>
       </div>
@@ -650,10 +624,10 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
     sellerData.pickupPincode;
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-8">
+    <div className="bg-white">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Pickup Address</h2>
-        <p className="text-gray-600">Where should we pick up your products?</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Pickup Address</h2>
+        <p className="text-gray-500">Where should we pick up your products?</p>
       </div>
 
       <div className="space-y-6">
@@ -712,19 +686,20 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
         </div>
       </div>
 
-      <div className="flex justify-between mt-8">
+      <div className="flex justify-between mt-8 pt-8 border-t">
         <button
           onClick={prevStep}
-          className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          className="px-6 py-3 border border-gray-200 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors"
         >
           Back
         </button>
         <button
           onClick={nextStep}
           disabled={!isFormValid}
-          className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: '#7B4DDB' }}
+          className="px-8 py-4 text-white font-bold rounded-2xl shadow-lg shadow-brand/20 hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Next
+          Next Step
         </button>
       </div>
     </div>
@@ -738,10 +713,10 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
     sellerData.ifscCode;
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-8">
+    <div className="bg-white">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Bank Details</h2>
-        <p className="text-gray-600">Add your bank information for payments</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Bank Details</h2>
+        <p className="text-gray-500">Provide your payout information</p>
       </div>
 
       <div className="space-y-6">
@@ -801,18 +776,19 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
         </div>
       </div>
 
-      <div className="flex justify-between mt-8">
+      <div className="flex justify-between mt-8 pt-8 border-t">
         <button
           onClick={prevStep}
           disabled={loading}
-          className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          className="px-6 py-3 border border-gray-200 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
         >
           Back
         </button>
         <button
           onClick={nextStep}
           disabled={!isFormValid || loading}
-          className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          style={{ backgroundColor: '#7B4DDB' }}
+          className="px-8 py-4 text-white font-bold rounded-2xl shadow-lg shadow-brand/20 hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {loading ? (
             <React.Fragment>
@@ -820,7 +796,7 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
               Submitting...
             </React.Fragment>
           ) : (
-            'Submit Application'
+            'Complete Setup'
           )}
         </button>
       </div>
@@ -919,7 +895,8 @@ const SupplierDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep 
         <button
           onClick={nextStep}
           disabled={!isFormValid}
-          className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: '#7B4DDB' }}
+          className="px-8 py-3 text-white font-medium rounded-lg hover:brightness-110 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Submit Application
         </button>
