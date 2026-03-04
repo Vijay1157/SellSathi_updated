@@ -49,7 +49,7 @@ export async function authFetch(path, options = {}) {
     const currentUser = auth.currentUser;
     if (currentUser) {
         try {
-            const idToken = await currentUser.getIdToken(true);
+            const idToken = await currentUser.getIdToken(false);
             headers['Authorization'] = `Bearer ${idToken}`;
         } catch (err) {
             console.warn('[authFetch] Token refresh failed, falling back to X-Test-UID:', err.message);

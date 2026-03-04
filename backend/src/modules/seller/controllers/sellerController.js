@@ -3,12 +3,19 @@ const { admin, db } = require('../../../config/firebase');
 const cache = require('../../../utils/cache');
 const { formatDateDDMMYYYY } = require('../../../utils/dateFormat');
 
+const SELLER_DASH_TTL = 3 * 60 * 1000; // 3 minutes
+
 /**
  * Get seller dashboard data.
+ * Cached per seller UID for 3 minutes.
  */
 const getDashboardData = async (req, res) => {
     try {
         const { uid } = req.params;
+        const cacheKey = `sellerDash_${uid}`;
+        const cached = cache.get(cacheKey);
+        if (cached) return res.status(200).json({ success: true, dashboard: cached });
+
         const [sellerSnap, userSnap, productsSnap, allOrdersSnap] = await Promise.all([
             db.collection("sellers").doc(uid).get(),
             db.collection("users").doc(uid).get(),
@@ -48,18 +55,18 @@ const getDashboardData = async (req, res) => {
             }
         });
 
-        return res.status(200).json({
-            success: true,
-            dashboard: {
-                shopName: sellerData.shopName,
-                totalSales,
-                productsCount: products.length,
-                newOrdersCount,
-                pendingOrdersCount,
-                recentOrders: sellerOrders.slice(0, 5),
-                products: products.slice(0, 10)
-            }
-        });
+        const dashboard = {
+            shopName: sellerData.shopName,
+            totalSales,
+            productsCount: products.length,
+            newOrdersCount,
+            pendingOrdersCount,
+            recentOrders: sellerOrders.slice(0, 5),
+            products: products.slice(0, 10)
+        };
+
+        cache.set(cacheKey, dashboard, SELLER_DASH_TTL);
+        return res.status(200).json({ success: true, dashboard });
     } catch (error) {
         console.error("[SellerDashboard] ERROR:", error);
         return res.status(500).json({ success: false, message: "Failed to fetch dashboard data" });
@@ -86,7 +93,12 @@ const addProduct = async (req, res) => {
         };
 
         const docRef = await db.collection("products").add(newProduct);
-        cache.invalidate('adminProducts', 'allSellers', 'adminStats');
+
+        // Invalidate relevant caches
+        cache.invalidate(`sellerDash_${sellerId}`);
+        cache.invalidate('adminStats', 'allSellers');
+        cache.invalidatePrefix('products_');
+
         return res.status(200).json({ success: true, message: "Product added", productId: docRef.id });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to add product" });
