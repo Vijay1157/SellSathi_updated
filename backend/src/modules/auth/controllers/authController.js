@@ -67,17 +67,11 @@ const login = async (req, res) => {
         if (sellerSnap.exists) {
             const sellerData = sellerSnap.data();
             const sellerStatus = sellerData.sellerStatus || "PENDING";
+            if (userData.role !== "SELLER") try { await userRef.update({ role: "SELLER" }); } catch (_) { }
 
-            if (sellerStatus === "APPROVED") {
-                if (userData.role !== "SELLER") try { await userRef.update({ role: "SELLER" }); } catch (_) { }
-                return res.status(200).json({ success: true, uid, role: "SELLER", status: "APPROVED", sellerStatus: "APPROVED", shopName: sellerData.shopName, message: "Seller login successful" });
-            }
-
-            // Pending or Rejected should remain CONSUMER
-            if (userData.role !== "CONSUMER") try { await userRef.update({ role: "CONSUMER" }); } catch (_) { }
-
-            if (sellerStatus === "REJECTED") return res.status(403).json({ success: false, uid, role: "CONSUMER", status: "REJECTED", message: "Your seller application was rejected." });
-            return res.status(200).json({ success: true, uid, role: "CONSUMER", status: "PENDING", sellerStatus: "PENDING", shopName: sellerData.shopName, message: "Seller approval pending" });
+            if (sellerStatus === "APPROVED") return res.status(200).json({ success: true, uid, role: "SELLER", status: "APPROVED", sellerStatus: "APPROVED", shopName: sellerData.shopName, message: "Seller login successful" });
+            if (sellerStatus === "REJECTED") return res.status(403).json({ success: false, uid, role: "SELLER", status: "REJECTED", message: "Your seller application was rejected." });
+            return res.status(200).json({ success: true, uid, role: "SELLER", status: "PENDING", sellerStatus: "PENDING", shopName: sellerData.shopName, message: "Seller approval pending" });
         }
 
         return res.status(200).json({ success: true, uid, role: "CONSUMER", status: "AUTHORIZED", fullName: userData.fullName || fullName, message: "Consumer login successful" });
@@ -139,86 +133,33 @@ const register = async (req, res) => {
  * Handles seller application.
  */
 const applySeller = async (req, res) => {
-    const fs = require('fs');
-    const path = require('path');
-    const logFile = path.join(__dirname, '../../../../debug-gemini.log');
-
-    const logLocal = (msg) => {
-        const line = `[${new Date().toISOString()}] [applySeller] ${msg}\n`;
-        fs.appendFileSync(logFile, line);
-        console.log(`[applySeller] ${msg}`);
-    };
-
     try {
         const { sellerDetails } = req.body;
-        const uid = req.user?.uid;
-
-        logLocal(`Request received for UID: ${uid}`);
-
-        if (!uid) {
-            logLocal(`ERROR: UID is missing from request`);
-            return res.status(401).json({ success: false, message: "Unauthorized: Missing identity" });
-        }
+        const uid = req.user.uid;
 
         if (!sellerDetails?.shopName || !sellerDetails?.category || !sellerDetails?.address) {
-            logLocal(`ERROR: Missing required fields in sellerDetails`);
             return res.status(400).json({ success: false, message: "Missing required details" });
         }
 
         const userRef = db.collection("users").doc(uid);
-        logLocal(`Fetching user document for: ${uid}`);
         const userSnap = await userRef.get();
-
-        if (!userSnap.exists) {
-            logLocal(`ERROR: User not found in DB`);
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
+        if (!userSnap.exists) return res.status(404).json({ success: false, message: "User not found" });
 
         const userData = userSnap.data();
-        if (userData.role === "SELLER") {
-            logLocal(`ERROR: User is already a SELLER`);
-            return res.status(400).json({ success: false, message: "Already a seller" });
-        }
+        if (userData.role === "SELLER") return res.status(400).json({ success: false, message: "Already a seller" });
 
         const sellerRef = db.collection("sellers").doc(uid);
-
-        // Scrub undefined values to prevent Firestore errors
-        const finalData = JSON.parse(JSON.stringify(sellerDetails));
-
-        logLocal(`Storing seller data in DB...`);
         await sellerRef.set({
-            uid, ...finalData,
+            uid, ...sellerDetails,
             sellerStatus: "PENDING",
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        logLocal(`Updating user document...`);
-        await userRef.update({ updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        await userRef.update({ role: "SELLER", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
-        logLocal(`SUCCESS: Application stored for UID: ${uid}`);
         return res.status(200).json({ success: true, uid, message: "Applied successfully", status: "PENDING" });
-
     } catch (error) {
-        logLocal(`CRITICAL ERROR: ${error.message}`);
-        console.error("[applySeller] FULL ERROR:", error);
-
-        // Specific check for Firestore Quota
-        const isQuota = error.code === 8 || error.code === 4 || error.message?.includes('RESOURCE_EXHAUSTED') || error.message?.includes('Quota exceeded');
-
-        if (isQuota) {
-            logLocal("ALERT: Firestore Quota Exceeded detected!");
-            return res.status(503).json({
-                success: false,
-                message: "Database capacity reached. Please try again after 24 hours (Daily Quota).",
-                isQuotaError: true
-            });
-        }
-
-        return res.status(500).json({
-            success: false,
-            message: "Application failed",
-            error: error.message
-        });
+        return res.status(500).json({ success: false, message: "Application failed" });
     }
 };
 
@@ -234,8 +175,7 @@ const extractAadhar = async (req, res) => {
         const { Readable } = require('stream');
 
         // AI Extraction
-        const extractedData = await geminiService.extractAadhaarData(req.file.buffer, req.file.mimetype);
-        console.log("[ExtractAadhar] Raw Data from Gemini:", JSON.stringify(extractedData, null, 2));
+        const extractedData = await geminiService.extractFromImage(req.file.buffer, req.file.mimetype);
 
         // Upload to Cloudinary
         const uploadResult = await new Promise((resolve, reject) => {
@@ -246,40 +186,15 @@ const extractAadhar = async (req, res) => {
             Readable.from([req.file.buffer]).pipe(uploadStream);
         });
 
-        // Calculate age from DOB if present
-        let age = "";
-        if (extractedData.dob && typeof extractedData.dob === 'string') {
-            const parts = extractedData.dob.split('/');
-            const dobYear = parts.length > 0 ? parts.pop() : null;
-            if (dobYear && dobYear.length === 4 && !isNaN(dobYear)) {
-                const currentYear = new Date().getFullYear();
-                age = String(currentYear - parseInt(dobYear));
-            }
-        }
-
-        const responseData = {
-            name: extractedData.name || "",
-            aadharNumber: extractedData.aadhaar_no ? String(extractedData.aadhaar_no).replace(/\D/g, '') : "",
-            age: age || "",
-            phone: extractedData.phone ? String(extractedData.phone).replace(/\D/g, '') : "",
-            address: extractedData.address || "",
-            pincode: extractedData.pincode || "",
-            imageUrl: uploadResult.secure_url
-        };
-
-        console.log("[ExtractAadhar] Mapped Response Data:", JSON.stringify(responseData, null, 2));
-
         return res.status(200).json({
             success: true,
-            data: responseData
+            data: {
+                ...extractedData,
+                imageUrl: uploadResult.secure_url
+            }
         });
     } catch (error) {
-        console.error("[ExtractAadhar] ERROR:", error.message || error);
-
-        if (error.isQuotaError) {
-            return res.status(429).json({ success: false, message: error.message });
-        }
-
+        console.error("[ExtractAadhar] ERROR:", error);
         return res.status(500).json({ success: false, message: "Aadhaar processing failed" });
     }
 };
@@ -308,235 +223,114 @@ const uploadImage = async (req, res) => {
 };
 
 /**
- * Handles Google OAuth login.
+ * Handles test login with phone and OTP.
  */
-const googleLogin = async (req, res) => {
+const testLogin = async (req, res) => {
     try {
-        const { idToken } = req.body;
+        const { phone, otp } = req.body;
 
-        // Validate input
-        if (!idToken) {
-            return res.status(400).json({
-                success: false,
-                message: "ID token is required"
-            });
+        if (!phone) {
+            return res.status(400).json({ success: false, message: "Phone number is required" });
         }
 
-        // Verify token with Firebase
-        let decodedToken;
-        try {
-            decodedToken = await admin.auth().verifyIdToken(idToken);
-        } catch (verifyError) {
-            console.error("[GoogleAuth] Token verification failed:", {
-                error: verifyError.message,
-                code: verifyError.code,
-                timestamp: new Date().toISOString()
-                // Note: Not logging token for security
-            });
-            return res.status(401).json({
-                success: false,
-                message: "Invalid or expired token"
-            });
+        // For test mode, accept any 6-digit OTP
+        if (!otp || otp.length !== 6) {
+            return res.status(400).json({ success: false, message: "Invalid OTP" });
         }
 
-        const { uid, email, name, picture } = decodedToken;
-
-        // Validate required fields
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                message: "Email not provided by Google"
-            });
-        }
-
-        // Check if user exists
+        const uid = `test_${phone.replace(/[^0-9]/g, '')}`;
         const userRef = db.collection("users").doc(uid);
-        let userSnap;
-        try {
-            userSnap = await userRef.get();
-        } catch (queryError) {
-            console.error("[GoogleAuth] Firestore user query failed:", {
-                error: queryError.message,
-                code: queryError.code,
-                uid: uid.substring(0, 8) + "...", // Log partial uid for debugging
-                timestamp: new Date().toISOString()
+        const userSnap = await userRef.get();
+
+        if (!userSnap.exists) {
+            // Create new test user
+            await userRef.set({
+                uid,
+                phone,
+                fullName: `User ${phone.slice(-4)}`,
+                role: "CONSUMER",
+                isActive: true,
+                isTest: true,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            return res.status(500).json({
-                success: false,
-                message: "Authentication failed. Please try again."
+
+            return res.status(200).json({
+                success: true,
+                uid,
+                role: "CONSUMER",
+                fullName: `User ${phone.slice(-4)}`,
+                status: "NEW_USER",
+                message: "New test user created as CONSUMER",
             });
         }
 
-        if (userSnap.exists) {
-            // Existing user login
-            const userData = userSnap.data();
+        const userData = userSnap.data();
+        if (userData.isActive === false) {
+            return res.status(403).json({
+                success: false,
+                role: userData.role,
+                message: "Account is disabled. Contact support."
+            });
+        }
 
-            // Check if account is active
-            if (userData.isActive === false) {
-                return res.status(403).json({
-                    success: false,
-                    role: userData.role,
-                    message: "Account is disabled. Contact support."
-                });
+        // Check if user is a seller
+        const sellerSnap = await db.collection("sellers").doc(uid).get();
+        if (sellerSnap.exists) {
+            const sellerData = sellerSnap.data();
+            const sellerStatus = sellerData.sellerStatus || "PENDING";
+            
+            if (userData.role !== "SELLER") {
+                try { await userRef.update({ role: "SELLER" }); } catch (_) { }
             }
 
-            // Check for seller status
-            let sellerSnap;
-            try {
-                sellerSnap = await db.collection("sellers").doc(uid).get();
-            } catch (sellerQueryError) {
-                console.error("[GoogleAuth] Firestore seller query failed:", {
-                    error: sellerQueryError.message,
-                    code: sellerQueryError.code,
-                    uid: uid.substring(0, 8) + "...",
-                    timestamp: new Date().toISOString()
-                });
-                return res.status(500).json({
-                    success: false,
-                    message: "Authentication failed. Please try again."
-                });
-            }
-            if (sellerSnap.exists) {
-                const sellerData = sellerSnap.data();
-                const sellerStatus = sellerData.sellerStatus || "PENDING";
-
-                if (sellerStatus === "APPROVED") {
-                    // Update role to SELLER if approved
-                    if (userData.role !== "SELLER") {
-                        try {
-                            await userRef.update({ role: "SELLER" });
-                        } catch (updateError) {
-                            console.error("[GoogleAuth] Firestore role update failed", updateError);
-                        }
-                    }
-                    return res.status(200).json({
-                        success: true,
-                        uid,
-                        role: "SELLER",
-                        status: "APPROVED",
-                        sellerStatus: "APPROVED",
-                        shopName: sellerData.shopName,
-                        fullName: userData.fullName || name,
-                        email,
-                        message: "Seller login successful"
-                    });
-                } else {
-                    // Pending or Rejected should remain CONSUMER
-                    if (userData.role !== "CONSUMER") {
-                        try { await userRef.update({ role: "CONSUMER" }); } catch (_) { }
-                    }
-
-                    if (sellerStatus === "REJECTED") {
-                        return res.status(403).json({
-                            success: false,
-                            uid,
-                            role: "CONSUMER",
-                            status: "REJECTED",
-                            message: "Your seller application was rejected."
-                        });
-                    } else {
-                        return res.status(200).json({
-                            success: true,
-                            uid,
-                            role: "CONSUMER",
-                            status: "PENDING",
-                            sellerStatus: "PENDING",
-                            shopName: sellerData.shopName,
-                            fullName: userData.fullName || name,
-                            email,
-                            message: "Seller approval pending"
-                        });
-                    }
-                }
-            }
-
-            // Check for admin role
-            if (userData.role === "ADMIN") {
+            if (sellerStatus === "APPROVED") {
                 return res.status(200).json({
                     success: true,
                     uid,
-                    role: "ADMIN",
-                    status: "AUTHORIZED",
-                    fullName: userData.fullName || name,
-                    email,
-                    message: "Admin login successful"
+                    role: "SELLER",
+                    status: "APPROVED",
+                    sellerStatus: "APPROVED",
+                    shopName: sellerData.shopName,
+                    message: "Seller login successful"
                 });
             }
-
-            // Regular consumer login
-            return res.status(200).json({
-                success: true,
-                uid,
-                role: "CONSUMER",
-                status: "AUTHORIZED",
-                fullName: userData.fullName || name,
-                email,
-                message: "Consumer login successful"
-            });
-
-        } else {
-            // New user - create account
-            const newUserData = {
-                uid,
-                email,
-                fullName: name || email.split('@')[0],
-                photoURL: picture || null,
-                role: "CONSUMER",
-                isActive: true,
-                authProvider: "google",
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            };
-
-            try {
-                await userRef.set(newUserData);
-            } catch (writeError) {
-                console.error("[GoogleAuth] Firestore user creation failed:", {
-                    error: writeError.message,
-                    code: writeError.code,
-                    uid: uid.substring(0, 8) + "...",
-                    timestamp: new Date().toISOString()
-                });
-                return res.status(500).json({
+            if (sellerStatus === "REJECTED") {
+                return res.status(403).json({
                     success: false,
-                    message: "Authentication failed. Please try again."
+                    uid,
+                    role: "SELLER",
+                    status: "REJECTED",
+                    message: "Your seller application was rejected."
                 });
             }
-
             return res.status(200).json({
                 success: true,
                 uid,
-                role: "CONSUMER",
-                status: "NEW_USER",
-                fullName: newUserData.fullName,
-                email,
-                message: "New user created as CONSUMER"
+                role: "SELLER",
+                status: "PENDING",
+                sellerStatus: "PENDING",
+                shopName: sellerData.shopName,
+                message: "Seller approval pending"
             });
         }
 
-    } catch (error) {
-        console.error("[GoogleAuth] Unexpected error:", {
-            error: error.message,
-            code: error.code,
-            stack: error.stack?.split('\n')[0], // Log only first line of stack
-            timestamp: new Date().toISOString()
+        return res.status(200).json({
+            success: true,
+            uid,
+            role: userData.role || "CONSUMER",
+            status: "AUTHORIZED",
+            fullName: userData.fullName,
+            message: "Login successful"
         });
 
-        // Handle quota exceeded errors
-        if (error.code === 8 || error.message?.includes('RESOURCE_EXHAUSTED')) {
-            return res.status(503).json({
-                success: false,
-                quotaExceeded: true,
-                message: "Service temporarily unavailable. Please try again later."
-            });
-        }
-
+    } catch (error) {
+        console.error("TEST LOGIN ERROR:", error);
         return res.status(500).json({
             success: false,
-            message: "Authentication failed. Please try again."
+            message: "Test login failed: " + error.message
         });
     }
 };
 
-module.exports = { login, register, applySeller, extractAadhar, uploadImage, googleLogin };
+module.exports = { login, register, applySeller, extractAadhar, uploadImage, testLogin };
 

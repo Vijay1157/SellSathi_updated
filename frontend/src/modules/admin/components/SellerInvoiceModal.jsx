@@ -159,6 +159,23 @@ export default function SellerInvoiceModal({ seller, onClose, onDownloadPDF, isD
                         </div>
                         <div>
                             <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                🔢 Account Number
+                            </p>
+                            <p style={{ 
+                                fontWeight: 600, 
+                                fontSize: '1rem',
+                                fontFamily: 'monospace',
+                                letterSpacing: '0.1em',
+                                backgroundColor: 'white',
+                                padding: '0.5rem 0.75rem',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border)'
+                            }}>
+                                {seller.accountNumber || 'Not provided'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 💳 IFSC Code
                             </p>
                             <p style={{ 

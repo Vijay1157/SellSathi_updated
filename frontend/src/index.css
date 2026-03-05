@@ -6,11 +6,6 @@
 @tailwind components;
 @tailwind utilities;
 
-
-html {
-  scroll-behavior: smooth;
-}
-
 :root {
   --primary: #4f46e5;
   --secondary: #6366f1;
@@ -33,8 +28,6 @@ html {
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-full: 9999px;
-  --brand: #4f46e5;
-  --brand-hover: #4338ca;
 }
 
 * {
@@ -781,7 +774,7 @@ h4 {
 .date-input {
   padding: 0.5rem 2.5rem 0.5rem 0.75rem !important;
   border-radius: 8px !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border: 1px solid rgba(255,255,255,0.3) !important;
   background: white !important;
   color: #333 !important;
   font-size: 0.85rem !important;

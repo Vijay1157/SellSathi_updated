@@ -298,6 +298,120 @@ export default function AdminDashboard() {
         }
     };
 
+    const handleDeleteSeller = async (uid, shopName) => {
+        if (!confirm(`⚠️ WARNING: This will permanently delete the seller "${shopName}" and ALL their data including:\n\n• All products\n• All reviews\n• Seller account\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?`)) {
+            return;
+        }
+
+        try {
+            const response = await authFetch(`/admin/seller/${uid}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(`✅ Seller deleted successfully!\n\nDeleted:\n• 1 seller account\n• ${data.deletedProducts} products\n• Related reviews`);
+                fetchAllData();
+            } else {
+                alert('❌ Failed to delete seller: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Error deleting seller:', err);
+            alert('❌ Error deleting seller. Please try again.');
+        }
+    };
+
+    const handleDeleteAllBlockedSellers = async () => {
+        const blockedCount = allSellers.filter(s => s.isBlocked).length;
+        
+        if (blockedCount === 0) {
+            alert('ℹ️ No blocked sellers to delete.');
+            return;
+        }
+
+        if (!confirm(`⚠️ CRITICAL WARNING: This will permanently delete ALL ${blockedCount} blocked sellers and ALL their data including:\n\n• All products from all blocked sellers\n• All reviews\n• All seller accounts\n\nThis action CANNOT be undone!\n\nType "DELETE ALL" in the next prompt to confirm.`)) {
+            return;
+        }
+
+        const confirmation = prompt('Type "DELETE ALL" to confirm permanent deletion:');
+        if (confirmation !== 'DELETE ALL') {
+            alert('❌ Deletion cancelled. Confirmation text did not match.');
+            return;
+        }
+
+        try {
+            const response = await authFetch('/admin/blocked-sellers/all', {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(`✅ All blocked sellers deleted successfully!\n\nDeleted:\n• ${data.deletedSellers} seller accounts\n• ${data.deletedProducts} products\n• Related reviews`);
+                fetchAllData();
+            } else {
+                alert('❌ Failed to delete blocked sellers: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Error deleting all blocked sellers:', err);
+            alert('❌ Error deleting blocked sellers. Please try again.');
+        }
+    };
+
+    const handleDeleteAllRejectedSellers = async () => {
+        const rejectedCount = allSellers.filter(s => s.status === 'REJECTED' && !s.isBlocked).length;
+        
+        if (rejectedCount === 0) {
+            alert('ℹ️ No rejected sellers to delete.');
+            return;
+        }
+
+        if (!confirm(`⚠️ CRITICAL WARNING: This will permanently delete ALL ${rejectedCount} rejected sellers and ALL their data including:\n\n• All products from all rejected sellers\n• All reviews\n• All seller accounts\n\nThis action CANNOT be undone!\n\nType "DELETE ALL" in the next prompt to confirm.`)) {
+            return;
+        }
+
+        const confirmation = prompt('Type "DELETE ALL" to confirm permanent deletion:');
+        if (confirmation !== 'DELETE ALL') {
+            alert('❌ Deletion cancelled. Confirmation text did not match.');
+            return;
+        }
+
+        try {
+            const response = await authFetch('/admin/rejected-sellers/all', {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(`✅ All rejected sellers deleted successfully!\n\nDeleted:\n• ${data.deletedSellers} seller accounts\n• ${data.deletedProducts} products\n• Related reviews`);
+                fetchAllData();
+            } else {
+                alert('❌ Failed to delete rejected sellers: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Error deleting all rejected sellers:', err);
+            alert('❌ Error deleting rejected sellers. Please try again.');
+        }
+    };
+
+    const handleAcceptRejectedSeller = async (uid) => {
+        if (!confirm('Are you sure you want to accept this rejected seller? They will be moved to Pending Approvals for review.')) {
+            return;
+        }
+
+        try {
+            const response = await authFetch(`/admin/seller/${uid}/accept-rejected`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(`✅ Seller accepted successfully! The seller has been moved to Pending Approvals.`);
+                fetchAllData();
+            } else {
+                alert('❌ Failed to accept seller: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Error accepting rejected seller:', err);
+            alert('❌ Error accepting seller. Please try again.');
+        }
+    };
+
     const StatCard = ({ label, value, icon, color }) => (
         <div className="glass-card flex flex-col justify-center gap-4" style={{ minHeight: '180px' }}>
             <div className="flex justify-between items-start">
@@ -454,11 +568,11 @@ export default function AdminDashboard() {
     );
 
     const renderSellersTable = () => {
-        // Separate sellers by status - ONLY APPROVED sellers in Seller Management
-        const approvedSellers = allSellers.filter(s => s.status === 'APPROVED');
+        // Use categorized data if available, otherwise filter from allSellers
+        const approvedSellers = allSellers.filter(s => s.status === 'APPROVED' && !s.isBlocked);
         const pendingSellers = sellers; // sellers already contains only PENDING
-        const rejectedSellers = allSellers.filter(s => s.status === 'REJECTED' && !s.isBlocked); // Only rejected, not blocked
-        const blockedSellers = allSellers.filter(s => s.isBlocked); // All blocked sellers
+        const rejectedSellers = allSellers.filter(s => s.status === 'REJECTED' && !s.isBlocked);
+        const blockedSellers = allSellers.filter(s => s.isBlocked);
 
         return (
             <div className="animate-fade-in flex flex-col gap-8">
@@ -561,7 +675,7 @@ export default function AdminDashboard() {
                 {/* Spacer between sections */}
                 <div style={{ height: '3rem', borderBottom: '2px solid var(--border)' }}></div>
 
-                {/* Seller Management Section - ONLY APPROVED SELLERS */}
+                {/* Seller Management Section - ONLY APPROVED AND NOT BLOCKED SELLERS */}
                 <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                         <h3 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Seller Management ({approvedSellers.length})</h3>
@@ -723,6 +837,23 @@ export default function AdminDashboard() {
                     <div className="flex justify-between items-center">
                         <h3 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Rejected Applications ({rejectedSellers.length})</h3>
                         <div className="flex gap-2">
+                            <button
+                                className="btn"
+                                onClick={handleDeleteAllRejectedSellers}
+                                disabled={rejectedSellers.length === 0}
+                                style={{ 
+                                    padding: '0.5rem 1rem', 
+                                    fontSize: '0.85rem',
+                                    backgroundColor: '#ef4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    opacity: rejectedSellers.length === 0 ? 0.5 : 1,
+                                    cursor: rejectedSellers.length === 0 ? 'not-allowed' : 'pointer'
+                                }}
+                                title="Delete all rejected sellers permanently"
+                            >
+                                <X size={16} /> Delete All ({rejectedSellers.length})
+                            </button>
                             <input
                                 type="text"
                                 placeholder="Search rejected sellers..."
@@ -861,9 +992,34 @@ export default function AdminDashboard() {
                                                 </button>
                                             </td>
                                             <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
-                                                <span className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                                                    {s.isBlocked ? 'Blocked' : 'Rejected'}
-                                                </span>
+                                                <div className="flex gap-3 justify-end">
+                                                    <button
+                                                        className="btn btn-primary"
+                                                        onClick={() => handleAcceptRejectedSeller(s.uid)}
+                                                        title="Accept and move to Pending Approval"
+                                                        style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    >
+                                                        <Check size={16} /> Accept
+                                                    </button>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={() => handleDeleteSeller(s.uid, s.shopName)}
+                                                        style={{ 
+                                                            padding: '8px 16px', 
+                                                            fontSize: '0.85rem', 
+                                                            fontWeight: 700, 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '6px',
+                                                            backgroundColor: '#ef4444',
+                                                            borderColor: '#ef4444',
+                                                            color: 'white'
+                                                        }}
+                                                        title="Permanently delete seller and all their data"
+                                                    >
+                                                        <X size={16} /> Delete
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -880,6 +1036,23 @@ export default function AdminDashboard() {
                     <div className="flex justify-between items-center">
                         <h3 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Blocked Applications ({blockedSellers.length})</h3>
                         <div className="flex gap-2">
+                            <button
+                                className="btn"
+                                onClick={handleDeleteAllBlockedSellers}
+                                disabled={blockedSellers.length === 0}
+                                style={{ 
+                                    padding: '0.5rem 1rem', 
+                                    fontSize: '0.85rem',
+                                    backgroundColor: '#ef4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    opacity: blockedSellers.length === 0 ? 0.5 : 1,
+                                    cursor: blockedSellers.length === 0 ? 'not-allowed' : 'pointer'
+                                }}
+                                title="Delete all blocked sellers permanently"
+                            >
+                                <X size={16} /> Delete All ({blockedSellers.length})
+                            </button>
                             <input
                                 type="text"
                                 placeholder="Search blocked sellers..."
@@ -1003,13 +1176,32 @@ export default function AdminDashboard() {
                                                 </button>
                                             </td>
                                             <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
-                                                <button
-                                                    className="btn btn-primary"
-                                                    onClick={() => handleUnblockSeller(s.uid)}
-                                                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 700, borderRadius: '8px', gap: '6px', background: 'var(--success)', borderColor: 'var(--success)' }}
-                                                >
-                                                    <Check size={14} /> Unblock
-                                                </button>
+                                                <div className="flex gap-2 justify-end">
+                                                    <button
+                                                        className="btn btn-primary"
+                                                        onClick={() => handleUnblockSeller(s.uid)}
+                                                        style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 700, borderRadius: '8px', gap: '6px', background: 'var(--success)', borderColor: 'var(--success)' }}
+                                                    >
+                                                        <Check size={14} /> Unblock
+                                                    </button>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={() => handleDeleteSeller(s.uid, s.shopName)}
+                                                        style={{ 
+                                                            padding: '6px 14px', 
+                                                            fontSize: '0.8rem', 
+                                                            fontWeight: 700, 
+                                                            borderRadius: '8px', 
+                                                            gap: '6px',
+                                                            background: '#ef4444',
+                                                            borderColor: '#ef4444',
+                                                            color: 'white'
+                                                        }}
+                                                        title="Permanently delete seller and all their data"
+                                                    >
+                                                        <X size={14} /> Delete
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -1037,17 +1229,20 @@ export default function AdminDashboard() {
 
         // Filter products by search term, category, and date
         const filteredProductsList = products.filter(p => {
+            const productName = p.name || p.title || '';
+            const productCategory = p.category || '';
+            
             const matchesSearch = searchTerm === '' ||
-                p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.category.toLowerCase().includes(searchTerm.toLowerCase());
+                productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                productCategory.toLowerCase().includes(searchTerm.toLowerCase());
 
-            const matchesDate = selectedProductDate === '' || p.date === (() => {
+            const matchesDate = selectedProductDate === '' || (p.date === (() => {
                 const date = new Date(selectedProductDate);
                 const day = String(date.getDate()).padStart(2, '0');
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const year = date.getFullYear();
                 return `${day}/${month}/${year}`;
-            })();
+            })());
 
             return matchesSearch && matchesDate;
         });
@@ -1109,6 +1304,7 @@ export default function AdminDashboard() {
                             </thead>
                             <tbody>
                                 {filteredProductsList.map(p => {
+                                    const productName = p.name || p.title || 'Unnamed Product';
                                     const hasDiscount = p.discountedPrice && p.discountedPrice < p.price;
                                     const isOutOfStock = p.stock === 0;
                                     const displayStatus = isOutOfStock ? 'Inactive' : (p.status || 'Active');
@@ -1121,10 +1317,10 @@ export default function AdminDashboard() {
                                             onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                                         >
                                             <td style={{ padding: '1.25rem 1.5rem' }}>
-                                                <span style={{ fontWeight: 600, fontSize: '1rem' }}>{p.title}</span>
+                                                <span style={{ fontWeight: 600, fontSize: '1rem' }}>{productName}</span>
                                             </td>
                                             <td style={{ padding: '1.25rem 1.5rem' }}>
-                                                <span style={{ fontSize: '0.9rem' }}>{p.seller}</span>
+                                                <span style={{ fontSize: '0.9rem' }}>{p.seller || p.sellerId || 'Unknown'}</span>
                                             </td>
                                             <td style={{ padding: '1.25rem 1.5rem' }}>
                                                 <span style={{ fontSize: '0.9rem' }}>{p.category}</span>
@@ -1579,7 +1775,32 @@ export default function AdminDashboard() {
                                 }
 
                                 return matchesSearch && matchesCategory && matchesDate;
-                            }).map(s => {
+                            }).length === 0 ? (
+                                <tr>
+                                    <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        {analytics.length === 0 
+                                            ? 'No approved sellers with analytics data yet. Sellers will appear here once they are approved and have products/orders.' 
+                                            : 'No sellers found matching your search criteria.'}
+                                    </td>
+                                </tr>
+                            ) : (
+                                analytics.filter(s => {
+                                    const matchesSearch = payoutSearch === '' ||
+                                        (s.shopName || '').toLowerCase().includes(payoutSearch.toLowerCase()) ||
+                                        (s.email || '').toLowerCase().includes(payoutSearch.toLowerCase());
+                                    const matchesCategory = payoutCategory === '' || s.category === payoutCategory;
+
+                                    // Date filter
+                                    let matchesDate = true;
+                                    if (payoutDate && s.createdAt) {
+                                        // Convert input date (YYYY-MM-DD) to dd/mm/yyyy for comparison
+                                        const inputDate = new Date(payoutDate);
+                                        const inputDDMMYYYY = `${String(inputDate.getDate()).padStart(2, '0')}/${String(inputDate.getMonth() + 1).padStart(2, '0')}/${inputDate.getFullYear()}`;
+                                        matchesDate = s.joined === inputDDMMYYYY;
+                                    }
+
+                                    return matchesSearch && matchesCategory && matchesDate;
+                                }).map(s => {
                                 // Format date as dd/mm/yyyy
                                 const formatDate = (dateString) => {
                                     if (!dateString) return 'N/A';
@@ -1644,7 +1865,7 @@ export default function AdminDashboard() {
                                         </td>
                                     </tr>
                                 );
-                            })}
+                            }))}
                         </tbody>
                     </table>
                 </div>
