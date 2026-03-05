@@ -1,0 +1,12 @@
+{
+    "watch": [
+        "src"
+    ],
+    "ignore": [
+        "debug-gemini.log",
+        "node_modules",
+        ".git",
+        "extracted-*"
+    ],
+    "ext": "js,json"
+}

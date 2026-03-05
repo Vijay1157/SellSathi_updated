@@ -1,16 +1,16 @@
 const nodemailer = require('nodemailer');
 const path = require('path');
 
-// Configure credentials (preferably via env variables)
+// Configure credentials via env variables
 const MAILER_CONFIG = {
-    user: process.env.MAILER_GOOGLE_USER_EMAIL || '1by22is075@bmsit.in',
-    pass: process.env.MAILER_GOOGLE_USER_PASSWORD || 'fzddfkhhhdhscehp',
+    user: process.env.MAILER_GOOGLE_USER_EMAIL,
+    pass: process.env.MAILER_GOOGLE_USER_PASSWORD,
     service: 'gmail'
 };
 
 // Create reusable transporter
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    service: MAILER_CONFIG.service,
     auth: {
         user: MAILER_CONFIG.user,
         pass: MAILER_CONFIG.pass

@@ -22,11 +22,8 @@ export default function Footer() {
             return;
         }
 
-        // For SELLER role — navigate to registration page which will:
-        //   • Show PENDING screen if application is under review
-        //   • Redirect to /seller/dashboard if already APPROVED
-        //   • Show registration form if somehow NONE
-        navigate('/seller/register');
+        // Open seller landing page in new tab
+        window.open('/seller', '_blank');
     };
 
     return (
