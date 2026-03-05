@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, CreditCard, Building, DollarSign, Smartphone, Loader } from 'lucide-react';
+import { X, CreditCard, Building, DollarSign, Smartphone, Loader, User } from 'lucide-react';
 import { authFetch } from '@/modules/shared/utils/api';
 
 export default function BankDetailsModal({ sellerId, onClose }) {

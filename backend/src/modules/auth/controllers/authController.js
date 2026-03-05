@@ -222,5 +222,115 @@ const uploadImage = async (req, res) => {
     }
 };
 
-module.exports = { login, register, applySeller, extractAadhar, uploadImage };
+/**
+ * Handles test login with phone and OTP.
+ */
+const testLogin = async (req, res) => {
+    try {
+        const { phone, otp } = req.body;
+
+        if (!phone) {
+            return res.status(400).json({ success: false, message: "Phone number is required" });
+        }
+
+        // For test mode, accept any 6-digit OTP
+        if (!otp || otp.length !== 6) {
+            return res.status(400).json({ success: false, message: "Invalid OTP" });
+        }
+
+        const uid = `test_${phone.replace(/[^0-9]/g, '')}`;
+        const userRef = db.collection("users").doc(uid);
+        const userSnap = await userRef.get();
+
+        if (!userSnap.exists) {
+            // Create new test user
+            await userRef.set({
+                uid,
+                phone,
+                fullName: `User ${phone.slice(-4)}`,
+                role: "CONSUMER",
+                isActive: true,
+                isTest: true,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            return res.status(200).json({
+                success: true,
+                uid,
+                role: "CONSUMER",
+                fullName: `User ${phone.slice(-4)}`,
+                status: "NEW_USER",
+                message: "New test user created as CONSUMER",
+            });
+        }
+
+        const userData = userSnap.data();
+        if (userData.isActive === false) {
+            return res.status(403).json({
+                success: false,
+                role: userData.role,
+                message: "Account is disabled. Contact support."
+            });
+        }
+
+        // Check if user is a seller
+        const sellerSnap = await db.collection("sellers").doc(uid).get();
+        if (sellerSnap.exists) {
+            const sellerData = sellerSnap.data();
+            const sellerStatus = sellerData.sellerStatus || "PENDING";
+            
+            if (userData.role !== "SELLER") {
+                try { await userRef.update({ role: "SELLER" }); } catch (_) { }
+            }
+
+            if (sellerStatus === "APPROVED") {
+                return res.status(200).json({
+                    success: true,
+                    uid,
+                    role: "SELLER",
+                    status: "APPROVED",
+                    sellerStatus: "APPROVED",
+                    shopName: sellerData.shopName,
+                    message: "Seller login successful"
+                });
+            }
+            if (sellerStatus === "REJECTED") {
+                return res.status(403).json({
+                    success: false,
+                    uid,
+                    role: "SELLER",
+                    status: "REJECTED",
+                    message: "Your seller application was rejected."
+                });
+            }
+            return res.status(200).json({
+                success: true,
+                uid,
+                role: "SELLER",
+                status: "PENDING",
+                sellerStatus: "PENDING",
+                shopName: sellerData.shopName,
+                message: "Seller approval pending"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            uid,
+            role: userData.role || "CONSUMER",
+            status: "AUTHORIZED",
+            fullName: userData.fullName,
+            message: "Login successful"
+        });
+
+    } catch (error) {
+        console.error("TEST LOGIN ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Test login failed: " + error.message
+        });
+    }
+};
+
+module.exports = { login, register, applySeller, extractAadhar, uploadImage, testLogin };
 

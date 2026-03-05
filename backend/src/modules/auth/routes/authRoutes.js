@@ -7,6 +7,7 @@ const { verifyAuth } = require('../../../middleware/auth');
 const upload = require('../../../middleware/upload');
 
 router.post('/login', authController.login);
+router.post('/test-login', authController.testLogin);
 router.post('/register', authController.register);
 router.post('/apply-seller', verifyAuth, authController.applySeller);
 router.post('/extract-aadhar', verifyAuth, upload.single('aadharImage'), authController.extractAadhar);
