@@ -102,23 +102,47 @@ const getAllSellers = async (req, res) => {
             const sellerData = doc.data();
             const userData = userMap[doc.id] || {};
             const fin = financialsMap[doc.id] || { totalRevenue: 0, deliveredCount: 0 };
+            
+            // Format joined date safely
+            let joinedDate = 'N/A';
+            if (sellerData.appliedAt) {
+                try {
+                    joinedDate = formatDateDDMMYYYY(sellerData.appliedAt);
+                } catch (e) {
+                    console.error(`Date formatting error for seller ${doc.id}:`, e);
+                }
+            }
+            
             return {
                 uid: doc.id,
-                name: sellerData.shopName,
+                name: sellerData.shopName || 'Unknown Shop',
                 email: userData.email || userData.phone || "N/A",
                 phone: userData.phone || "N/A",
-                status: sellerData.sellerStatus,
-                joined: formatDateDDMMYYYY(sellerData.appliedAt),
-                shopName: sellerData.shopName,
-                category: sellerData.category,
+                status: sellerData.sellerStatus || 'PENDING',
+                joined: joinedDate,
+                shopName: sellerData.shopName || 'Unknown Shop',
+                category: sellerData.category || 'Uncategorized',
                 isBlocked: sellerData.isBlocked || false,
                 blockReason: sellerData.blockReason || null,
+                // Include all seller data fields for Review Data modal
+                extractedName: sellerData.extractedName || null,
+                aadhaarNumber: sellerData.aadhaarNumber || null,
+                aadhaarImageUrl: sellerData.aadhaarImageUrl || null,
+                age: sellerData.age || null,
+                gender: sellerData.gender || null,
+                address: sellerData.address || null,
                 // Include bank details
                 bankName: sellerData.bankName || null,
                 accountHolderName: sellerData.accountHolderName || null,
                 accountNumber: sellerData.accountNumber || null,
                 ifscCode: sellerData.ifscCode || null,
                 upiId: sellerData.upiId || null,
+                // Include timestamps
+                createdAt: sellerData.createdAt || sellerData.appliedAt || null,
+                appliedAt: sellerData.appliedAt || null,
+                approvedAt: sellerData.approvedAt || null,
+                rejectedAt: sellerData.rejectedAt || null,
+                blockedAt: sellerData.blockedAt || null,
                 financials: {
                     totalProducts: productCountMap[doc.id] || 0,
                     totalRevenue: fin.totalRevenue,
@@ -132,6 +156,8 @@ const getAllSellers = async (req, res) => {
         const pendingSellers = sellers.filter(s => s.status === 'PENDING' && !s.isBlocked);
         const rejectedSellers = sellers.filter(s => s.status === 'REJECTED' && !s.isBlocked);
         const blockedSellers = sellers.filter(s => s.isBlocked);
+
+        console.log(`[GetAllSellers] Total sellers: ${sellers.length}, Approved: ${approvedSellers.length}, Pending: ${pendingSellers.length}, Rejected: ${rejectedSellers.length}, Blocked: ${blockedSellers.length}`);
 
         // Return both old format (sellers array) and new format (categorized)
         // This maintains backward compatibility with frontend
