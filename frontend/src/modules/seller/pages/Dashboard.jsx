@@ -189,7 +189,7 @@ export default function SellerDashboard() {
 
         try {
             setLoading(true); // Re-use main loader or add a specific state if preferred
-            const response = await authFetch(`/api/orders/${orderId}/label`);
+            const response = await authFetch(`/orders/${orderId}/label`);
             const data = await response.json();
 
             if (data.success && data.labelUrl) {
@@ -207,12 +207,12 @@ export default function SellerDashboard() {
         }
     };
 
-   const statCards = [
-    { label: 'Total Sales', value: `₹${stats?.totalSales?.toLocaleString() || 0}`, icon: <DollarSign />, color: 'var(--success)' },
-    { label: 'Active Products', value: stats?.totalProducts || 0, icon: <Package />, color: 'var(--primary)' },
-    { label: 'New Orders', value: stats?.newOrders || 0, icon: <ShoppingBag />, color: 'var(--secondary)' },
-    { label: 'Pending', value: stats?.pendingOrders || 0, icon: <Truck />, color: 'var(--warning)' },
-   ];
+    const statCards = [
+        { label: 'Total Sales', value: `₹${stats?.totalSales?.toLocaleString() || 0}`, icon: <DollarSign />, color: 'var(--success)' },
+        { label: 'Active Products', value: stats?.totalProducts || 0, icon: <Package />, color: 'var(--primary)' },
+        { label: 'New Orders', value: stats?.newOrders || 0, icon: <ShoppingBag />, color: 'var(--secondary)' },
+        { label: 'Pending', value: stats?.pendingOrders || 0, icon: <Truck />, color: 'var(--warning)' },
+    ];
 
     if (loading) {
         return (

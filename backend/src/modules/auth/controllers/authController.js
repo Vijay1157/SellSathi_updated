@@ -6,7 +6,7 @@ const { admin, db } = require('../../../config/firebase');
  */
 const login = async (req, res) => {
     try {
-        const { idToken, isTest, email: testEmail } = req.body;
+        const { idToken, isTest, email: testEmail, phone } = req.body;
 
         let uid;
         let phoneNumber = null;
@@ -14,9 +14,10 @@ const login = async (req, res) => {
         let fullName = null;
 
         if (isTest) {
-            uid = `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
-            email = testEmail;
-            fullName = testEmail?.split('@')[0] || "Test User";
+            uid = phone ? `test_${phone.replace(/[^0-9]/g, '')}` : `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
+            email = testEmail || null;
+            fullName = req.body.fullName || testEmail?.split('@')[0] || "Test User";
+            phoneNumber = phone || null;
         } else {
             if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
             const decodedToken = await admin.auth().verifyIdToken(idToken);

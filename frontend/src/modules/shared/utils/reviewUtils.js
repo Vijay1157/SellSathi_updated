@@ -24,7 +24,7 @@ export const fetchProductReviews = async (productId) => {
     }
 
     try {
-        const response = await authFetch(`/api/products/${productId}/reviews`);
+        const response = await authFetch(`/reviews/product/${productId}`);
         const data = await response.json();
 
         if (data.success) {
