@@ -61,4 +61,43 @@ const getProductReviews = async (req, res) => {
     }
 };
 
-module.exports = { submitReview, getProductReviews };
+/**
+ * Check if a user is eligible to review a specific product.
+ */
+const checkEligibility = async (req, res) => {
+    try {
+        const { productId } = req.params;
+        const uid = req.user.uid;
+
+        const snapshot = await db.collection("orders")
+            .where("userId", "==", uid)
+            .where("status", "==", "Delivered")
+            .get();
+
+        let eligible = false;
+        let eligibleOrder = null;
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            const item = (data.items || []).find(i => (i.productId === productId || i.id === productId));
+            if (item) {
+                eligible = true;
+                eligibleOrder = {
+                    orderId: data.orderId || doc.id,
+                    productId: item.productId || item.id,
+                    productName: item.name,
+                    productImage: item.imageUrl || item.image,
+                    deliveredAt: data.deliveredAt || data.updatedAt || data.createdAt
+                };
+                break;
+            }
+        }
+
+        return res.status(200).json({ success: true, eligible, order: eligibleOrder });
+    } catch (error) {
+        console.error("[ReviewEligibility] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to check eligibility" });
+    }
+};
+
+module.exports = { submitReview, getProductReviews, checkEligibility };

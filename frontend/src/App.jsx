@@ -25,8 +25,10 @@ import ProtectedRoute from '@/modules/shared/components/common/ProtectedRoute';
 
 function AppContent() {
   const location = useLocation();
-  const isSellerPage = location.pathname.startsWith('/seller');
-  
+  // Only hide navbar for registration and onboarding flows
+  const isSellerPage = location.pathname.startsWith('/seller/register') ||
+    location.pathname.startsWith('/seller/onboarding');
+
   // Routes where footer should be hidden
   const hideFooterRoutes = [
     "/seller/register",

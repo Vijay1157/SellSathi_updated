@@ -35,14 +35,29 @@ const getStats = async (req, res) => {
             totalOrders: totalOrdersCount.data().count,
             todayOrders: Math.floor(totalOrdersCount.data().count * 0.3), // Mock logic from original
             pendingApprovals: pendingSellersCount.data().count,
+            totalFeedback: 0,
             ordersToDeliver: ordersToDeliverCount.data().count
         };
 
-        cache.set('adminStats', stats);
+        cache.set('adminStats', stats, 5 * 60 * 1000); // 5 min cache
         return res.status(200).json({ success: true, stats });
     } catch (error) {
         console.error("[AdminStats] ERROR:", error);
         return res.status(500).json({ success: false, message: "Failed to fetch stats" });
+    }
+};
+
+/**
+ * Get pending sellers for approval.
+ */
+const getPendingSellers = async (req, res) => {
+    try {
+        const snapshot = await db.collection("sellers").where("sellerStatus", "==", "PENDING").get();
+        const sellers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+        return res.status(200).json({ success: true, sellers });
+    } catch (error) {
+        console.error("[PendingSellers] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch pending sellers" });
     }
 };
 
@@ -108,7 +123,7 @@ const getAllSellers = async (req, res) => {
                 email: userData.email || userData.phone || "N/A",
                 phone: userData.phone || "N/A",
                 status: sellerData.sellerStatus,
-                joined: formatDateDDMMYYYY(sellerData.appliedAt),
+                joined: formatDateDDMMYYYY(sellerData.approvedAt || sellerData.appliedAt),
                 shopName: sellerData.shopName,
                 category: sellerData.category,
                 isBlocked: sellerData.isBlocked || false,
@@ -151,6 +166,121 @@ const getAllSellers = async (req, res) => {
         return res.status(500).json({ success: false, message: "Failed to fetch all sellers" });
     }
 };
+
+/**
+ * Get all products for admin dashboard.
+ */
+const getAllProducts = async (req, res) => {
+    try {
+        const snapshot = await db.collection("products").orderBy("createdAt", "desc").limit(500).get();
+        const products = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            date: formatDateDDMMYYYY(doc.data().createdAt)
+        }));
+        return res.status(200).json({ success: true, products });
+    } catch (error) {
+        console.error("[AdminProducts] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch products" });
+    }
+};
+
+/**
+ * Get all orders for admin dashboard.
+ */
+const getAllOrders = async (req, res) => {
+    try {
+        const snapshot = await db.collection("orders").orderBy("createdAt", "desc").limit(500).get();
+        const orders = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            date: formatDateDDMMYYYY(doc.data().createdAt)
+        }));
+        return res.status(200).json({ success: true, orders });
+    } catch (error) {
+        console.error("[AdminOrders] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch orders" });
+    }
+};
+
+/**
+ * Get all reviews for admin dashboard.
+ */
+const getAllReviews = async (req, res) => {
+    try {
+        const snapshot = await db.collection("reviews").orderBy("createdAt", "desc").limit(500).get();
+        const reviews = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            date: formatDateDDMMYYYY(doc.data().createdAt)
+        }));
+        return res.status(200).json({ success: true, reviews });
+    } catch (error) {
+        console.error("[AdminReviews] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch reviews" });
+    }
+};
+
+/**
+ * Get seller analytics for admin dashboard.
+ */
+const getSellerAnalytics = async (req, res) => {
+    try {
+        const sellersSnap = await db.collection("sellers").where("sellerStatus", "==", "APPROVED").get();
+        const analytics = await Promise.all(sellersSnap.docs.map(async (doc) => {
+            const seller = doc.data();
+            const [productsSnap, ordersSnap] = await Promise.all([
+                db.collection("products").where("sellerId", "==", doc.id).get(),
+                db.collection("orders").where("sellerId", "==", doc.id).get()
+            ]);
+
+            let totalSales = 0;
+            let unitsSold = 0;
+            let totalStock = 0;
+
+            const productMatrix = productsSnap.docs.map(pDoc => {
+                const prod = pDoc.data();
+                const soldCount = (prod.soldCount || 0);
+                unitsSold += soldCount;
+                totalStock += (prod.stock || 0);
+                const revenue = soldCount * (prod.discountPrice || prod.price || 0);
+                totalSales += revenue;
+
+                return {
+                    id: pDoc.id,
+                    name: prod.title || prod.name,
+                    price: prod.price || 0,
+                    discountedPrice: prod.discountPrice || null,
+                    stock: prod.stock || 0,
+                    sold: soldCount,
+                    revenue: revenue
+                };
+            });
+
+            return {
+                uid: doc.id,
+                shopName: seller.shopName,
+                category: seller.category,
+                joined: formatDateDDMMYYYY(seller.approvedAt || seller.appliedAt),
+                email: seller.email || "N/A",
+                metrics: {
+                    totalProducts: productsSnap.size,
+                    unitsSold: unitsSold,
+                    totalStockLeft: totalStock,
+                    grossRevenue: totalSales
+                },
+                productMatrix: productMatrix
+            };
+        }));
+
+        return res.status(200).json({ success: true, analytics });
+    } catch (error) {
+        console.error("[AdminAnalytics] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch analytics" });
+    }
+};
+
+const adminService = require('../services/adminService');
 
 /**
  * Approve a seller.
@@ -257,6 +387,7 @@ const blockSeller = async (req, res) => {
 };
 
 /**
+<<<<<<< HEAD
  * Unblock a seller.
  */
 const unblockSeller = async (req, res) => {
@@ -894,3 +1025,32 @@ const getSellerBankDetails = async (req, res) => {
 
 
 module.exports = { getStats, getAllSellers, approveSeller, rejectSeller, acceptRejectedSeller, blockSeller, unblockSeller, deleteSeller, deleteAllBlockedSellers, deleteAllRejectedSellers, getAllProducts, getAllOrders, getAllReviews, getSellerAnalytics, getSellerBankDetails };
+=======
+ * Delete a review.
+ */
+const deleteReview = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.collection("reviews").doc(id).delete();
+        cache.invalidate('adminStats');
+        return res.status(200).json({ success: true, message: "Review deleted successfully" });
+    } catch (error) {
+        console.error("[DeleteReview] ERROR:", error);
+        return res.status(500).json({ success: false, message: "Failed to delete review" });
+    }
+};
+
+module.exports = {
+    getStats,
+    getPendingSellers,
+    getAllSellers,
+    getAllProducts,
+    getAllOrders,
+    getAllReviews,
+    getSellerAnalytics,
+    approveSeller,
+    rejectSeller,
+    blockSeller,
+    deleteReview
+};
+>>>>>>> rahul

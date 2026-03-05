@@ -7,4 +7,6 @@ const { verifyAuth } = require('../../../middleware/auth');
 router.post('/', verifyAuth, reviewController.submitReview);
 router.get('/product/:productId', reviewController.getProductReviews);
 
+router.get('/check-eligibility/:productId', verifyAuth, reviewController.checkEligibility);
+
 module.exports = router;
