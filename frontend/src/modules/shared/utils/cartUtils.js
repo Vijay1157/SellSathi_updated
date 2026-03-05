@@ -1,5 +1,5 @@
 
-import { auth } from '../config/firebase';
+import { auth } from '@/modules/shared/config/firebase';
 import { authFetch } from './api';
 import { getProductPricing } from './priceUtils';
 
@@ -56,10 +56,9 @@ export const addToCart = async (product, selections = {}) => {
             return { success: true, message: "Added to guest cart" };
         } else {
             // Logged in: Backend API
-            const response = await authFetch(`/consumer/${uid}/cart`, {
+            const response = await authFetch(`/api/user/${uid}/cart/add`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'add', item: cartItemData })
+                body: JSON.stringify({ cartItem: cartItemData })
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.message || 'Failed to add to backend');
@@ -81,7 +80,7 @@ export const listenToCart = (callback) => {
                 const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
                 callback(localCart);
             } else {
-                const response = await authFetch(`/consumer/${uid}/cart`);
+                const response = await authFetch(`/api/user/${uid}/cart`);
                 const data = await response.json();
                 if (data.success) {
                     callback(data.cart || []);  // Fixed: use data.cart instead of data.items
@@ -113,10 +112,8 @@ export const removeFromCart = async (cartItemId) => {
             window.dispatchEvent(new Event('cartUpdate'));
             return { success: true };
         } else {
-            const response = await authFetch(`/consumer/${uid}/cart`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'remove', itemId: cartItemId })
+            const response = await authFetch(`/api/user/${uid}/cart/${cartItemId}`, {
+                method: 'DELETE'
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.message || 'Failed to remove');
@@ -139,10 +136,9 @@ export const clearCart = async () => {
             return { success: true };
         } else {
             // Clear cart by setting empty array
-            const response = await authFetch(`/consumer/${uid}/cart`, {
+            const response = await authFetch(`/api/user/${uid}/cart/add`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'clear' })
+                body: JSON.stringify({ cartItem: null, clearCart: true })
             });
             const data = await response.json();
             if (!data.success) throw new Error(data.message || 'Failed to clear');
@@ -152,6 +148,39 @@ export const clearCart = async () => {
         }
     } catch (error) {
         console.error("Error clearing cart:", error);
+        return { success: false, message: error.message };
+    }
+};
+
+export const updateCartItemQuantity = async (cartItemId, newQuantity) => {
+    try {
+        const uid = getUID();
+        if (!uid) {
+            // Guest mode: localStorage
+            const localCart = JSON.parse(localStorage.getItem('tempCart') || '[]');
+            const itemIndex = localCart.findIndex(item => item.id === cartItemId);
+            
+            if (itemIndex > -1) {
+                localCart[itemIndex].quantity = newQuantity;
+                localStorage.setItem('tempCart', JSON.stringify(localCart));
+                window.dispatchEvent(new Event('cartUpdate'));
+                return { success: true };
+            }
+            return { success: false, message: 'Item not found' };
+        } else {
+            // Logged in: Backend API
+            const response = await authFetch(`/api/user/${uid}/cart/${cartItemId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ quantity: newQuantity })
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || 'Failed to update quantity');
+
+            window.dispatchEvent(new Event('cartUpdate'));
+            return { success: true };
+        }
+    } catch (error) {
+        console.error("Error updating cart quantity:", error);
         return { success: false, message: error.message };
     }
 };

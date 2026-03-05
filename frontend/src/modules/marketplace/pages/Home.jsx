@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingCart, Star, Heart, Eye, ArrowRight, ChevronLeft, ChevronRight, Clock, Zap, TrendingUp, Sparkles, Award } from 'lucide-react';
-import { collection, getDocs, limit, query, where, orderBy } from 'firebase/firestore';
+import { ShoppingCart, Heart, Eye, ArrowRight, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { collection, getDocs, limit, query } from 'firebase/firestore';
 import { db, auth } from '@/modules/shared/config/firebase';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
 import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
 import Rating from '@/modules/shared/components/common/Rating';
+import { fetchWithCache } from '@/modules/shared/utils/firestoreCache';
 import PriceDisplay from '@/modules/shared/components/common/PriceDisplay';
 import { fetchProductReviews } from '@/modules/shared/utils/reviewUtils';
 
@@ -41,225 +42,531 @@ const HERO_SLIDES = [
     }
 ];
 
-
-const TODAY_DEALS = [
-    {
-        id: "deal-1",
-        name: "MacBook Pro M2 Max",
-        category: "Electronics",
-        price: 129999,
-        oldPrice: 149498,
-        discount: "13% OFF",
-        image: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800",
-        rating: 4.8,
-        reviews: 1256,
-        timer: "7h 56m",
-        colors: ["#3D3D3F", "#E3E4E5"]
-    },
-    {
-        id: "deal-2",
-        name: "Sony WH-1000XM4 Noise Cancelling",
-        category: "Electronics",
-        price: 19999,
-        oldPrice: 29999,
-        discount: "33% OFF",
-        image: "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=800",
-        rating: 4.9,
-        reviews: 892,
-        timer: "11h 56m",
-        colors: ["#000000", "#C9C4B9"],
-        stock: 0,
-        status: 'Out of Stock'
-    },
-    {
-        id: "deal-3",
-        name: "Apple Watch Series 8",
-        category: "Electronics",
-        price: 34999,
-        oldPrice: 42999,
-        discount: "18% OFF",
-        image: "https://images.unsplash.com/photo-1542496658-e33a6d0d50f6?w=800",
-        rating: 4.8,
-        reviews: 567,
-        timer: "3h 56m",
-        colors: ["#1C1C1C", "#E3E4E5", "#0F1626"]
-    },
-    {
-        id: "deal-4",
-        name: "iPad Pro M2 12.9",
-        category: "Electronics",
-        price: 99999,
-        oldPrice: 112999,
-        discount: "11% OFF",
-        image: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=800",
-        rating: 4.9,
-        reviews: 345,
-        timer: "5h 56m",
-        colors: ["#3D3D3F", "#E3E4E5"],
-        stock: 0,
-        status: 'Out of Stock'
-    },
-    {
-        id: "deal-special",
-        name: "Premium Ultra Pro Max Elite",
-        category: "Electronics",
-        price: 199999,
-        oldPrice: 249999,
-        discount: "20% OFF",
-        image: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=800",
-        rating: 5.0,
-        reviews: 9999,
-        timer: "24h 00m",
-        colors: ["#000000", "#C0C0C0", "#0000FF"]
-    }
-];
-
 const homeStyles = `
-    .product-uniform-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
+    /* Professional Grid System - 5 columns desktop, compact spacing */
+    .product-uniform-grid { 
+        display: grid; 
+        grid-template-columns: repeat(5, 1fr); 
+        gap: 16px; 
+    }
+    
+    @media (max-width: 1024px) {
+        .product-uniform-grid {
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .product-uniform-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .product-uniform-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
     .product-card-premium { 
-        background: white; 
-        border-radius: 1.25rem; 
-        padding: 1rem; 
-        border: 1px solid #e2e8f0; 
-        transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+        background: #FFFFFF; 
+        border-radius: var(--card-border-radius, 10px); 
+        padding: 12px; 
+        border: 2px solid rgba(0, 0, 0, 0.15); 
+        transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1); 
         display: flex; 
         flex-direction: column; 
         height: 100%; 
         cursor: pointer;
         position: relative;
+        max-height: 360px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
     .product-card-premium:hover {
         transform: translateY(-4px);
-        box-shadow: 0 12px 24px -8px rgba(0,0,0,0.1);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        border-color: #2563EB;
+        background: #FAFBFC;
     }
     .card-media { 
-        height: 300px; 
-        background: #f1f5f9; 
-        border-radius: 0.75rem; 
+        height: 170px; 
+        background: #F9FAFB; 
+        border-radius: var(--radius-md, 8px); 
         position: relative; 
         overflow: hidden; 
         display: flex; 
         align-items: center; 
         justify-content: center; 
-        margin-bottom: 1rem; 
-        padding: 1rem;
+        margin-bottom: 10px; 
+        padding: 8px;
+        transition: background 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid #E5E7EB;
+    }
+    .product-card-premium:hover .card-media {
+        background: #F3F4F6;
     }
     .card-media img { 
         width: 100%; 
         height: 100%; 
         object-fit: contain; 
-        transition: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: transform var(--transition-slow, 300ms);
     }
     .product-card-premium:hover .card-media img {
         transform: scale(1.05);
     }
     .discount-badge { 
         position: absolute; 
-        top: 0.5rem; 
-        left: 0.5rem; 
-        background: #ef4444; 
-        color: white; 
-        padding: 0.25rem 0.6rem; 
-        border-radius: 0.5rem; 
-        font-weight: 700; 
-        font-size: 0.75rem; 
+        top: 8px; 
+        left: 8px; 
+        background: var(--error); 
+        color: var(--white); 
+        padding: 4px 8px; 
+        border-radius: var(--radius-sm, 6px); 
+        font-weight: var(--font-bold, 700); 
+        font-size: 10px; 
         z-index: 2;
     }
     
     .overlay-tools {
         position: absolute;
-        top: 0.75rem;
-        right: 0.75rem;
+        top: 8px;
+        right: 8px;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
-        z-index: 3;
+        gap: 4px;
+        z-index: 20;
     }
     .tool-btn {
-        width: 36px;
-        height: 36px;
-        background: white;
-        border-radius: 8px;
+        width: 32px;
+        height: 32px;
+        background: #FFFFFF;
+        backdrop-filter: blur(10px);
+        border-radius: var(--radius-md, 8px);
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid #e2e8f0;
+        border: 1px solid #E5E7EB;
         cursor: pointer;
-        transition: 0.2s;
-        color: #64748b;
+        transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+        color: #6B7280;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
     .tool-btn:hover {
-        background: var(--primary);
-        color: white;
-        border-color: var(--primary);
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+        color: #FFFFFF;
+        border-color: transparent;
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
     }
     .tool-btn.active {
-        color: #ef4444;
-        border-color: #ef4444;
+        background: #FEE2E2;
+        color: #EF4444;
+        border-color: #EF4444;
+    }
+    .tool-btn.active:hover {
+        background: #EF4444;
+        color: #FFFFFF;
+        border-color: #EF4444;
     }
 
-    .card-info { flex: 1; display: flex; flex-direction: column; padding: 0.25rem; }
-    .card-info .category-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; }
-    .card-info .category { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
-    .card-info .sub-category { font-size: 0.75rem; font-weight: 600; color: #64748b; }
-    .card-info .title { font-size: 1.125rem; font-weight: 700; margin: 0.25rem 0 0.5rem; color: var(--text); line-height: 1.4; height: 2.8em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .card-info { 
+        flex: 1; 
+        display: flex; 
+        flex-direction: column; 
+        padding: var(--space-1, 4px); 
+    }
+    .card-info .category-row { 
+        display: flex; 
+        align-items: center; 
+        gap: var(--space-2, 8px); 
+        margin-bottom: var(--space-1, 4px); 
+    }
+    .card-info .category { 
+        font-size: var(--text-xs, 12px); 
+        font-weight: var(--font-bold, 700); 
+        text-transform: uppercase; 
+        color: var(--text-tertiary); 
+        letter-spacing: 0.05em; 
+    }
+    .card-info .sub-category { 
+        font-size: var(--text-sm, 14px); 
+        font-weight: var(--font-semibold, 600); 
+        color: var(--text-secondary); 
+    }
+    .card-info .title { 
+        font-size: 16px; 
+        font-weight: var(--font-bold, 700); 
+        margin: 4px 0 6px; 
+        color: var(--text-primary); 
+        line-height: 1.3; 
+        height: 2.6em;
+        min-height: 2.6em;
+        overflow: hidden; 
+        display: -webkit-box; 
+        -webkit-line-clamp: 2; 
+        -webkit-box-orient: vertical; 
+    }
     
-    .rating-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .rating-row { 
+        display: flex; 
+        align-items: center; 
+        gap: 8px; 
+        margin-bottom: 6px;
+        min-height: 20px;
+    }
 
     .info-bottom { 
         margin-top: auto; 
         display: flex; 
         justify-content: space-between; 
         align-items: center; 
+        gap: 8px;
+        padding-top: 8px;
+        border-top: 1px solid #E5E7EB;
     }
-    .price-group { display: flex; flex-direction: column; gap: 0.1rem; }
-    .current-price { font-size: 1.4rem; font-weight: 950; color: #0f172a; }
-    .old-price { font-size: 0.9rem; text-decoration: line-through; color: #94a3b8; font-weight: 600; }
+    .price-group { 
+        display: flex; 
+        flex-direction: column; 
+        gap: 4px;
+        flex: 1;
+    }
+    .current-price { 
+        font-size: 18px; 
+        font-weight: var(--font-extrabold, 800); 
+        color: var(--text-primary); 
+    }
+    .old-price { 
+        font-size: 12px; 
+        text-decoration: line-through; 
+        color: var(--text-tertiary); 
+        font-weight: var(--font-semibold, 600); 
+    }
     
     .add-to-cart-simple { 
-        width: 100%; 
-        padding: 0.8rem; 
-        background: var(--primary); 
-        color: white; 
-        border-radius: 8px; 
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        padding: 0;
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+        color: var(--white); 
+        border-radius: var(--radius-md, 8px); 
         display: flex; 
         align-items: center; 
         justify-content: center; 
-        gap: 0.5rem; 
-        font-weight: 700; 
+        font-weight: var(--font-bold, 700); 
         cursor: pointer;
         border: none;
+        transition: all var(--transition-base, 200ms);
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
     }
     .add-to-cart-simple:hover { 
-        opacity: 0.9;
+        background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    }
+    .add-to-cart-simple:active {
+        transform: scale(0.98);
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+    }
+    .add-to-cart-simple:disabled {
+        background: #94A3B8;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+        opacity: 0.6;
     }
     
-    .hero-carousel { height: 600px; border-radius: 0 0 2rem 2rem; overflow: hidden; }
-    .hero-slide { height: 100%; background-size: cover; background-position: center; display: flex; align-items: center; color: white; }
+    /* Hero Section - Compact */
+    .hero-carousel { 
+        height: 450px; 
+        border-radius: 0 0 16px 16px; 
+        overflow: hidden; 
+    }
+    .hero-slide { 
+        height: 100%; 
+        background-size: cover; 
+        background-position: center; 
+        display: flex; 
+        align-items: center; 
+        color: var(--white); 
+    }
     
-    .section { padding: 4rem 0; }
-    .title-modern { font-size: 2.25rem; font-weight: 850; color: var(--text); margin-bottom: 2rem; }
+    /* Section Spacing - Compact */
+    .section { 
+        padding: 32px 0; 
+    }
+    
+    @media (max-width: 768px) {
+        .section {
+            padding: 24px 0;
+        }
+    }
+    
+    .title-modern { 
+        font-size: var(--text-3xl, 30px); 
+        font-weight: var(--font-extrabold, 800); 
+        color: var(--text-primary); 
+        margin-bottom: 24px; 
+    }
 
-    .cat-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; }
-    .sub-category { font-size: 0.75rem; font-weight: 600; color: #64748b; }
+    .cat-row { 
+        display: flex; 
+        align-items: center; 
+        gap: var(--space-2, 8px); 
+        margin-bottom: var(--space-1, 4px); 
+    }
+    .sub-category { 
+        font-size: var(--text-sm, 14px); 
+        font-weight: var(--font-semibold, 600); 
+        color: var(--text-secondary); 
+    }
 
-    .category-group-wrapper { margin-bottom: 4rem; }
+    /* Category Groups */
+    .category-group-wrapper { 
+        margin-bottom: var(--section-gap, 64px); 
+    }
     .category-group-header { 
         display: flex; 
         justify-content: space-between;
         align-items: center; 
-        margin-bottom: 2rem; 
-        padding-bottom: 1rem;
-        border-bottom: 1px solid #e2e8f0;
+        margin-bottom: var(--space-8, 32px); 
+        padding-bottom: var(--space-4, 16px);
+        border-bottom: 1px solid var(--border-light);
     }
-    .category-group-header h3 { font-size: 1.25rem; font-weight: 700; color: var(--text); }
-    .category-group-header .view-more { color: var(--primary); font-weight: 600; font-size: 0.9rem; }
+    .category-group-header h3 { 
+        font-size: var(--text-2xl, 24px); 
+        font-weight: var(--font-bold, 700); 
+        color: var(--text-primary); 
+    }
+    .category-group-header .view-more { 
+        color: #2563EB; 
+        font-weight: var(--font-semibold, 600); 
+        font-size: var(--text-base, 16px); 
+        transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        background: transparent;
+    }
+    .category-group-header .view-more:hover {
+        color: #1D4ED8;
+        background: rgba(37, 99, 235, 0.05);
+        transform: translateX(4px);
+    }
+    
+    /* Container - Max Width 1280px */
+    .container {
+        max-width: var(--container-max, 1280px);
+        margin: 0 auto;
+        padding: 0 12px;
+    }
+    
+    @media (max-width: 768px) {
+        .container {
+            padding: 0 8px;
+        }
+    }
+    
+    /* Hero Content Styles */
+    .hero-content {
+        position: relative;
+        z-index: 2;
+        max-width: 700px;
+        padding: 32px 0;
+        text-align: left;
+    }
+    
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2, 8px);
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        padding: var(--space-2, 8px) var(--space-4, 16px);
+        border-radius: var(--radius-full, 9999px);
+        font-size: var(--text-sm, 14px);
+        font-weight: var(--font-semibold, 600);
+        margin-bottom: var(--space-6, 24px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .hero-content h1 {
+        font-size: var(--text-5xl, 48px);
+        font-weight: var(--font-extrabold, 800);
+        line-height: var(--leading-tight, 1.25);
+        margin-bottom: var(--space-6, 24px);
+        color: var(--white);
+    }
+    
+    .hero-content p {
+        font-size: var(--text-lg, 18px);
+        line-height: var(--leading-relaxed, 1.75);
+        margin-bottom: var(--space-8, 32px);
+        color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .hero-btns {
+        display: flex;
+        gap: var(--space-4, 16px);
+        flex-wrap: wrap;
+    }
+    
+    .btn-modern {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2, 8px);
+        padding: var(--space-4, 16px) var(--space-8, 32px);
+        border-radius: var(--radius-lg, 10px);
+        font-weight: var(--font-semibold, 600);
+        font-size: var(--text-base, 16px);
+        transition: all var(--transition-base, 200ms);
+        cursor: pointer;
+        border: none;
+    }
+    
+    .btn-main {
+        background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
+        color: #111827;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .btn-main:hover {
+        background: #FFFFFF;
+        transform: translateY(-3px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+    }
+    
+    .btn-outline {
+        background: rgba(255, 255, 255, 0.15);
+        color: #FFFFFF;
+        border: 2px solid rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+    }
+    
+    .btn-outline:hover {
+        background: #FFFFFF;
+        color: #111827;
+        border-color: #FFFFFF;
+        transform: translateY(-3px);
+        box-shadow: 0 8px 20px rgba(255, 255, 255, 0.3);
+    }
+    
+    /* Carousel Navigation */
+    .carousel-nav {
+        position: absolute;
+        bottom: var(--space-8, 32px);
+        right: var(--space-8, 32px);
+        display: flex;
+        gap: var(--space-3, 12px);
+        z-index: 3;
+    }
+    
+    .nav-btn {
+        width: 48px;
+        height: 48px;
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #FFFFFF;
+        cursor: pointer;
+        transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .nav-btn:hover {
+        background: rgba(255, 255, 255, 0.4);
+        border-color: rgba(255, 255, 255, 0.6);
+        transform: scale(1.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Carousel Dots */
+    .carousel-dots {
+        position: absolute;
+        bottom: var(--space-8, 32px);
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: var(--space-2, 8px);
+        z-index: 3;
+    }
+    
+    .dot {
+        width: 10px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        cursor: pointer;
+        transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .dot:hover {
+        background: rgba(255, 255, 255, 0.7);
+        transform: scale(1.2);
+    }
+    
+    .dot.active {
+        width: 32px;
+        border-radius: var(--radius-full, 9999px);
+        background: #FFFFFF;
+    }
+    
+    /* Gradient Text */
+    .gradient-text {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    /* Section Headers */
+    .section-header-compact {
+        margin-bottom: 24px;
+    }
+    
+    .header-info h2 {
+        font-size: 28px;
+        font-weight: var(--font-extrabold, 800);
+        margin-bottom: 4px;
+    }
+    
+    .header-info p {
+        font-size: var(--text-lg, 18px);
+        color: var(--text-secondary);
+    }
+    
+    /* Background Utilities */
+    .bg-light {
+        background: var(--gray-50);
+    }
+    
+    .bg-white {
+        background: var(--white);
+    }
+    
+    /* Home Wrapper */
+    .home-wrapper {
+        min-height: 100vh;
+    }
+    
+    /* Deals Section */
+    .deals-section {
+        background: var(--white);
+    }
 `;
 
 export default function Home() {
     const [currentSlide, setCurrentSlide] = useState(0);
     const [featuredProducts, setFeaturedProducts] = useState([]);
     const [latestProducts, setLatestProducts] = useState([]);
+    const [dealsProducts, setDealsProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [wishlist, setWishlist] = useState([]);
     const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
@@ -273,53 +580,71 @@ export default function Home() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const productsCol = collection(db, "products");
+                // Use cache with 5 minute TTL to reduce Firestore reads
+                const allProducts = await fetchWithCache(
+                    'home_products',
+                    async () => {
+                        const productsCol = collection(db, "products");
+                        const qAll = query(productsCol, limit(50));
+                        const snapAll = await getDocs(qAll);
+                        return snapAll.docs.map(doc => {
+                            const d = { id: doc.id, ...doc.data() };
+                            // Seller products store `title` instead of `name` — normalize here
+                            if (!d.name && d.title) d.name = d.title;
+                            return d;
+                        });
+                    },
+                    5 * 60 * 1000 // 5 minutes cache
+                );
 
-                // Fetch Featured
-                const qFeatured = query(productsCol, limit(8));
-                const snapFeatured = await getDocs(qFeatured);
-                let featured = snapFeatured.docs.map(doc => {
-                    const d = { id: doc.id, ...doc.data() };
-                    // Seller products store `title` instead of `name` — normalize here
-                    if (!d.name && d.title) d.name = d.title;
-                    return d;
-                });
-
-                // Add fallback mock data if Firestore is empty
-                if (featured.length === 0) {
-                    featured = [
-                        {
-                            id: "deal-1", name: "MacBook Pro M2 Max", price: 129999, oldPrice: 149498, rating: 4.8, reviews: 1256, category: "Electronics",
-                            image: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800", discount: "13% OFF",
-                            colors: ["#3D3D3F", "#E3E4E5"],
-                            storage: [{ label: "512GB", priceOffset: 0 }, { label: "1TB", priceOffset: 20000 }]
-                        },
-                        {
-                            id: "deal-2", name: "Sony WH-1000XM4 Noise Cancelling", price: 19999, oldPrice: 29999, rating: 4.9, reviews: 892, category: "Electronics",
-                            image: "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=800", discount: "33% OFF",
-                            colors: ["#000000", "#C9C4B9"],
-                            stock: 0, status: 'Out of Stock'
-                        },
-                        {
-                            id: "deal-3", name: "Apple Watch Series 8", price: 34999, oldPrice: 42999, rating: 4.8, reviews: 567, category: "Electronics",
-                            image: "https://images.unsplash.com/photo-1542496658-e33a6d0d50f6?w=800", discount: "18% OFF",
-                            colors: ["#1C1C1C", "#E3E4E5", "#0F1626"]
-                        },
-                        {
-                            id: "deal-4", name: "iPad Pro M2 12.9", price: 99999, oldPrice: 112999, rating: 4.9, reviews: 345, category: "Electronics",
-                            image: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=800", discount: "11% OFF",
-                            colors: ["#3D3D3F", "#E3E4E5"],
-                            stock: 0, status: 'Out of Stock'
-                        }
-                    ];
+                // If no products in database, show empty state
+                if (allProducts.length === 0) {
+                    setFeaturedProducts([]);
+                    setLatestProducts([]);
+                    setDealsProducts([]);
+                    setLoading(false);
+                    return;
                 }
 
+                // Group products by category first
+                const groupByCategory = (items) => {
+                    return items.reduce((acc, p) => {
+                        const cat = p.category || 'Other';
+                        if (!acc[cat]) acc[cat] = [];
+                        acc[cat].push(p);
+                        return acc;
+                    }, {});
+                };
+
+                // Featured: Group by category, take 4 from each
+                const featuredGrouped = groupByCategory(allProducts.slice(0, 50));
+                const featured = [];
+                Object.values(featuredGrouped).forEach(catProducts => {
+                    featured.push(...catProducts.slice(0, 4));
+                });
+                
+                // Latest: Group by category, take 4 from each (reversed)
+                const latestGrouped = groupByCategory(allProducts.slice().reverse().slice(0, 50));
+                const latest = [];
+                Object.values(latestGrouped).forEach(catProducts => {
+                    latest.push(...catProducts.slice(0, 4));
+                });
+                
+                // Deals: Products with discount or oldPrice, group by category, take 4 from each
+                const dealsFiltered = allProducts.filter(p => p.discount || p.oldPrice);
+                const dealsGrouped = groupByCategory(dealsFiltered);
+                const deals = [];
+                Object.values(dealsGrouped).forEach(catProducts => {
+                    deals.push(...catProducts.slice(0, 4));
+                });
+
                 setFeaturedProducts(featured);
-                setLatestProducts(featured.slice().reverse());
+                setLatestProducts(latest);
+                setDealsProducts(deals);
                 setLoading(false);
 
                 // Fetch reviews for all loaded products
-                fetchReviewsForProducts([...featured]);
+                fetchReviewsForProducts([...featured, ...latest, ...deals]);
             } catch (err) {
                 console.error(err);
                 setLoading(false);
@@ -371,13 +696,10 @@ export default function Home() {
 
     // Listen to wishlist changes
     useEffect(() => {
-        console.log('🎬 Home: Setting up wishlist listener');
         const unsubscribe = listenToWishlist((items) => {
-            console.log('🔄 Home: Received wishlist update with', items.length, 'items:', items.map(i => i.id));
             setWishlist(items);
         });
         return () => {
-            console.log('🛑 Home: Cleaning up wishlist listener');
             unsubscribe();
         };
     }, []);
@@ -393,24 +715,16 @@ export default function Home() {
             return;
         }
 
-        console.log('🎯 toggleWishlist clicked for product:', product.id);
-
         const alreadySaved = wishlist.some(item => item.id === product.id);
 
         try {
             if (alreadySaved) {
-                const result = await removeFromWishlist(product.id);
-                if (result.success) {
-                    console.log('✅ Removed successfully');
-                }
+                await removeFromWishlist(product.id);
             } else {
-                const result = await addToWishlist(product);
-                if (result.success) {
-                    console.log('✅ Added successfully');
-                }
+                await addToWishlist(product);
             }
         } catch (error) {
-            console.error('❌ toggleWishlist error:', error);
+            console.error('Wishlist error:', error);
         }
     };
 
@@ -423,7 +737,7 @@ export default function Home() {
         }, {});
     };
 
-    const groupedDeals = useMemo(() => groupByCategory(TODAY_DEALS), [TODAY_DEALS]);
+    const groupedDeals = useMemo(() => groupByCategory(dealsProducts), [dealsProducts]);
     const groupedFeatured = useMemo(() => groupByCategory(featuredProducts), [featuredProducts]);
     const groupedLatest = useMemo(() => groupByCategory(latestProducts), [latestProducts]);
 
@@ -511,7 +825,7 @@ export default function Home() {
     };
 
     return (
-        <div className="home-wrapper">
+        <div className="home-wrapper" style={{ background: '#F8F9FA' }}>
             {/* Hero Section */}
             <section className="hero-carousel">
                 <AnimatePresence mode="wait">
@@ -555,7 +869,7 @@ export default function Home() {
                                     Shop Collection
                                     <ArrowRight size={18} />
                                 </Link>
-                                <button className="btn-modern btn-outline">Explore Brands</button>
+                                <Link to="/products" className="btn-modern btn-outline">Explore Brands</Link>
                             </motion.div>
                         </div>
 
@@ -583,7 +897,7 @@ export default function Home() {
 
 
             {/* Today's Deals */}
-            <section className="section deals-section">
+            <section className="section deals-section" style={{ background: '#FFFFFF' }}>
                 <div className="container">
                     <div className="section-header-compact">
                         <div className="header-info">
@@ -613,10 +927,10 @@ export default function Home() {
 
             {/* Product Sections */}
             {[
-                { title: "Featured Products", subtitle: "Our top picks for you", groupedData: groupedFeatured, bg: "bg-light" },
-                { title: "Latest Releases", subtitle: "Stay ahead with the newest additions", groupedData: groupedLatest, bg: "bg-white" }
+                { title: "Featured Products", subtitle: "Our top picks for you", groupedData: groupedFeatured, bg: "#F8F9FA" },
+                { title: "Latest Releases", subtitle: "Stay ahead with the newest additions", groupedData: groupedLatest, bg: "#FFFFFF" }
             ].map((sec, idx) => (
-                <section key={idx} className={"section " + sec.bg}>
+                <section key={idx} className="section" style={{ background: sec.bg }}>
                     <div className="container">
                         <div className="section-header-compact">
                             <div className="header-info">
@@ -662,6 +976,3 @@ export default function Home() {
 }
 
 // ... the rest of the file contents have been moved up ...
-
-
-

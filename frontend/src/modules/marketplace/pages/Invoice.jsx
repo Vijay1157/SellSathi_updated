@@ -36,7 +36,6 @@ export default function Invoice() {
                         const doc = querySnapshot.docs[0];
                         setOrder({ id: doc.id, ...doc.data() });
                     } else {
-                        console.log('Order not found with ID:', orderId);
                         setOrder(null);
                     }
                 }
@@ -271,6 +270,3 @@ export default function Invoice() {
         </div>
     );
 }
-
-
-

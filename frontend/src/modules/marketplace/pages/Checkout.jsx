@@ -13,11 +13,13 @@ import {
     CheckCircle2,
     X,
     AlertCircle,
-    Wallet
+    Wallet,
+    Plus,
+    Minus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
-import { listenToCart, removeFromCart } from '@/modules/shared/utils/cartUtils';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { listenToCart, removeFromCart, updateCartItemQuantity } from '@/modules/shared/utils/cartUtils';
 import { auth, db } from '@/modules/shared/config/firebase';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { authFetch } from '@/modules/shared/utils/api';
@@ -26,8 +28,10 @@ import ConfirmationAnimation from '@/modules/shared/components/common/Confirmati
 
 export default function Checkout() {
     const navigate = useNavigate();
+    const location = useLocation();
     const [step, setStep] = useState(1);
     const [cartItems, setCartItems] = useState([]);
+    const [checkoutItems, setCheckoutItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [shippingAddress, setShippingAddress] = useState({
         firstName: '',
@@ -106,10 +110,25 @@ export default function Checkout() {
     useEffect(() => {
         const unsubscribe = listenToCart((items) => {
             setCartItems(items);
+            
+            // Filter items based on navigation state
+            const { buyNowProductId, selectedItemIds } = location.state || {};
+            
+            let itemsToCheckout = items;
+            
+            if (buyNowProductId) {
+                // Buy Now: Only show the specific product
+                itemsToCheckout = items.filter(item => (item.id || item.productId) === buyNowProductId);
+            } else if (selectedItemIds && selectedItemIds.length > 0) {
+                // From Cart: Only show selected items
+                itemsToCheckout = items.filter(item => selectedItemIds.includes(item.id || item.productId));
+            }
+            
+            setCheckoutItems(itemsToCheckout);
             setLoading(false);
         });
         return () => unsubscribe && unsubscribe();
-    }, []);
+    }, [location.state]);
 
     const handleAddressChange = (e) => {
         const { name, value } = e.target;
@@ -161,6 +180,11 @@ export default function Checkout() {
     const handleRazorpayPayment = async () => {
         setRazorpayLoading(true);
         try {
+            // Filter only selected items
+            const selectedCartItems = cartItems.filter(item => 
+                selectedItems.has(item.id || item.productId)
+            );
+
             // Create order on backend first
             const customerInfo = {
                 firstName: shippingAddress.firstName,
@@ -175,7 +199,7 @@ export default function Checkout() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     amount: subtotal,
-                    cartItems: cartItems,
+                    cartItems: selectedCartItems,
                     customerInfo: customerInfo
                 })
             });
@@ -204,9 +228,14 @@ export default function Checkout() {
                     description: 'Order Payment',
                     image: '/logo.png',
                     handler: async function (response) {
-                        console.log('Razorpay Payment Success:', response);
+                        // Razorpay Payment Success
                         // Verify payment on backend
                         try {
+                            // Filter only selected items
+                            const selectedCartItems = cartItems.filter(item => 
+                                selectedItems.has(item.id || item.productId)
+                            );
+
                             const verifyResponse = await authFetch('/payment/verify', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -214,7 +243,7 @@ export default function Checkout() {
                                     razorpay_payment_id: response.razorpay_payment_id,
                                     razorpay_order_id: response.razorpay_order_id,
                                     razorpay_signature: response.razorpay_signature,
-                                    cartItems: cartItems,
+                                    cartItems: selectedCartItems,
                                     customerInfo: customerInfo,
                                     amount: subtotal,
                                     uid: auth.currentUser?.uid || 'guest'
@@ -224,8 +253,8 @@ export default function Checkout() {
                             const verifyResult = await verifyResponse.json();
 
                             if (verifyResult.success) {
-                                // Clear cart
-                                cartItems.forEach(item => removeFromCart(item.id || item.productId));
+                                // Clear only selected items from cart
+                                selectedCartItems.forEach(item => removeFromCart(item.id || item.productId));
 
                                 // Save new address if needed
                                 if (addressMode === 'new' && saveAddressForFuture && user) {
@@ -234,7 +263,7 @@ export default function Checkout() {
                                             ...shippingAddress,
                                             isDefault: setAsDefault
                                         };
-                                        await authFetch(`/consumer/${user.uid}/address`, {
+                                        await authFetch(`/api/user/${user.uid}/address/save`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ address: newAddress })
@@ -291,6 +320,11 @@ export default function Checkout() {
     const processOrder = async (paymentType, paymentId = null) => {
         setLoading(true);
         try {
+            // Filter only selected items
+            const selectedCartItems = cartItems.filter(item => 
+                selectedItems.has(item.id || item.productId)
+            );
+
             const customerInfo = {
                 firstName: shippingAddress.firstName,
                 lastName: shippingAddress.lastName,
@@ -312,7 +346,7 @@ export default function Checkout() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     uid: currentUser.uid,
-                    cartItems: cartItems,
+                    cartItems: selectedCartItems,
                     customerInfo: customerInfo,
                     amount: subtotal
                 })
@@ -328,7 +362,7 @@ export default function Checkout() {
                             ...shippingAddress,
                             isDefault: setAsDefault
                         };
-                        await authFetch(`/consumer/${user.uid}/address`, {
+                        await authFetch(`/api/user/${user.uid}/address/save`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ address: newAddress })
@@ -338,8 +372,8 @@ export default function Checkout() {
                     }
                 }
 
-                // Clear cart
-                cartItems.forEach(item => removeFromCart(item.id || item.productId));
+                // Clear only selected items from cart
+                selectedCartItems.forEach(item => removeFromCart(item.id || item.productId));
 
                 // Store order ID and show animation
                 setOrderId(result.orderId);
@@ -390,25 +424,21 @@ export default function Checkout() {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
-        console.log('=== handleContinue called ===');
-        console.log('Current step:', step);
-        console.log('Payment method:', paymentMethod);
-        console.log('Shipping address:', shippingAddress);
+
+        // Check if at least one item is selected
+        if (selectedItems.size === 0) {
+            alert('Please select at least one item to proceed with checkout.');
+            return;
+        }
 
         if (step === 1) {
-            console.log('Validating step 1 (address)...');
             if (validateForm()) {
-                console.log('Step 1 validation passed, moving to step 2');
                 setStep(2);
             } else {
-                console.log('Step 1 validation failed. Errors:', errors);
                 alert('Please fill in all required address fields correctly.');
             }
         } else {
-            console.log('Validating step 2 (payment)...');
             const isValid = validateForm();
-            console.log('Validation result:', isValid);
-            console.log('Validation errors:', errors);
 
             if (isValid) {
                 // Handle Razorpay separately
@@ -418,18 +448,26 @@ export default function Checkout() {
                     processOrder(paymentMethod);
                 }
             } else {
-                console.log('Step 2 validation failed!');
-                console.log('Current errors:', errors);
                 alert('Please fix the validation errors before continuing.');
             }
         }
     };
 
-    const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    // Calculate subtotal from checkout items
+    const subtotal = checkoutItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+
+    // Handler for quantity change in checkout
+    const handleQuantityChange = async (item, newQuantity) => {
+        if (newQuantity < 1) return;
+        if (newQuantity > (item.stock || 99)) {
+            alert(`Only ${item.stock || 99} items available in stock`);
+            return;
+        }
+        await updateCartItemQuantity(item.id || item.productId, newQuantity);
+    };
 
     const handleAnimationComplete = () => {
-        setShowAnimation(false);
-        setIsOrdered(true);
+        navigate(`/track?orderId=${orderId}`);
     };
 
     if (isOrdered) {
@@ -481,7 +519,7 @@ export default function Checkout() {
 
                     <div className="flex flex-col sm:flex-row gap-4 pt-4">
                         <button
-                            onClick={() => navigate(`/track?orderId=${orderId}`)}
+                            onClick={() => window.location.href = `/track?orderId=${orderId}`}
                             className="flex-1 py-5 bg-primary text-white rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
                         >
                             Track Detailed Status
@@ -525,44 +563,71 @@ export default function Checkout() {
                     <div className="xl:col-span-8 space-y-8">
                         {/* Cart Items List */}
                         <section className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
-                            <div className="p-8 border-b border-gray-50 flex items-center justify-between">
+                            <div className="p-8 border-b border-gray-50">
                                 <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
                                     <ShoppingBag size={22} className="text-primary" />
-                                    Your Items ({cartItems.length})
+                                    Your Items ({checkoutItems.length})
                                 </h3>
                             </div>
                             <div className="p-8 space-y-4">
-                                {cartItems.map((item) => (
-                                    <div key={item.id} className="flex gap-6 items-center p-4 bg-gray-50/50 rounded-2xl border border-gray-100/50 group hover:bg-white hover:border-primary/20 transition-all">
-                                        <div className="w-20 h-20 rounded-xl overflow-hidden shadow-sm">
-                                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="font-bold text-gray-900 mb-1">{item.name}</h4>
-                                            <div className="flex items-center gap-2 text-xs font-bold text-gray-400">
-                                                <span>Qty: {item.quantity}</span>
+                                {checkoutItems.map((item) => {
+                                    const itemId = item.id || item.productId;
+                                    
+                                    return (
+                                        <div 
+                                            key={itemId} 
+                                            className="flex gap-6 items-center p-4 rounded-2xl border bg-white border-primary/30 shadow-sm group hover:border-primary/40 transition-all"
+                                        >
+                                            <div className="w-20 h-20 rounded-xl overflow-hidden shadow-sm flex-shrink-0">
+                                                <img src={item.imageUrl || item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="font-bold text-gray-900 mb-1 truncate">{item.name}</h4>
+                                                {/* Quantity Controls */}
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <span className="text-xs font-semibold text-gray-500">Qty:</span>
+                                                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                                                        <button
+                                                            onClick={() => handleQuantityChange(item, item.quantity - 1)}
+                                                            disabled={item.quantity <= 1}
+                                                            className="w-6 h-6 flex items-center justify-center rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                                        >
+                                                            <Minus size={12} />
+                                                        </button>
+                                                        <span className="w-8 text-center font-bold text-gray-900 text-sm">
+                                                            {item.quantity}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleQuantityChange(item, item.quantity + 1)}
+                                                            disabled={item.quantity >= (item.stock || 99)}
+                                                            className="w-6 h-6 flex items-center justify-center rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                                        >
+                                                            <Plus size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                                                <PriceDisplay
+                                                    product={{
+                                                        ...item,
+                                                        price: item.originalPrice || item.price,
+                                                        discountPrice: item.price
+                                                    }}
+                                                    size="sm"
+                                                    showBadge={false}
+                                                />
+                                                <button
+                                                    onClick={() => handleRemove(itemId)}
+                                                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                    title="Remove"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </div>
                                         </div>
-                                        <div className="flex flex-col items-end gap-3">
-                                            <PriceDisplay
-                                                product={{
-                                                    ...item,
-                                                    price: item.originalPrice || item.price,
-                                                    discountPrice: item.price
-                                                }}
-                                                size="sm"
-                                                showBadge={false}
-                                            />
-                                            <button
-                                                onClick={() => handleRemove(item.id || item.productId)}
-                                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                title="Remove"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </section>
 
@@ -1031,6 +1096,3 @@ export default function Checkout() {
         </div>
     );
 }
-
-
-

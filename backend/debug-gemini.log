@@ -6,3 +6,34 @@
 [2026-03-04T19:17:37.737Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
 [2026-03-04T19:17:48.885Z] [applySeller] CRITICAL ERROR: 8 RESOURCE_EXHAUSTED: Quota exceeded.
 [2026-03-04T19:17:48.891Z] [applySeller] ALERT: Firestore Quota Exceeded detected!
+[2026-03-05T08:57:10.296Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T08:57:10.297Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T08:57:10.818Z] [applySeller] Storing seller data in DB...
+[2026-03-05T08:57:12.150Z] [applySeller] Updating user document...
+[2026-03-05T08:57:12.668Z] [applySeller] SUCCESS: Application stored for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T09:59:41.401Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T09:59:41.408Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T09:59:41.948Z] [applySeller] Storing seller data in DB...
+[2026-03-05T09:59:43.288Z] [applySeller] Updating user document...
+[2026-03-05T09:59:43.797Z] [applySeller] SUCCESS: Application stored for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:14:07.648Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:14:07.652Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:14:08.252Z] [applySeller] ERROR: User is already a SELLER
+[2026-03-05T11:14:46.785Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:14:46.786Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:14:47.258Z] [applySeller] ERROR: User is already a SELLER
+[2026-03-05T11:14:48.056Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:14:48.058Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:14:48.493Z] [applySeller] ERROR: User is already a SELLER
+[2026-03-05T11:16:51.883Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:16:51.884Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:16:52.363Z] [applySeller] ERROR: User is already a SELLER
+[2026-03-05T11:18:29.699Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:18:29.700Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:18:30.190Z] [applySeller] ERROR: User is already a SELLER
+[2026-03-05T11:20:31.735Z] [applySeller] Request received for UID: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:20:31.737Z] [applySeller] Fetching user document for: 2KtoBGcvuCN13vBizYZuGPorzq62
+[2026-03-05T11:20:34.810Z] [applySeller] Seller doc missing despite SELLER role. Resetting role to CONSUMER to allow re-application.
+[2026-03-05T11:20:35.942Z] [applySeller] Storing seller data in DB...
+[2026-03-05T11:20:36.553Z] [applySeller] Updating user document...
+[2026-03-05T11:20:37.678Z] [applySeller] SUCCESS: Application stored for UID: 2KtoBGcvuCN13vBizYZuGPorzq62

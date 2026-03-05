@@ -1,70 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ShoppingCart, User, Search, LogOut, ChevronDown, ArrowRight, MapPin, Languages, IndianRupee, DollarSign, Heart, ShoppingBag } from 'lucide-react';
+import { ShoppingCart, User, Search, LogOut, ChevronDown, ArrowRight, Heart, ShoppingBag } from 'lucide-react';
 import AuthModal from '@/modules/auth/components/AuthModal';
 import { collection, getDocs, query, limit } from 'firebase/firestore';
 import { db } from '@/modules/shared/config/firebase';
 import { listenToCart } from '@/modules/shared/utils/cartUtils';
 import { listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
-
-// ─── Module-level cache for Mega Menu product data ───────────────────────────
-// Shared across all Navbar instances; survives page navigations within the same
-// browser session. TTL: 10 minutes. Eliminates repeated full collection scans.
-let _megaMenuCache = null;
-let _megaMenuCacheTs = 0;
-const MEGA_MENU_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
-// ─────────────────────────────────────────────────────────────────────────────
-
-const MAIN_CATEGORIES = ['Electronics', "Men's Fashion", "Women's Fashion", 'Home & Living', 'Beauty', 'Sports', 'Accessories', "Today's Deals", 'New Arrivals', 'Trending'];
-
-// Structured subcategories for Mega Menu
-const SUBCATEGORIES = {
-    'Electronics': ['Mobiles', 'Laptops', 'Headphones', 'Smart Watches', 'Cameras', 'Accessories'],
-    "Men's Fashion": ['Shirts', 'T-Shirts', 'Pants', 'Trousers', 'Jeans', 'Shoes', 'Jackets', 'Ethnic Wear'],
-    "Women's Fashion": ['Tops', 'Kurtis', 'Ethnic Wear', 'Sarees', 'Dresses', 'Jeans', 'Handbags', 'Sandals'],
-    'Home & Living': ['Furniture', 'Kitchen', 'Decor', 'Lighting', 'Bedding', 'Storage'],
-    'Beauty': ['Skincare', 'Makeup', 'Haircare', 'Fragrances', 'Grooming'],
-    'Sports': ['Sports Shoes', 'Gym Equipment', 'Activewear', 'Outdoor Gear', 'Fitness Accessories'],
-    'Accessories': ['Watches', 'Sunglasses', 'Wallets', 'Belts', 'Bags'],
-    "Today's Deals": ['Under ₹499', 'Under ₹999', 'Best Sellers', 'Limited Offers'],
-    'New Arrivals': ['Latest Fashion', 'Latest Electronics', 'Trending Now'],
-    'Trending': ['Most Viewed', 'Most Purchased', "Editor's Picks"]
-};
-
-const LANGUAGES = [
-    { code: 'en', name: 'English', native: 'English' },
-    { code: 'hi', name: 'Hindi', native: 'हिंदी' },
-    { code: 'ta', name: 'Tamil', native: 'தமிழ்' },
-    { code: 'te', name: 'Telugu', native: 'తెలుగు' },
-    { code: 'ml', name: 'Malayalam', native: 'മലയാളം' },
-    { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ' },
-    { code: 'bn', name: 'Bengali', native: 'বাংলা' },
-    { code: 'mr', name: 'Marathi', native: 'मराठी' }
-];
-
-const CURRENCIES = [
-    { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
-    { code: 'USD', name: 'US Dollar', symbol: '$' }
-];
+import { MAIN_CATEGORIES, SPECIAL_CATEGORIES, SUBCATEGORIES, ALL_SUBCATEGORIES } from '@/modules/shared/config/categories';
+import { fetchWithCache } from '@/modules/shared/utils/firestoreCache';
 
 export default function Navbar() {
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [activeMegaMenu, setActiveMegaMenu] = useState(null);
     const [activeSubCategory, setActiveSubCategory] = useState(0);
+    const [showAllSubcategories, setShowAllSubcategories] = useState(false);
     const [user, setUser] = useState(null);
     const [cartCount, setCartCount] = useState(0);
     const [wishlistCount, setWishlistCount] = useState(0);
     const [dynamicMegaData, setDynamicMegaData] = useState({});
-    const [locationName, setLocationName] = useState('Select location');
-    const [isLangOpen, setIsLangOpen] = useState(false);
-    const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
-    const [selectedLang, setSelectedLang] = useState(LANGUAGES[0]);
-    const [selectedCurrency, setSelectedCurrency] = useState(CURRENCIES[0]);
 
     const navigate = useNavigate();
     const location = useLocation();
     const menuRef = useRef(null);
+    const profileRef = useRef(null);
 
     const calculateAge = (dob) => {
         if (!dob) return null;
@@ -81,41 +40,33 @@ export default function Navbar() {
     useEffect(() => {
         const fetchMegaData = async () => {
             try {
-                // ✅ Return cached result if still fresh (avoids full collection scan on every page)
-                if (_megaMenuCache && Date.now() - _megaMenuCacheTs < MEGA_MENU_CACHE_TTL) {
-                    setDynamicMegaData(_megaMenuCache);
+                // Use cache with 15 minute TTL to reduce Firestore reads
+                const products = await fetchWithCache(
+                    'navbar_products',
+                    async () => {
+                        // Limit to 50 products instead of 100 for faster loading
+                        const q = query(collection(db, "products"), limit(50));
+                        const snap = await getDocs(q);
+                        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    },
+                    15 * 60 * 1000 // 15 minutes cache (increased from 10)
+                );
+
+                // Only proceed if we have products from database
+                if (products.length === 0) {
+                    setDynamicMegaData({});
                     return;
                 }
 
-                // Limit to 50 products — enough for a rich mega menu, not the entire catalogue
-                const q = query(collection(db, "products"), limit(50));
-                const snap = await getDocs(q);
-                let products = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                // Fallback demo data if DB is empty to ensure mega menu is visible
-                if (products.length < 5) {
-                    const demoItems = [
-                        { id: 'e1', name: 'Smart Watch X', price: 12999, category: 'Electronics', subCategory: 'Gadgets', tags: ['Tech', 'Wearable'], image: 'https://images.unsplash.com/photo-1546868871-70ca48370731' },
-                        { id: 'e2', name: 'Noise Buds', price: 2999, category: 'Electronics', subCategory: 'Audio', tags: ['Music'], image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df' },
-                        { id: 'm1', name: 'Classic Polo', price: 1499, category: "Men's Fashion", subCategory: 'Apparel', tags: ['Summer'], image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518' },
-                        { id: 'w1', name: 'Silk Saree', price: 4999, category: "Women's Fashion", subCategory: 'Traditional', tags: ['Ethnic'], image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c' },
-                        { id: 'h1', name: 'Wall Art', price: 899, category: 'Home & Living', subCategory: 'Decor', tags: ['Home'], image: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38' },
-                        { id: 'b1', name: 'Face Cream', price: 599, category: 'Beauty', subCategory: 'Skincare', tags: ['Beauty'], image: 'https://images.unsplash.com/photo-1596462502278-27e329d6b32f' },
-                        { id: 's1', name: 'Running Shoes', price: 2999, category: 'Sports', subCategory: 'Footwear', tags: ['Fitness'], image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff' },
-                        { id: 'a1', name: 'Leather Wallet', price: 1299, category: 'Accessories', subCategory: 'Men Accessories', tags: ['Fashion'], image: 'https://images.unsplash.com/photo-1627123426583-215d7b5cf6e5' }
-                    ];
-                    products = [...products, ...demoItems];
-                }
-
                 const mega = {};
-                MAIN_CATEGORIES.forEach(cat => {
+                [...MAIN_CATEGORIES, ...SPECIAL_CATEGORIES].forEach(cat => {
                     let catProducts;
                     if (cat === "Today's Deals") {
-                        catProducts = products.filter(p => p.discount || p.oldPrice || p.id === 'e2');
+                        catProducts = products.filter(p => p.discount || p.oldPrice);
                     } else if (cat === "New Arrivals") {
-                        catProducts = [...products].reverse().slice(0, 10);
+                        catProducts = [...products].reverse().slice(0, 8);
                     } else if (cat === "Trending") {
-                        catProducts = products.filter(p => (p.rating || 0) >= 4.5 || p.id === 'e1');
+                        catProducts = products.filter(p => (p.rating || 0) >= 4.5);
                     } else if (cat === "Men's Fashion") {
                         catProducts = products.filter(p =>
                             p.category === "Men's Fashion" ||
@@ -134,55 +85,36 @@ export default function Navbar() {
                             p.subCategory?.toLowerCase().includes('women') ||
                             p.name?.toLowerCase().includes('women')
                         );
-                    } else if (cat === "Electronics") {
+                    } else if (cat === "Books & Stationery") {
                         catProducts = products.filter(p =>
-                            p.category === "Electronics" ||
-                            p.category === "Electronic" ||
-                            p.subCategory?.toLowerCase().includes('electronic') ||
-                            p.name?.toLowerCase().includes('phone') ||
-                            p.name?.toLowerCase().includes('laptop') ||
-                            p.name?.toLowerCase().includes('watch') ||
-                            p.name?.toLowerCase().includes('headphone')
+                            p.category === "Books & Stationery" ||
+                            p.category === "Books" ||
+                            p.category === "Stationery" ||
+                            p.subCategory?.toLowerCase().includes('book') ||
+                            p.subCategory?.toLowerCase().includes('stationery')
                         );
-                    } else if (cat === "Home & Living") {
+                    } else if (cat === "Food & Beverages") {
                         catProducts = products.filter(p =>
-                            p.category === "Home & Living" ||
-                            p.category === "Home" ||
-                            p.category === "Home & Kitchen" ||
-                            p.category === "Living" ||
-                            p.subCategory?.toLowerCase().includes('home') ||
-                            p.subCategory?.toLowerCase().includes('kitchen') ||
-                            p.name?.toLowerCase().includes('home')
+                            p.category === "Food & Beverages" ||
+                            p.category === "Food" ||
+                            p.category === "Beverages" ||
+                            p.subCategory?.toLowerCase().includes('food') ||
+                            p.subCategory?.toLowerCase().includes('beverage')
                         );
-                    } else if (cat === "Beauty") {
+                    } else if (cat === "Handicrafts") {
                         catProducts = products.filter(p =>
-                            p.category === "Beauty" ||
-                            p.category === "Cosmetics" ||
-                            p.subCategory?.toLowerCase().includes('beauty') ||
-                            p.subCategory?.toLowerCase().includes('cosmetic') ||
-                            p.name?.toLowerCase().includes('cream') ||
-                            p.name?.toLowerCase().includes('makeup')
-                        );
-                    } else if (cat === "Sports") {
-                        catProducts = products.filter(p =>
-                            p.category === "Sports" ||
-                            p.category === "Sport" ||
-                            p.subCategory?.toLowerCase().includes('sport') ||
-                            p.name?.toLowerCase().includes('sport') ||
-                            p.name?.toLowerCase().includes('fitness')
-                        );
-                    } else if (cat === "Accessories") {
-                        catProducts = products.filter(p =>
-                            p.category === "Accessories" ||
-                            p.category === "Accessory" ||
-                            p.subCategory?.toLowerCase().includes('accessor') ||
-                            p.name?.toLowerCase().includes('bag') ||
-                            p.name?.toLowerCase().includes('watch') ||
-                            p.name?.toLowerCase().includes('jewel')
+                            p.category === "Handicrafts" ||
+                            p.category === "Handicraft" ||
+                            p.subCategory?.toLowerCase().includes('handicraft') ||
+                            p.subCategory?.toLowerCase().includes('handmade')
                         );
                     } else {
-                        // Fallback to exact match
-                        catProducts = products.filter(p => p.category === cat);
+                        // For other categories, try exact match first, then fuzzy match
+                        catProducts = products.filter(p => 
+                            p.category === cat ||
+                            p.category?.toLowerCase().includes(cat.toLowerCase()) ||
+                            p.subCategory?.toLowerCase().includes(cat.toLowerCase())
+                        );
                     }
 
                     const subGroups = {};
@@ -192,34 +124,19 @@ export default function Navbar() {
                         subGroups[sub].push(p);
                     });
 
-                    // Always create mega menu data for all categories, even if no products
+                    // Create mega menu data only if products exist for this category
                     if (catProducts.length > 0) {
                         mega[cat] = {
                             categories: Object.keys(subGroups).map(sub => ({
                                 id: sub.toLowerCase().replace(/\s+/g, '-'),
                                 name: sub,
-                                items: subGroups[sub].slice(0, 4)
+                                items: subGroups[sub].slice(0, 4) // Limit to 4 items per subcategory
                             })),
                             popular: Array.from(new Set(catProducts.flatMap(p => p.tags || []))).slice(0, 4)
                         };
-                    } else {
-                        // Create fallback mega menu data with general products for categories with no specific matches
-                        const fallbackProducts = products.slice(0, 4); // Show first 4 available products
-                        mega[cat] = {
-                            categories: [
-                                {
-                                    id: 'featured',
-                                    name: 'Featured',
-                                    items: fallbackProducts
-                                }
-                            ],
-                            popular: ['Popular', 'Trending', 'New', 'Best Sellers']
-                        };
                     }
+                    // If no products, don't create mega menu data - category will still be clickable but won't show dropdown
                 });
-                // Persist in module-level cache
-                _megaMenuCache = mega;
-                _megaMenuCacheTs = Date.now();
                 setDynamicMegaData(mega);
             } catch (err) {
                 console.error("Error fetching mega menu data:", err);
@@ -266,8 +183,10 @@ export default function Navbar() {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
                 setActiveMegaMenu(null);
-                setIsLangOpen(false);
-                setIsCurrencyOpen(false);
+            }
+            // Close profile dropdown when clicking outside
+            if (profileRef.current && !profileRef.current.contains(event.target)) {
+                setIsProfileOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -321,24 +240,18 @@ export default function Navbar() {
             <nav className="navbar-container" ref={menuRef}>
                 <div className="main-nav-wrapper">
                     <div className="container main-nav">
-                        <Link to="/" className="brand-logo gradient-text">
-                            SELLSATHI
-                        </Link>
+                        {location.pathname === '/' ? (
+                            <div className="brand-logo gradient-text" style={{ cursor: 'default' }}>
+                                SELLSATHI
+                            </div>
+                        ) : (
+                            <Link to="/" className="brand-logo gradient-text">
+                                SELLSATHI
+                            </Link>
+                        )}
 
                         {!location.pathname.startsWith('/checkout') && (
                             <>
-                                <div className="nav-location" onClick={() => {
-                                    const newLoc = prompt("Enter your PIN code or city:");
-                                    if (newLoc) setLocationName(newLoc);
-                                }}>
-                                    <MapPin size={20} className="pin-icon" />
-                                    <div className="location-info">
-                                        <span className="label">Deliver to</span>
-                                        <span className="value">{locationName}</span>
-                                    </div>
-                                    <ChevronDown size={14} className="chevron" />
-                                </div>
-
                                 <div className="nav-search">
                                     <Search size={18} className="search-icon" />
                                     <input
@@ -355,38 +268,12 @@ export default function Navbar() {
                                     />
                                 </div>
 
-                                <div className="nav-selectors">
-                                    {/* Language Selector */}
-                                    <div className="selector-container">
-                                        <button
-                                            className="selector-trigger"
-                                            onClick={() => {
-                                                setIsLangOpen(!isLangOpen);
-                                            }}
-                                        >
-                                            <Languages size={18} />
-                                            <span>{selectedLang.name}</span>
-                                            <ChevronDown size={14} className={isLangOpen ? 'rotate' : ''} />
-                                        </button>
-                                        {isLangOpen && (
-                                            <div className="selector-dropdown glass-card animate-slide-up">
-                                                {LANGUAGES.map(lang => (
-                                                    <button
-                                                        key={lang.code}
-                                                        className={selectedLang.code === lang.code ? 'active' : ''}
-                                                        onClick={() => {
-                                                            setSelectedLang(lang);
-                                                            setIsLangOpen(false);
-                                                        }}
-                                                    >
-                                                        <span className="lang-native">{lang.native}</span>
-                                                        {selectedLang.code === lang.code && <span className="dot"></span>}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                <Link 
+                                    to="/seller/register" 
+                                    className="btn btn-seller"
+                                >
+                                    Become a Seller
+                                </Link>
                             </>
                         )}
 
@@ -402,11 +289,11 @@ export default function Navbar() {
                                 className="btn btn-secondary icon-btn wishlist-btn-nav"
                             >
                                 <Heart size={20} />
-                                {wishlistCount > 0 && <span className="wishlist-badge">{wishlistCount}</span>}
+                                {user && wishlistCount > 0 && <span className="wishlist-badge">{wishlistCount}</span>}
                             </Link>
 
                             <Link
-                                to={user ? "/checkout" : "#"}
+                                to={user ? "/cart" : "#"}
                                 onClick={(e) => {
                                     if (!user) {
                                         e.preventDefault();
@@ -416,21 +303,19 @@ export default function Navbar() {
                                 className="btn btn-secondary icon-btn cart-btn-nav"
                             >
                                 <ShoppingCart size={20} />
-                                {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
+                                {user && cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
                             </Link>
 
                             {user ? (
-                                <div className="profile-dropdown-container">
+                                <div className="profile-dropdown-container" ref={profileRef}>
                                     <button
                                         onClick={() => setIsProfileOpen(!isProfileOpen)}
-                                        className="profile-trigger btn btn-secondary"
+                                        className="btn btn-secondary icon-btn"
                                     >
                                         <User size={20} />
-                                        <span className="user-name">{user.fullName || 'User'}</span>
-                                        <ChevronDown size={14} />
                                     </button>
                                     {isProfileOpen && (
-                                        <div className="profile-menu glass-card">
+                                        <div className="profile-menu">
                                             <div className="menu-header">
                                                 <div className="avatar">{(user.fullName || 'U').charAt(0).toUpperCase()}</div>
                                                 <div className="info">
@@ -465,43 +350,101 @@ export default function Navbar() {
                     </div>
                 </div>
 
+                {/* Categories section - Always visible (static) */}
                 {!location.pathname.startsWith('/checkout') && (
-                    <div className="sub-nav-wrapper" onMouseLeave={() => setActiveMegaMenu(null)}>
-                        <div className="sub-nav container">
-                            {['Electronics', "Men's Fashion", "Women's Fashion", "Home & Living", "Beauty", "Sports", "Accessories", "Today's Deals", "New Arrivals", "Trending"].map(cat => {
-                                let path = `/products?category=${cat}`;
-                                if (cat === "Today's Deals") path = "/deals";
-                                if (cat === "New Arrivals") path = "/new-arrivals";
-                                if (cat === "Trending") path = "/trending";
+                    <div 
+                        className="sub-nav-wrapper"
+                        style={{ display: 'block' }}
+                    >
+                        <div className="container">
+                            {/* First Row - Product Categories */}
+                            <div className="sub-nav sub-nav-primary">
+                                {MAIN_CATEGORIES.map(cat => {
+                                    let path = `/products?category=${cat}`;
+                                    // Show mega menu if category has subcategories defined
+                                    const isMega = !!SUBCATEGORIES[cat];
 
-                                const isMega = !!dynamicMegaData[cat];
+                                    return (
+                                        <div key={cat} className="sub-nav-item">
+                                            <Link
+                                                to={path}
+                                                className={`sub-nav-link ${location.pathname.includes(cat) ? 'active' : ''}`}
+                                                onMouseEnter={() => {
+                                                    if (isMega) {
+                                                        setActiveMegaMenu(cat);
+                                                        setShowAllSubcategories(false);
+                                                        setActiveSubCategory(0);
+                                                    }
+                                                }}
+                                                onClick={() => {
+                                                    setActiveMegaMenu(null);
+                                                    setShowCategories(false);
+                                                }}
+                                            >
+                                                {cat}
+                                                {isMega && <ChevronDown size={12} />}
+                                            </Link>
+                                        </div>
+                                    );
+                                })}
+                            </div>
 
-                                return (
-                                    <div key={cat} className="sub-nav-item">
-                                        <Link
-                                            to={path}
-                                            className={`sub-nav-link ${location.pathname.includes(cat) ? 'active' : ''}`}
-                                            onMouseEnter={() => isMega && setActiveMegaMenu(cat)}
-                                            onClick={() => setActiveMegaMenu(null)}
-                                        >
-                                            {cat}
-                                            {isMega && <ChevronDown size={12} />}
-                                        </Link>
-                                    </div>
-                                );
-                            })}
+                            {/* Second Row - Special Categories */}
+                            <div className="sub-nav sub-nav-secondary">
+                                {SPECIAL_CATEGORIES.map(cat => {
+                                    let path = `/products?category=${cat}`;
+                                    if (cat === "Today's Deals") path = "/deals";
+                                    if (cat === "New Arrivals") path = "/new-arrivals";
+                                    if (cat === "Trending") path = "/trending";
+
+                                    // Show mega menu if category has subcategories defined
+                                    const isMega = !!SUBCATEGORIES[cat];
+
+                                    return (
+                                        <div key={cat} className="sub-nav-item">
+                                            <Link
+                                                to={path}
+                                                className={`sub-nav-link ${location.pathname.includes(cat) ? 'active' : ''}`}
+                                                onMouseEnter={() => {
+                                                    if (isMega) {
+                                                        setActiveMegaMenu(cat);
+                                                        setShowAllSubcategories(false);
+                                                        setActiveSubCategory(0);
+                                                    }
+                                                }}
+                                                onClick={() => {
+                                                    setActiveMegaMenu(null);
+                                                    setShowCategories(false);
+                                                }}
+                                            >
+                                                {cat}
+                                                {isMega && <ChevronDown size={12} />}
+                                            </Link>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         {/* Mega Menu Dropdown */}
                         {activeMegaMenu && (
-                            <div className="mega-menu animate-slide-down" onMouseEnter={() => setActiveMegaMenu(activeMegaMenu)}>
+                            <div 
+                                className="mega-menu animate-slide-down" 
+                                onMouseEnter={() => {
+                                    setActiveMegaMenu(activeMegaMenu);
+                                }}
+                                onMouseLeave={() => {
+                                    setActiveMegaMenu(null);
+                                }}
+                            >
                                 <div className="container mega-menu-content">
                                     <div className="mega-sidebar">
                                         <h3 onClick={() => { navigate(`/products?category=${encodeURIComponent(activeMegaMenu)}`); setActiveMegaMenu(null); }} style={{ cursor: 'pointer' }}>
                                             {activeMegaMenu}
                                         </h3>
                                         <div className="sidebar-items">
-                                            {SUBCATEGORIES[activeMegaMenu]?.map((subcategory, idx) => (
+                                            {/* Show first 4 subcategories or all if expanded */}
+                                            {(showAllSubcategories ? ALL_SUBCATEGORIES[activeMegaMenu] : SUBCATEGORIES[activeMegaMenu])?.map((subcategory, idx) => (
                                                 <button
                                                     key={subcategory}
                                                     className={activeSubCategory === idx ? 'active' : ''}
@@ -512,14 +455,27 @@ export default function Navbar() {
                                                     <ArrowRight size={14} className="arrow" />
                                                 </button>
                                             ))}
+                                            {/* Other button - only show if not expanded */}
+                                            {!showAllSubcategories && (
+                                                <button
+                                                    className="other-btn"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setShowAllSubcategories(true);
+                                                    }}
+                                                >
+                                                    Other
+                                                    <ArrowRight size={14} className="arrow" />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
                                     <div className="mega-main">
-                                        {SUBCATEGORIES[activeMegaMenu]?.[activeSubCategory] && (
+                                        {SUBCATEGORIES[activeMegaMenu]?.[activeSubCategory] || ALL_SUBCATEGORIES[activeMegaMenu]?.[activeSubCategory] ? (
                                             <>
                                                 <div className="mega-title-row">
-                                                    <h4>{SUBCATEGORIES[activeMegaMenu][activeSubCategory]}</h4>
+                                                    <h4>{(showAllSubcategories ? ALL_SUBCATEGORIES : SUBCATEGORIES)[activeMegaMenu][activeSubCategory]}</h4>
                                                 </div>
                                                 {dynamicMegaData[activeMegaMenu]?.categories[activeSubCategory]?.items?.length > 0 ? (
                                                     <div className="mega-grid">
@@ -541,17 +497,21 @@ export default function Navbar() {
                                                     </div>
                                                 ) : (
                                                     <div className="mega-empty-state">
-                                                        <p>Browse {SUBCATEGORIES[activeMegaMenu][activeSubCategory]} products</p>
+                                                        <p>Browse {(showAllSubcategories ? ALL_SUBCATEGORIES : SUBCATEGORIES)[activeMegaMenu][activeSubCategory]} products</p>
                                                         <button
                                                             className="btn btn-primary"
-                                                            onClick={() => { navigate(`/products?category=${encodeURIComponent(activeMegaMenu)}&subcategory=${encodeURIComponent(SUBCATEGORIES[activeMegaMenu][activeSubCategory])}`); setActiveMegaMenu(null); }}
+                                                            onClick={() => { 
+                                                                const subcatName = (showAllSubcategories ? ALL_SUBCATEGORIES : SUBCATEGORIES)[activeMegaMenu][activeSubCategory];
+                                                                navigate(`/products?category=${encodeURIComponent(activeMegaMenu)}&subcategory=${encodeURIComponent(subcatName)}`); 
+                                                                setActiveMegaMenu(null); 
+                                                            }}
                                                         >
-                                                            Browse All {SUBCATEGORIES[activeMegaMenu][activeSubCategory]}
+                                                            Browse All {(showAllSubcategories ? ALL_SUBCATEGORIES : SUBCATEGORIES)[activeMegaMenu][activeSubCategory]}
                                                         </button>
                                                     </div>
                                                 )}
                                             </>
-                                        )}
+                                        ) : null}
 
                                         <div className="mega-footer">
                                             <div className="popular-tags">
@@ -584,44 +544,68 @@ export default function Navbar() {
 }
 
 const navStyles = `
-/* Mega Menu specific styles */
+/* Professional Navbar - 70px Header Height */
 .navbar-container {
     position: sticky;
     top: 0;
-    z-index: 1000;
-    background: white;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    z-index: 1020;
+    background: #FFFFFF;
+    box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.06);
 }
 
 .main-nav-wrapper {
-    background: white;
-    border-bottom: 1px solid var(--border);
+    background: #FFFFFF;
+    border-bottom: 1px solid #E5E7EB;
+    position: relative;
 }
 
 .main-nav {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-    padding: 0.75rem 2rem;
+    gap: 24px;
+    padding: 16px 24px;
+    height: 70px;
+    background: #FFFFFF;
+    max-width: 1280px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.brand-logo { 
+    font-size: 28px; 
+    font-weight: 900; 
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    transition: all 300ms;
+    text-decoration: none;
+}
+
+.brand-logo:hover {
+    transform: scale(1.05);
+    filter: brightness(1.2);
 }
 
 .nav-location {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     cursor: pointer;
-    padding: 0.5rem 0.75rem;
+    padding: 8px 12px;
     border-radius: 8px;
-    transition: 0.2s;
+    transition: background 200ms;
     min-width: 140px;
 }
 
 .nav-location:hover {
-    background: #f3f4f6;
+    background: #F9FAFB;
 }
 
 .nav-location .pin-icon {
-    color: #4B5563;
+    color: var(--text-secondary);
 }
 
 .nav-location .location-info {
@@ -631,28 +615,28 @@ const navStyles = `
 }
 
 .nav-location .label {
-    font-size: 0.75rem;
-    color: #6B7280;
+    font-size: var(--text-xs, 12px);
+    color: var(--text-secondary);
     line-height: 1;
     margin-bottom: 2px;
 }
 
 .nav-location .value {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: #111827;
+    font-size: var(--text-sm, 14px);
+    font-weight: var(--font-bold, 700);
+    color: var(--text-primary);
     line-height: 1;
 }
 
 .nav-location .chevron {
-    color: #9CA3AF;
-    margin-left: 0.25rem;
+    color: var(--text-tertiary);
+    margin-left: var(--space-1, 4px);
 }
 
 .nav-selectors {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2, 8px);
 }
 
 .selector-container {
@@ -662,20 +646,20 @@ const navStyles = `
 .selector-trigger {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: 8px;
-    background: #f3f4f6;
+    gap: var(--space-2, 8px);
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    border-radius: var(--radius-md, 8px);
+    background: var(--gray-50);
     border: none;
     cursor: pointer;
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: #4B5563;
-    transition: 0.2s;
+    font-weight: var(--font-semibold, 600);
+    font-size: var(--text-sm, 14px);
+    color: var(--text-secondary);
+    transition: background var(--transition-base, 200ms);
 }
 
 .selector-trigger:hover {
-    background: #e5e7eb;
+    background: var(--gray-100);
 }
 
 .selector-trigger .rotate {
@@ -683,25 +667,29 @@ const navStyles = `
 }
 
 .selector-trigger svg {
-    transition: 0.3s;
+    transition: transform var(--transition-base, 200ms);
 }
 
 .currency-symbol-btn {
-    font-weight: 800;
-    font-size: 1rem;
+    font-weight: var(--font-extrabold, 800);
+    font-size: var(--text-lg, 18px);
     color: var(--primary);
 }
 
 .selector-dropdown {
     position: absolute;
-    top: calc(100% + 10px);
+    top: calc(100% + var(--space-2, 8px));
     right: 0;
     width: 220px;
-    padding: 0.5rem;
-    z-index: 1001;
+    padding: var(--space-2, 8px);
+    z-index: var(--z-dropdown, 1000);
     display: flex;
     flex-direction: column;
     gap: 2px;
+    background: #FFFFFF;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    border: 1px solid #E5E7EB;
 }
 
 .currency-dropdown {
@@ -712,24 +700,24 @@ const navStyles = `
     width: 100%;
     display: flex;
     align-items: center;
-    padding: 0.75rem 1rem;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--text);
-    transition: 0.2s;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    border-radius: var(--radius-md, 8px);
+    font-size: var(--text-sm, 14px);
+    font-weight: var(--font-medium, 500);
+    color: var(--text-primary);
+    transition: background var(--transition-base, 200ms);
     background: transparent;
     border: none;
 }
 
 .selector-dropdown button:hover {
-    background: var(--surface-hover);
+    background: var(--gray-50);
 }
 
 .selector-dropdown button.active {
-    background: hsla(230, 85%, 60%, 0.05);
+    background: var(--primary-light);
     color: var(--primary);
-    font-weight: 700;
+    font-weight: var(--font-bold, 700);
 }
 
 .lang-native {
@@ -746,9 +734,9 @@ const navStyles = `
 
 .curr-symbol {
     width: 24px;
-    font-weight: 800;
+    font-weight: var(--font-extrabold, 800);
     color: var(--primary);
-    font-size: 1.1rem;
+    font-size: var(--text-lg, 18px);
 }
 
 .curr-name {
@@ -757,54 +745,94 @@ const navStyles = `
 }
 
 .curr-code-fade {
-    font-size: 0.8rem;
-    color: var(--text-muted);
+    font-size: var(--text-xs, 12px);
+    color: var(--text-secondary);
 }
 
 .sub-nav-wrapper {
     position: relative;
-    background: white;
+    background: #FFFFFF;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.sub-nav-wrapper .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 3px;
 }
 
 .sub-nav {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-    padding: 0.75rem 0;
+    gap: 1.8rem;
     width: 100%;
+}
+
+.sub-nav-primary {
+    padding: 10px 0 6px 0;
+    border-bottom: 1px solid #F3F4F6;
+}
+
+.sub-nav-secondary {
+    padding: 6px 0 10px 0;
+    gap: 2.5rem;
 }
 
 .sub-nav-link {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.9rem;
+    gap: 4px;
+    font-size: 13px;
     font-weight: 700;
-    color: #4B5563;
-    transition: 0.2s;
+    color: #6B7280;
+    transition: all 200ms;
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 0.25rem 0;
+    padding: 6px 10px;
     position: relative;
+    white-space: nowrap;
+    border-radius: 6px;
+}
+
+.sub-nav-secondary .sub-nav-link {
+    font-size: 12px;
+    padding: 5px 12px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
 }
 
 .sub-nav-link:hover, .sub-nav-link.active {
-    color: var(--primary);
+    color: #2563EB;
+    background: #EFF6FF;
+}
+
+.sub-nav-secondary .sub-nav-link:hover,
+.sub-nav-secondary .sub-nav-link.active {
+    background: #DBEAFE;
+    border-color: #93C5FD;
 }
 
 .sub-nav-link.active::after {
     content: '';
     position: absolute;
-    bottom: -0.75rem;
-    left: 0;
-    width: 100%;
-    height: 3px;
-    background: var(--primary);
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40%;
+    height: 2px;
+    background: #2563EB;
+    border-radius: 2px;
+}
+
+.sub-nav-secondary .sub-nav-link.active::after {
+    display: none;
 }
 
 .sub-nav-link svg {
-    transition: 0.3s;
+    transition: transform 200ms;
+    flex-shrink: 0;
 }
 
 .sub-nav-link svg.rotate {
@@ -812,107 +840,179 @@ const navStyles = `
 }
 
 /* Responsive Category Navigation */
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
     .sub-nav {
         gap: 1.5rem;
-        justify-content: space-between;
+    }
+    .sub-nav-secondary {
+        gap: 2rem;
+    }
+    .sub-nav-link {
+        font-size: 12px;
+        padding: 5px 8px;
+    }
+    .sub-nav-secondary .sub-nav-link {
+        font-size: 11px;
+        padding: 4px 10px;
+    }
+}
+
+@media (max-width: 1200px) {
+    .sub-nav {
+        gap: 1.2rem;
+    }
+    .sub-nav-secondary {
+        gap: 1.5rem;
+    }
+    .sub-nav-link {
+        font-size: 11.5px;
+        padding: 4px 7px;
+    }
+    .sub-nav-secondary .sub-nav-link {
+        font-size: 10.5px;
+        padding: 4px 8px;
     }
 }
 
 @media (max-width: 1024px) {
     .sub-nav {
         gap: 1rem;
-        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+    .sub-nav-secondary {
+        gap: 1.2rem;
     }
     .sub-nav-link {
-        font-size: 0.85rem;
+        font-size: 11px;
+        padding: 4px 6px;
+    }
+    .sub-nav-secondary .sub-nav-link {
+        font-size: 10px;
+        padding: 3px 7px;
     }
 }
 
 @media (max-width: 768px) {
     .sub-nav {
-        gap: 0.75rem;
+        gap: 0.8rem;
         justify-content: flex-start;
         overflow-x: auto;
+        flex-wrap: nowrap;
         scrollbar-width: none;
         -ms-overflow-style: none;
+        padding: 8px 0;
     }
     .sub-nav::-webkit-scrollbar {
         display: none;
     }
+    .sub-nav-primary {
+        padding: 8px 0 4px 0;
+    }
+    .sub-nav-secondary {
+        padding: 4px 0 8px 0;
+        gap: 1rem;
+    }
     .sub-nav-link {
-        font-size: 0.8rem;
-        white-space: nowrap;
+        font-size: 10px;
+        padding: 4px 6px;
         flex-shrink: 0;
+    }
+    .sub-nav-secondary .sub-nav-link {
+        font-size: 9px;
+        padding: 3px 6px;
     }
 }
 
-/* Mega Menu Content */
+/* Mega Menu Content - Compact with reduced padding */
 .mega-menu {
     position: absolute;
     top: 100%;
     left: 0;
+    right: 0;
     width: 100%;
-    background: white;
-    border-top: 1px solid var(--border);
-    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-    z-index: 999;
+    background: #FFFFFF;
+    border-top: 1px solid #E5E7EB;
+    box-shadow: 0 12px 24px 0 rgba(0, 0, 0, 0.12);
+    z-index: 1000;
+}
+
+/* Override container width only inside mega menu */
+.mega-menu .container {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
 .mega-menu-content {
     display: grid;
-    grid-template-columns: 280px 1fr;
-    min-height: 450px;
+    grid-template-columns: 220px 1fr;
+    height: 380px;
+    background: #FFFFFF;
+    width: 100%;
 }
 
 .mega-sidebar {
-    padding: 2.5rem 2rem;
-    border-right: 1px solid var(--border);
-    background: #fcfcfe;
+    padding: 20px 12px;
+    border-right: 1px solid #E5E7EB;
+    background: #F9FAFB;
+    overflow-y: auto;
+    height: 380px;
 }
 
 .mega-sidebar h3 {
-    font-size: 1.25rem;
+    font-size: 18px;
     font-weight: 800;
-    margin-bottom: 2rem;
-    color: var(--text);
+    margin-bottom: 16px;
+    color: #111827;
 }
 
 .sidebar-items {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 4px;
 }
 
 .sidebar-items button {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.25rem;
-    border-radius: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
     font-weight: 600;
-    font-size: 0.95rem;
-    color: #4B5563;
+    font-size: 13px;
+    color: #6B7280;
     text-align: left;
-    transition: 0.2s;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+.sidebar-items button.other-btn {
+    margin-top: 6px;
+    border-top: 1px solid #E5E7EB;
+    padding-top: 12px;
+    color: #2563EB;
+    font-weight: 700;
 }
 
 .sidebar-items button:hover {
-    background: hsla(230, 85%, 60%, 0.05);
-    color: var(--primary);
+    background: #DBEAFE;
+    color: #2563EB;
 }
 
 .sidebar-items button.active {
-    background: white;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    color: var(--primary);
-    border: 1px solid hsla(230, 85%, 60%, 0.1);
+    background: #FFFFFF;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.08);
+    color: #2563EB;
+    border: 1px solid #DBEAFE;
 }
 
 .sidebar-items .arrow {
     opacity: 0;
     transform: translateX(-5px);
-    transition: 0.3s;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-items button.active .arrow {
@@ -921,42 +1021,96 @@ const navStyles = `
 }
 
 .mega-main {
-    padding: 2.5rem 3rem;
+    padding: 20px 24px;
     display: flex;
     flex-direction: column;
+    background: #FFFFFF;
+    overflow-y: auto;
+    height: 380px;
 }
 
 .mega-title-row {
-    margin-bottom: 2rem;
+    margin-bottom: 16px;
 }
 
 .mega-title-row h4 {
-    font-size: 1.4rem;
+    font-size: 20px;
     font-weight: 800;
+    color: #111827;
 }
 
 .mega-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 1.5rem;
+    gap: 14px;
     flex: 1;
+}
+
+/* Other Subcategories Grid */
+.other-subcategories-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 20px;
+    background: #F9FAFB;
+    border-radius: 12px;
+}
+
+.other-subcategory-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.other-subcategory-item:hover {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+    color: #FFFFFF;
+    border-color: transparent;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(37, 99, 235, 0.25);
+}
+
+.other-subcategory-item svg {
+    opacity: 0;
+    transform: translateX(-5px);
+    transition: all 200ms;
+}
+
+.other-subcategory-item:hover svg {
+    opacity: 1;
+    transform: translateX(0);
 }
 
 .mega-item-card {
     cursor: pointer;
-    transition: 0.3s;
+    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    background: #FFFFFF;
+    border-radius: 10px;
+    padding: 10px;
+    border: 1px solid #F3F4F6;
 }
 
 .mega-item-card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px 0 rgba(0, 0, 0, 0.1);
+    border-color: #E5E7EB;
 }
 
 .mega-item-card .img-box {
-    height: 160px;
-    background: #f9f9fb;
-    border-radius: 20px;
+    height: 120px;
+    background: #F9FAFB;
+    border-radius: 8px;
     overflow: hidden;
-    margin-bottom: 1rem;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -969,59 +1123,113 @@ const navStyles = `
 }
 
 .item-info h5 {
-    font-size: 1rem;
-    font-weight: 800;
-    margin-bottom: 0.25rem;
+    font-size: 14px;
+    font-weight: var(--font-bold, 700);
+    margin-bottom: var(--space-1, 4px);
+    color: #111827;
 }
 
 .item-info p {
-    font-size: 0.8rem;
-    color: var(--text-muted);
+    font-size: 13px;
+    color: #6B7280;
 }
 
 .mega-footer {
-    margin-top: 3rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--border);
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #E5E7EB;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background: #FFFFFF;
 }
 
 .popular-tags {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 12px;
 }
 
 .popular-tags .label {
     font-weight: 700;
-    font-size: 0.9rem;
+    font-size: 13px;
 }
 
 .popular-tags .tag {
-    font-size: 0.85rem;
-    color: var(--text-muted);
+    font-size: 13px;
+    color: #6B7280;
     font-weight: 500;
-    transition: 0.2s;
+    transition: color 200ms;
 }
 
 .popular-tags .tag:hover {
-    color: var(--primary);
+    color: #2563EB;
 }
 
 .explore-link {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-weight: 700;
+    gap: var(--space-2, 8px);
+    font-weight: var(--font-bold, 700);
     color: var(--primary);
-    font-size: 0.95rem;
+    font-size: var(--text-base, 16px);
+}
+
+/* Mega Menu Empty State */
+.mega-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 64px 48px;
+    text-align: center;
+    flex: 1;
+    background: linear-gradient(135deg, #F9FAFB 0%, #FFFFFF 100%);
+    border-radius: 16px;
+    margin: 20px;
+}
+
+.mega-empty-state p {
+    color: #111827;
+    margin-bottom: 24px;
+    font-size: 18px;
+    font-weight: 600;
+    background: linear-gradient(135deg, #6B7280 0%, #111827 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.mega-empty-state .btn-primary {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+    color: #FFFFFF;
+    padding: 14px 32px;
+    border-radius: 10px;
+    border: none;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mega-empty-state .btn-primary:hover {
+    background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+}
+
+.mega-empty-state .btn-primary:active {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
 }
 
 /* Animations */
 @keyframes navFadeIn {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(var(--space-2, 8px)); }
     to { opacity: 1; transform: translateY(0); }
 }
 
@@ -1030,7 +1238,16 @@ const navStyles = `
 }
 
 @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-10px); }
+    from { opacity: 0; transform: translateY(calc(-1 * var(--space-2, 8px))); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+    animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(var(--space-2, 8px)); }
     to { opacity: 1; transform: translateY(0); }
 }
 
@@ -1053,60 +1270,175 @@ const navStyles = `
     border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-.brand-logo { font-size: 1.5rem; font-weight: 800; letter-spacing: -1px; }
-.nav-search { flex: 1; max-width: 600px; margin: 0 1rem; position: relative; }
-.search-icon { position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); opacity: 0.4; color: var(--text); }
-.nav-search input { width: 100%; padding: 0.6rem 1rem 0.6rem 2.8rem; background: var(--surface); border: 1px solid var(--border); border-radius: 99px; font-size: 0.9rem; transition: 0.3s; }
-.nav-search input:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 4px hsla(230, 85%, 60%, 0.1); }
-.nav-actions { display: flex; gap: 0.75rem; align-items: center; }
-.icon-btn { width: 42px; height: 42px; padding: 0; border-radius: 50%; }
-.profile-dropdown-container { position: relative; }
-
-/* Mega Menu Empty State */
-.mega-empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem;
-    text-align: center;
-    flex: 1;
+/* Search and Actions */
+.nav-search { 
+    flex: 1; 
+    max-width: 700px; 
+    margin: 0 var(--space-4, 16px); 
+    position: relative; 
+}
+.search-icon { 
+    position: absolute; 
+    left: var(--space-4, 16px); 
+    top: 50%; 
+    transform: translateY(-50%); 
+    opacity: 0.4; 
+    color: var(--text-primary); 
+}
+.nav-search input { 
+    width: 100%; 
+    padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-3, 12px) var(--space-10, 40px); 
+    background: var(--gray-50); 
+    border: 2px solid #E5E7EB; 
+    border-radius: var(--radius-full, 9999px); 
+    font-size: var(--text-sm, 14px); 
+    transition: all var(--transition-base, 200ms); 
+}
+.nav-search input:focus { 
+    border-color: var(--primary); 
+    background: var(--white); 
+    box-shadow: 0 0 0 4px var(--primary-light); 
+    outline: none;
 }
 
-.mega-empty-state p {
-    color: var(--text-muted);
-    margin-bottom: 1.5rem;
-    font-size: 1rem;
-}
-
-.mega-empty-state .btn-primary {
-    background: var(--primary);
-    color: white;
-    padding: 0.75rem 1.5rem;
+.btn-seller {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+    color: #FFFFFF;
+    font-weight: 700;
+    font-size: 14px;
     border-radius: 8px;
     border: none;
-    font-weight: 600;
     cursor: pointer;
-    transition: 0.2s;
+    transition: all 200ms;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
-.mega-empty-state .btn-primary:hover {
-    background: var(--primary-dark);
+.btn-seller:hover {
+    background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
     transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
 }
-.profile-trigger { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; border-radius: 99px; }
-.user-name { font-size: 0.9rem; font-weight: 600; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-menu { position: absolute; top: calc(100% + 10px); right: 0; width: 280px; padding: 0.5rem; z-index: 1001; animation: navFadeIn 0.2s ease-out; }
-.menu-header { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-bottom: 1px solid var(--border); }
-.avatar { width: 40px; height: 40px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
-.menu-header .info p { margin: 0; }
-.menu-header .info .name { font-weight: 700; font-size: 0.95rem; }
-.menu-header .info .email { font-size: 0.8rem; color: var(--text-muted); }
-.menu-items { padding-top: 0.5rem; }
-.menu-items button { width: 100%; display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.9rem; font-weight: 500; color: var(--text); transition: 0.2s; }
-.menu-items button:hover { background: var(--surface-hover); }
-.signout-btn { color: var(--error) !important; }
+
+.nav-actions { 
+    display: flex; 
+    gap: 12px; 
+    align-items: center;
+    height: 44px;
+}
+
+.icon-btn { 
+    width: 44px; 
+    height: 44px; 
+    padding: 0; 
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #F3F4F6;
+    border: 1px solid #E5E7EB;
+    color: #6B7280;
+    transition: all 200ms;
+    cursor: pointer;
+}
+
+.icon-btn:hover {
+    background: #E5E7EB;
+    color: #111827;
+}
+
+.profile-dropdown-container { 
+    position: relative;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    z-index: 10000; /* Highest layer - above everything */
+}
+
+.cart-btn-nav, .wishlist-btn-nav { 
+    position: relative;
+    height: 44px;
+}
+
+.cart-badge, .wishlist-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #EF4444;
+    color: #FFFFFF;
+    font-size: 12px;
+    font-weight: 800;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #FFFFFF;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.profile-menu { 
+    position: absolute; 
+    top: calc(100% + var(--space-2, 8px)); 
+    right: 0; 
+    width: 280px; 
+    padding: var(--space-2, 8px); 
+    z-index: 10001; /* Above profile container */
+    animation: navFadeIn 0.2s ease-out;
+    background: #FFFFFF;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    border: 1px solid #E5E7EB;
+}
+.menu-header { 
+    display: flex; 
+    align-items: center; 
+    gap: var(--space-4, 16px); 
+    padding: var(--space-4, 16px); 
+    border-bottom: 1px solid var(--border-light); 
+}
+.avatar { 
+    width: 40px; 
+    height: 40px; 
+    background: var(--primary); 
+    color: var(--white); 
+    border-radius: 50%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    font-weight: var(--font-bold, 700); 
+}
+.menu-header .info p { 
+    margin: 0; 
+}
+.menu-header .info .name { 
+    font-weight: var(--font-bold, 700); 
+    font-size: var(--text-base, 16px); 
+}
+.menu-header .info .email { 
+    font-size: var(--text-xs, 12px); 
+    color: var(--text-secondary); 
+}
+.menu-items { 
+    padding-top: var(--space-2, 8px); 
+}
+.menu-items button { 
+    width: 100%; 
+    display: flex; 
+    align-items: center; 
+    gap: var(--space-3, 12px); 
+    padding: var(--space-3, 12px) var(--space-4, 16px); 
+    border-radius: var(--radius-md, 8px); 
+    font-size: var(--text-sm, 14px); 
+    font-weight: var(--font-medium, 500); 
+    color: var(--text-primary); 
+    transition: background var(--transition-base, 200ms); 
+}
+.menu-items button:hover { 
+    background: var(--gray-50); 
+}
+.signout-btn { 
+    color: var(--error) !important; 
+}
 `;
-
-
-

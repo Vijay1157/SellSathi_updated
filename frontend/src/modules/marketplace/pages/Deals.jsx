@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, Heart, Eye, ShoppingCart } from 'lucide-react';
+import { collection, getDocs, query, limit } from 'firebase/firestore';
 import { db, auth } from '@/modules/shared/config/firebase';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
-import { getCachedProducts } from '@/modules/shared/utils/productCache';
 import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
 
 export default function Deals() {
@@ -23,12 +23,12 @@ export default function Deals() {
     useEffect(() => {
         const fetchDeals = async () => {
             try {
-                // ✅ Use shared 5-min cache — no redundant Firestore read if
-                // NewArrivals or Trending was already visited this session
-                const raw = await getCachedProducts(20);
-                const data = raw.map(p => ({
-                    ...p,
-                    discount: Math.floor(Math.random() * 30) + 10,
+                const q = query(collection(db, "products"), limit(12));
+                const snap = await getDocs(q);
+                const data = snap.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    discount: Math.floor(Math.random() * 30) + 10, // Mock discount
                     rating: (Math.random() * 1 + 4).toFixed(1),
                     reviews: Math.floor(Math.random() * 1000) + 100
                 }));
@@ -243,7 +243,7 @@ export default function Deals() {
                     display: flex;
                     flex-direction: column;
                     gap: 0.6rem;
-                    z-index: 3;
+                    z-index: 20;
                 }
                 .tool-btn {
                     width: 42px;
@@ -317,6 +317,3 @@ export default function Deals() {
         </div>
     );
 }
-
-
-

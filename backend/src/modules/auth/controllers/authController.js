@@ -6,7 +6,7 @@ const { admin, db } = require('../../../config/firebase');
  */
 const login = async (req, res) => {
     try {
-        const { idToken, isTest, email: testEmail } = req.body;
+        const { idToken, isTest, email: testEmail, phone } = req.body;
 
         let uid;
         let phoneNumber = null;
@@ -14,9 +14,10 @@ const login = async (req, res) => {
         let fullName = null;
 
         if (isTest) {
-            uid = `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
-            email = testEmail;
-            fullName = testEmail?.split('@')[0] || "Test User";
+            uid = phone ? `test_${phone.replace(/[^0-9]/g, '')}` : `test_email_${(testEmail || "user").replace(/[^a-zA-Z0-9]/g, '')}`;
+            email = testEmail || null;
+            fullName = req.body.fullName || testEmail?.split('@')[0] || "Test User";
+            phoneNumber = phone || null;
         } else {
             if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
             const decodedToken = await admin.auth().verifyIdToken(idToken);
@@ -146,9 +147,30 @@ const applySeller = async (req, res) => {
         if (!userSnap.exists) return res.status(404).json({ success: false, message: "User not found" });
 
         const userData = userSnap.data();
-        if (userData.role === "SELLER") return res.status(400).json({ success: false, message: "Already a seller" });
 
+        // Check if seller document actually exists (may have been deleted manually)
         const sellerRef = db.collection("sellers").doc(uid);
+        const sellerSnap = await sellerRef.get();
+
+        if (userData.role === "SELLER" && sellerSnap.exists) {
+            const existingSellerData = sellerSnap.data();
+            // Only block if they are an APPROVED or PENDING seller
+            if (existingSellerData.sellerStatus === "APPROVED" || existingSellerData.sellerStatus === "PENDING") {
+                logLocal(`ERROR: User is already a SELLER with status: ${existingSellerData.sellerStatus}`);
+                return res.status(400).json({ success: false, message: `Already a seller (status: ${existingSellerData.sellerStatus})` });
+            }
+        }
+
+        // If role says SELLER but no seller doc exists, reset the role so they can re-apply
+        if (userData.role === "SELLER" && !sellerSnap.exists) {
+            logLocal(`Seller doc missing despite SELLER role. Resetting role to CONSUMER to allow re-application.`);
+            await userRef.update({ role: "CONSUMER" });
+        }
+
+        // Scrub undefined values to prevent Firestore errors
+        const finalData = JSON.parse(JSON.stringify(sellerDetails));
+
+        logLocal(`Storing seller data in DB...`);
         await sellerRef.set({
             uid, 
             ...sellerDetails,

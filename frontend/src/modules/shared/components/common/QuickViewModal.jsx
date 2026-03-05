@@ -153,16 +153,19 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             align-items: center;
                             justify-content: center;
                             z-index: 9999;
-                            padding: 2rem;
+                            padding: 1rem;
+                            overflow-y: auto;
                         }
                         .quick-view-container {
                             background: white;
                             width: 100%;
                             max-width: 900px;
+                            max-height: 90vh;
                             border-radius: 24px;
                             position: relative;
                             overflow: hidden;
                             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                            margin: auto;
                         }
                         .close-btn {
                             position: absolute;
@@ -190,6 +193,8 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             display: grid;
                             grid-template-columns: 1fr 1fr;
                             gap: 0;
+                            max-height: 90vh;
+                            overflow-y: auto;
                         }
                         .qv-media {
                             background: #f8fafc;
@@ -198,6 +203,8 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             align-items: center;
                             justify-content: center;
                             padding: 2rem;
+                            min-height: 400px;
+                            max-height: 500px;
                         }
                         .qv-media img {
                             width: 100%;
@@ -217,14 +224,16 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             font-size: 0.85rem;
                         }
                         .qv-info {
-                            padding: 3rem;
+                            padding: 2rem;
                             display: flex;
                             flex-direction: column;
-                            gap: 1.5rem;
-                            justify-content: center;
+                            gap: 1rem;
+                            justify-content: flex-start;
+                            overflow-y: auto;
+                            max-height: 90vh;
                         }
                         .qv-title {
-                            font-size: 1.75rem;
+                            font-size: 1.5rem;
                             font-weight: 850;
                             line-height: 1.2;
                             color: #1a1a1a;
@@ -267,7 +276,14 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                         .stock-status.in { color: #10b981; }
                         .stock-status.out { color: #ef4444; }
 
-                        .qv-description { color: #64748b; line-height: 1.6; font-size: 0.95rem; margin: 1.5rem 0; }
+                        .qv-description { 
+                            color: #64748b; 
+                            line-height: 1.6; 
+                            font-size: 0.9rem; 
+                            margin: 0.5rem 0; 
+                            max-height: 100px;
+                            overflow-y: auto;
+                        }
                         .qv-deal-timer {
                             display: flex;
                             align-items: center;
@@ -331,17 +347,17 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                         .qv-actions {
                             display: flex;
                             gap: 1rem;
-                            margin-top: 1rem;
+                            margin-top: 0.5rem;
                         }
                         .qv-view-btn {
                             flex: 1;
                             background: #4f46e5;
                             color: white;
                             border: none;
-                            padding: 1.25rem;
+                            padding: 1rem;
                             border-radius: 16px;
                             font-weight: 700;
-                            font-size: 1.1rem;
+                            font-size: 1rem;
                             cursor: pointer;
                             transition: 0.2s;
                             display: flex;
@@ -354,8 +370,8 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
                             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); 
                         }
                         .qv-wishlist-btn {
-                            width: 60px;
-                            height: 60px;
+                            width: 50px;
+                            height: 50px;
                             border-radius: 16px;
                             border: 2px solid #e2e8f0;
                             background: white;
@@ -394,6 +410,3 @@ export default function QuickViewModal({ isOpen, onClose, product, navigate }) {
         </AnimatePresence>
     );
 }
-
-
-
