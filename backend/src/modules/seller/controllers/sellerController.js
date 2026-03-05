@@ -13,21 +13,38 @@ const SELLER_DASH_TTL = 3 * 60 * 1000; // 3 minutes
 const getDashboardData = async (req, res) => {
     try {
         const { uid } = req.params;
+        console.log(`[SellerDashboard] Fetching data for UID: ${uid}`);
         const cacheKey = `sellerDash_${uid}`;
         const cached = cache.get(cacheKey);
-        if (cached) return res.status(200).json({ success: true, ...cached });
+        if (cached) {
+            console.log(`[SellerDashboard] Returning cached data for UID: ${uid}`);
+            return res.status(200).json({ success: true, ...cached });
+        }
 
-        const [sellerSnap, userSnap, productsSnap, allOrdersSnap] = await Promise.all([
+        const [sellerSnap, userSnap, productsSnap, subProductsSnap, allOrdersSnap] = await Promise.all([
             db.collection("sellers").doc(uid).get(),
             db.collection("users").doc(uid).get(),
             db.collection("products").where("sellerId", "==", uid).limit(50).get(),
+            db.collection("sellers").doc(uid).collection("listedproducts").limit(50).get(),
             db.collection("orders").where("sellerId", "==", uid).limit(50).get()
         ]);
 
         if (!sellerSnap.exists) return res.status(404).json({ success: false, message: "Seller not found" });
         const sellerData = sellerSnap.data();
         const userData = userSnap.data();
-        const products = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Merge products from both sources
+        const mainProducts = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const subProducts = subProductsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        console.log(`[SellerDashboard] UID: ${uid} | Main: ${mainProducts.length} | Sub: ${subProducts.length}`);
+
+        // Use a map to handle duplicates by ID
+        const productsMap = new Map();
+        [...mainProducts, ...subProducts].forEach(p => productsMap.set(p.id, p));
+        const products = Array.from(productsMap.values());
+
+        console.log(`[SellerDashboard] UID: ${uid} | Merged Total: ${products.length}`);
 
         let totalSales = 0, newOrdersCount = 0, pendingOrdersCount = 0;
         const sellerOrders = [];
@@ -100,13 +117,20 @@ const addProduct = async (req, res) => {
         };
 
         const docRef = await db.collection("products").add(newProduct);
+        const productId = docRef.id;
+
+        // Also add to seller's sub-collection
+        await db.collection("sellers").doc(sellerId).collection("listedproducts").doc(productId).set({
+            ...newProduct,
+            id: productId
+        });
 
         // Invalidate relevant caches
         cache.invalidate(`sellerDash_${sellerId}`);
         cache.invalidate('adminStats', 'allSellers');
         cache.invalidatePrefix('products_');
 
-        return res.status(200).json({ success: true, message: "Product added", productId: docRef.id });
+        return res.status(200).json({ success: true, message: "Product added", productId });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to add product" });
     }

@@ -3,6 +3,27 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, CreditCard, Phone, MapPin, Store, Tag, CheckCircle2, Upload, Camera, Loader } from 'lucide-react';
 import { authFetch } from '@/modules/shared/utils/api';
 
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
+  "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Andaman and Nicobar Islands", "Chandigarh",
+  "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+];
+
+const CITY_DATA = {
+  "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Thane", "Nashik", "Aurangabad", "Solapur"],
+  "Delhi": ["New Delhi", "North Delhi", "South Delhi", "West Delhi", "East Delhi"],
+  "Karnataka": ["Bengaluru", "Mysuru", "Hubballi", "Dharwad", "Mangaluru", "Belagavi"],
+  "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli"],
+  "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar"],
+  "Uttar Pradesh": ["Lucknow", "Kanpur", "Ghaziabad", "Agra", "Meerut", "Varanasi", "Prayagraj"],
+  "West Bengal": ["Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri"],
+  "Rajasthan": ["Jaipur", "Jodhpur", "Kota", "Bikaner", "Ajmer", "Udaipur"],
+  "Telangana": ["Hyderabad", "Warangal", "Nizamabad", "Karimnagar", "Ramagundam"],
+  "Madhya Pradesh": ["Indore", "Bhopal", "Jabalpur", "Gwalior", "Ujjain", "Sagar"]
+};
+
 const SellerOnboarding = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,6 +55,7 @@ const SellerOnboarding = () => {
     emailId: '',
     state: '',
     pincode: '',
+    landmark: '',
     district: '',
     city: '',
     buildingNumber: '',
@@ -41,6 +63,8 @@ const SellerOnboarding = () => {
 
     // Pickup Address
     pickupAddress: '',
+    pickupStreet: '',
+    pickupLandmark: '',
     pickupCity: '',
     pickupState: '',
     pickupPincode: '',
@@ -91,7 +115,6 @@ const SellerOnboarding = () => {
           sellerData.aadhaarNumber?.length === 12 &&
           sellerData.phoneNumber?.length === 10 &&
           sellerData.age &&
-          sellerData.shopAddress &&
           sellerData.panNumber?.length === 10 &&
           sellerData.nameAsPerPAN &&
           sellerData.emailId &&
@@ -147,6 +170,17 @@ const SellerOnboarding = () => {
     setError('');
 
     try {
+      // Build the full address from structured fields
+      const fullAddress = [
+        sellerData.buildingNumber,
+        sellerData.streetLocality,
+        sellerData.landmark,
+        sellerData.city,
+        sellerData.district,
+        sellerData.state,
+        sellerData.pincode
+      ].filter(Boolean).join(', ');
+
       // Send seller data to backend using authenticated fetch
       const response = await authFetch('/auth/apply-seller', {
         method: 'POST',
@@ -157,7 +191,7 @@ const SellerOnboarding = () => {
           sellerDetails: {
             ...sellerData,
             category: sellerData.shopCategory,
-            address: sellerData.shopAddress
+            address: fullAddress || sellerData.shopAddress || sellerData.buildingNumber
           }
         }),
       });
@@ -243,8 +277,8 @@ const SellerOnboarding = () => {
       {/* 2. Content Side (Right 50%) */}
       <div className="lg:w-1/2 flex flex-col bg-gray-50 h-screen overflow-hidden">
         {/* Fixed Header with Progress */}
-        <div className="z-20 pt-16 pb-6 px-8 bg-white border-b border-gray-100 flex flex-col gap-6">
-          <div className="flex items-center justify-center">
+        <div className="z-20 pt-4 pb-4 px-6 bg-white border-b border-gray-100 flex flex-col gap-4">
+          <div className="flex items-center justify-start">
             <div className="flex items-center bg-gray-50 rounded-full p-1.5 border border-gray-100">
               {steps.map((stepItem, index) => (
                 <React.Fragment key={stepItem.id}>
@@ -270,10 +304,10 @@ const SellerOnboarding = () => {
           </div>
         </div>
 
-        {/* Scrollable Form Body */}
-        <div className="flex-1 overflow-y-auto p-8 lg:p-12 custom-scrollbar">
-          <div className="w-full max-w-5xl mx-auto pb-12">
-            <div className="bg-white rounded-[2rem] shadow-xl p-8 lg:p-10 border border-gray-100">
+        {/* Scrollable Form Body - no side padding, form fills full width */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="w-full pb-12">
+            <div className="bg-white p-6 border-b border-gray-100 min-h-screen">
               {error && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-medium">
                   {error}
@@ -300,11 +334,12 @@ const SellerOnboarding = () => {
 };
 
 const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
+  const availableCities = CITY_DATA[sellerData.state] || [];
+
   const isFormValid = sellerData.fullName &&
     sellerData.aadhaarNumber?.length === 12 &&
     sellerData.phoneNumber?.length === 10 &&
     sellerData.age &&
-    sellerData.shopAddress &&
     sellerData.panNumber?.length === 10 &&
     sellerData.nameAsPerPAN &&
     sellerData.emailId &&
@@ -315,181 +350,158 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
     sellerData.buildingNumber &&
     sellerData.streetLocality;
 
+  const inp = "w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB] text-sm";
+
   return (
     <div className="bg-white">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Personal Details</h2>
-        <p className="text-gray-500">Provide your legal information carefully</p>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">Personal Details</h2>
+        <p className="text-gray-500 text-sm">Provide your legal information carefully</p>
       </div>
 
-      <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="space-y-5">
+        {/* Row 1 */}
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name *
-            </label>
-            <input
-              type="text"
-              value={sellerData.fullName}
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Full Name *</label>
+            <input type="text" value={sellerData.fullName}
               onChange={(e) => updateSellerData('fullName', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
-              placeholder="Enter your full name"
-            />
+              className={inp} placeholder="Enter your full name" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Aadhaar Number (Locked) *
-            </label>
-            <input
-              type="text"
-              readOnly
-              value={sellerData.aadhaarNumber}
-              className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 cursor-not-allowed"
-              placeholder="12-digit Aadhaar number"
-            />
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Aadhaar Number (Locked) *</label>
+            <input type="text" readOnly value={sellerData.aadhaarNumber}
+              className="w-full px-3 py-2.5 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 cursor-not-allowed text-sm"
+              placeholder="12-digit Aadhaar number" />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Row 2 */}
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Phone Number *
-            </label>
-            <input
-              type="tel"
-              maxLength={10}
-              value={sellerData.phoneNumber}
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Phone Number *</label>
+            <input type="tel" maxLength={10} value={sellerData.phoneNumber}
               onChange={(e) => updateSellerData('phoneNumber', e.target.value.replace(/\D/g, ''))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
-              placeholder="Enter 10-digit phone number"
-            />
+              className={inp} placeholder="10-digit phone number" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Age (Locked) *
-            </label>
-            <input
-              type="text"
-              readOnly
-              value={sellerData.age}
-              className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 cursor-not-allowed"
-              placeholder="Age"
-            />
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Age (Locked) *</label>
+            <input type="text" readOnly value={sellerData.age}
+              className="w-full px-3 py-2.5 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 cursor-not-allowed text-sm"
+              placeholder="Age" />
           </div>
         </div>
 
-        <div className="border-t pt-8">
-          <h3 className="text-xl font-semibold text-gray-900 mb-6">PAN & Address Details</h3>
-
-          <div className="bg-blue-50 text-blue-800 text-sm p-4 rounded-xl border border-blue-100 mb-6 flex gap-3">
-            <CheckCircle2 size={24} className="shrink-0 text-blue-600" />
-            <p>This strict identity data (EID) permits you to safely sell without a GST certificate later on if entering a tax exempt category.</p>
+        {/* PAN Section */}
+        <div className="border-t pt-5">
+          <h3 className="text-base font-semibold text-gray-900 mb-1">PAN & Identity Details</h3>
+          <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-lg border border-blue-100 mb-4 flex gap-2">
+            <CheckCircle2 size={16} className="shrink-0 text-blue-600 mt-0.5" />
+            <p>Identity data (EID) allows tax-exempt selling without a GST certificate.</p>
           </div>
-
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">PAN Number *</label>
-                <input
-                  type="text"
-                  maxLength={10}
-                  value={sellerData.panNumber}
-                  onChange={(e) => updateSellerData('panNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  placeholder="10-character PAN number"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Name as per PAN *</label>
-                <input
-                  type="text"
-                  value={sellerData.nameAsPerPAN}
-                  onChange={(e) => updateSellerData('nameAsPerPAN', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Enter strict legal name"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Business Email ID *</label>
-                <input
-                  type="email"
-                  value={sellerData.emailId}
-                  onChange={(e) => updateSellerData('emailId', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Contact Email ID"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Room / Building Number *</label>
-                <input
-                  type="text"
-                  value={sellerData.buildingNumber}
-                  onChange={(e) => updateSellerData('buildingNumber', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Building / Appt Number"
-                />
-              </div>
-            </div>
-
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Street / Locality Landmark *</label>
-              <input
-                type="text"
-                value={sellerData.streetLocality}
-                onChange={(e) => updateSellerData('streetLocality', e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                placeholder="Detailed area street data"
-              />
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">PAN Number *</label>
+              <input type="text" maxLength={10} value={sellerData.panNumber}
+                onChange={(e) => updateSellerData('panNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                className={inp} placeholder="e.g. ABCDE1234F" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Name as per PAN *</label>
+              <input type="text" value={sellerData.nameAsPerPAN}
+                onChange={(e) => updateSellerData('nameAsPerPAN', e.target.value)}
+                className={inp} placeholder="Legal name on PAN card" />
+            </div>
+          </div>
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Business Email ID *</label>
+          <input type="email" value={sellerData.emailId}
+            onChange={(e) => updateSellerData('emailId', e.target.value)}
+            className={inp} placeholder="your@business.com" />
+        </div>
+
+        {/* Address Section */}
+        <div className="border-t pt-5">
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Shop / Business Address</h3>
+          <div className="space-y-4">
+            {/* Plot / Building */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Plot / Building / House No. *</label>
+                <input type="text" value={sellerData.buildingNumber}
+                  onChange={(e) => updateSellerData('buildingNumber', e.target.value)}
+                  className={inp} placeholder="e.g. Plot 12, Flat 3A" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Street / Road Name *</label>
+                <input type="text" value={sellerData.streetLocality}
+                  onChange={(e) => updateSellerData('streetLocality', e.target.value)}
+                  className={inp} placeholder="e.g. MG Road, Sector 21" />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Landmark */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Landmark</label>
+              <input type="text" value={sellerData.landmark}
+                onChange={(e) => updateSellerData('landmark', e.target.value)}
+                className={inp} placeholder="e.g. Near City Mall, Opp. Bus Stand" />
+            </div>
+
+            {/* State & City Dropdowns */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Detailed Shop Address *</label>
-                <textarea
-                  rows={4}
-                  value={sellerData.shopAddress}
-                  onChange={(e) => updateSellerData('shopAddress', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Enter complete shop address"
-                />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">State *</label>
+                <select value={sellerData.state}
+                  onChange={(e) => { updateSellerData('state', e.target.value); updateSellerData('city', ''); }}
+                  className={inp + " bg-white"}>
+                  <option value="">Select State</option>
+                  {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">City *</label>
-                    <input type="text" value={sellerData.city} onChange={(e) => updateSellerData('city', e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="City" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                    <input type="text" value={sellerData.state} onChange={(e) => updateSellerData('state', e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="State" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">District *</label>
-                    <input type="text" value={sellerData.district} onChange={(e) => updateSellerData('district', e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="District" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Pincode *</label>
-                    <input type="text" maxLength={6} value={sellerData.pincode} onChange={(e) => updateSellerData('pincode', e.target.value.replace(/\D/g, ''))} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Pincode" />
-                  </div>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">City *</label>
+                {availableCities.length > 0 ? (
+                  <select value={sellerData.city}
+                    onChange={(e) => updateSellerData('city', e.target.value)}
+                    className={inp + " bg-white"}>
+                    <option value="">Select City</option>
+                    {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" value={sellerData.city}
+                    onChange={(e) => updateSellerData('city', e.target.value)}
+                    className={inp} placeholder="Enter city name" />
+                )}
+              </div>
+            </div>
+
+            {/* District & Pincode */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">District *</label>
+                <input type="text" value={sellerData.district}
+                  onChange={(e) => updateSellerData('district', e.target.value)}
+                  className={inp} placeholder="e.g. Central Delhi" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Pincode *</label>
+                <input type="text" maxLength={6} value={sellerData.pincode}
+                  onChange={(e) => updateSellerData('pincode', e.target.value.replace(/\D/g, ''))}
+                  className={inp} placeholder="6-digit pincode" />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex justify-end mt-8 border-t pt-6 bg-white sticky bottom-0">
-          <button
-            onClick={nextStep}
-            disabled={!isFormValid}
+        <div className="flex justify-end pt-6 border-t">
+          <button onClick={nextStep} disabled={!isFormValid}
             style={{ backgroundColor: '#7B4DDB' }}
-            className="px-8 py-4 text-white font-bold rounded-2xl shadow-lg shadow-brand/20 hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next Step
+            className="px-8 py-3 text-white font-bold rounded-xl shadow-md hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-sm">
+            Next Step →
           </button>
         </div>
       </div>
@@ -621,89 +633,95 @@ const BusinessAndGSTStep = ({ sellerData, updateSellerData, nextStep, prevStep }
 
 // Pickup Address Step Component
 const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep }) => {
+  const availableCities = CITY_DATA[sellerData.pickupState] || [];
+  const inp = "w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB] text-sm";
+
   const isFormValid = sellerData.pickupAddress &&
     sellerData.pickupCity &&
     sellerData.pickupState &&
-    sellerData.pickupPincode;
+    sellerData.pickupPincode?.length === 6;
 
   return (
     <div className="bg-white">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Pickup Address</h2>
-        <p className="text-gray-500">Where should we pick up your products?</p>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">Pickup Address</h2>
+        <p className="text-gray-500 text-sm">Where should we pick up your products?</p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
+        {/* Building / Plot */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pickup Address *
-          </label>
-          <textarea
-            rows={3}
-            value={sellerData.pickupAddress}
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Plot / Building / House No. *</label>
+          <input type="text" value={sellerData.pickupAddress}
             onChange={(e) => updateSellerData('pickupAddress', e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
-            placeholder="Enter complete pickup address"
-          />
+            className={inp} placeholder="e.g. Plot 12, Flat 3A, Shop No. 5" />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              City *
-            </label>
-            <input
-              type="text"
-              value={sellerData.pickupCity}
-              onChange={(e) => updateSellerData('pickupCity', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
-              placeholder="Enter city"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              State *
-            </label>
-            <input
-              type="text"
-              value={sellerData.pickupState}
-              onChange={(e) => updateSellerData('pickupState', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
-              placeholder="Enter state"
-            />
-          </div>
-        </div>
-
+        {/* Street */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pincode *
-          </label>
-          <input
-            type="text"
-            maxLength={6}
-            value={sellerData.pickupPincode}
-            onChange={(e) => updateSellerData('pickupPincode', e.target.value.replace(/\D/g, ''))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
-            placeholder="Enter 6-digit pincode"
-          />
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Street / Road Name *</label>
+          <input type="text" value={sellerData.pickupStreet || ''}
+            onChange={(e) => updateSellerData('pickupStreet', e.target.value)}
+            className={inp} placeholder="e.g. MG Road, Sector 21, Industrial Area" />
         </div>
-      </div>
 
-      <div className="flex justify-between mt-8 pt-8 border-t">
-        <button
-          onClick={prevStep}
-          className="px-6 py-3 border border-gray-200 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors"
-        >
-          Back
-        </button>
-        <button
-          onClick={nextStep}
-          disabled={!isFormValid}
-          style={{ backgroundColor: '#7B4DDB' }}
-          className="px-8 py-4 text-white font-bold rounded-2xl shadow-lg shadow-brand/20 hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Next Step
-        </button>
+        {/* Landmark */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Landmark</label>
+          <input type="text" value={sellerData.pickupLandmark}
+            onChange={(e) => updateSellerData('pickupLandmark', e.target.value)}
+            className={inp} placeholder="e.g. Near Bus Stand, Opp. City Hospital" />
+        </div>
+
+        {/* State & City */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">State *</label>
+            <select value={sellerData.pickupState}
+              onChange={(e) => { updateSellerData('pickupState', e.target.value); updateSellerData('pickupCity', ''); }}
+              className={inp + " bg-white"}>
+              <option value="">Select State</option>
+              {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">City *</label>
+            {availableCities.length > 0 ? (
+              <select value={sellerData.pickupCity}
+                onChange={(e) => updateSellerData('pickupCity', e.target.value)}
+                className={inp + " bg-white"}>
+                <option value="">Select City</option>
+                {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : (
+              <input type="text" value={sellerData.pickupCity}
+                onChange={(e) => updateSellerData('pickupCity', e.target.value)}
+                className={inp} placeholder="Enter city name" />
+            )}
+          </div>
+        </div>
+
+        {/* Pincode */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Pincode *</label>
+            <input type="text" maxLength={6} value={sellerData.pickupPincode}
+              onChange={(e) => updateSellerData('pickupPincode', e.target.value.replace(/\D/g, ''))}
+              className={inp} placeholder="6-digit pincode" />
+          </div>
+        </div>
+
+        <div className="flex justify-between pt-6 border-t">
+          <button onClick={prevStep}
+            className="px-6 py-2.5 border border-gray-200 text-gray-500 font-bold rounded-xl hover:bg-gray-50 transition-colors text-sm">
+            ← Back
+          </button>
+          <button onClick={nextStep} disabled={!isFormValid}
+            style={{ backgroundColor: '#7B4DDB' }}
+            className="px-8 py-2.5 text-white font-bold rounded-xl shadow-md hover:brightness-110 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-sm">
+            Next Step →
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -176,12 +176,25 @@ const applySeller = async (req, res) => {
         }
 
         const userData = userSnap.data();
-        if (userData.role === "SELLER") {
-            logLocal(`ERROR: User is already a SELLER`);
-            return res.status(400).json({ success: false, message: "Already a seller" });
+
+        // Check if seller document actually exists (may have been deleted manually)
+        const sellerRef = db.collection("sellers").doc(uid);
+        const sellerSnap = await sellerRef.get();
+
+        if (userData.role === "SELLER" && sellerSnap.exists) {
+            const existingSellerData = sellerSnap.data();
+            // Only block if they are an APPROVED or PENDING seller
+            if (existingSellerData.sellerStatus === "APPROVED" || existingSellerData.sellerStatus === "PENDING") {
+                logLocal(`ERROR: User is already a SELLER with status: ${existingSellerData.sellerStatus}`);
+                return res.status(400).json({ success: false, message: `Already a seller (status: ${existingSellerData.sellerStatus})` });
+            }
         }
 
-        const sellerRef = db.collection("sellers").doc(uid);
+        // If role says SELLER but no seller doc exists, reset the role so they can re-apply
+        if (userData.role === "SELLER" && !sellerSnap.exists) {
+            logLocal(`Seller doc missing despite SELLER role. Resetting role to CONSUMER to allow re-application.`);
+            await userRef.update({ role: "CONSUMER" });
+        }
 
         // Scrub undefined values to prevent Firestore errors
         const finalData = JSON.parse(JSON.stringify(sellerDetails));
