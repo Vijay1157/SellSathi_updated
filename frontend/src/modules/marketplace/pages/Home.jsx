@@ -43,10 +43,10 @@ const HERO_SLIDES = [
 ];
 
 const homeStyles = `
-    /* Professional Grid System - 4 columns desktop, compact spacing */
+    /* Professional Grid System - 5 columns desktop, compact spacing */
     .product-uniform-grid { 
         display: grid; 
-        grid-template-columns: repeat(4, 1fr); 
+        grid-template-columns: repeat(5, 1fr); 
         gap: 16px; 
     }
     
@@ -136,7 +136,7 @@ const homeStyles = `
         display: flex;
         flex-direction: column;
         gap: 4px;
-        z-index: 3;
+        z-index: 20;
     }
     .tool-btn {
         width: 32px;
@@ -377,6 +377,7 @@ const homeStyles = `
         z-index: 2;
         max-width: 700px;
         padding: 32px 0;
+        text-align: left;
     }
     
     .hero-badge {
@@ -605,14 +606,37 @@ export default function Home() {
                     return;
                 }
 
-                // Featured: First 8 products
-                const featured = allProducts.slice(0, 8);
+                // Group products by category first
+                const groupByCategory = (items) => {
+                    return items.reduce((acc, p) => {
+                        const cat = p.category || 'Other';
+                        if (!acc[cat]) acc[cat] = [];
+                        acc[cat].push(p);
+                        return acc;
+                    }, {});
+                };
+
+                // Featured: Group by category, take 4 from each
+                const featuredGrouped = groupByCategory(allProducts.slice(0, 50));
+                const featured = [];
+                Object.values(featuredGrouped).forEach(catProducts => {
+                    featured.push(...catProducts.slice(0, 4));
+                });
                 
-                // Latest: Last 8 products (reversed)
-                const latest = allProducts.slice().reverse().slice(0, 8);
+                // Latest: Group by category, take 4 from each (reversed)
+                const latestGrouped = groupByCategory(allProducts.slice().reverse().slice(0, 50));
+                const latest = [];
+                Object.values(latestGrouped).forEach(catProducts => {
+                    latest.push(...catProducts.slice(0, 4));
+                });
                 
-                // Deals: Products with discount or oldPrice
-                const deals = allProducts.filter(p => p.discount || p.oldPrice).slice(0, 8);
+                // Deals: Products with discount or oldPrice, group by category, take 4 from each
+                const dealsFiltered = allProducts.filter(p => p.discount || p.oldPrice);
+                const dealsGrouped = groupByCategory(dealsFiltered);
+                const deals = [];
+                Object.values(dealsGrouped).forEach(catProducts => {
+                    deals.push(...catProducts.slice(0, 4));
+                });
 
                 setFeaturedProducts(featured);
                 setLatestProducts(latest);

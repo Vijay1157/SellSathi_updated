@@ -19,14 +19,45 @@ export default function Cart() {
     const navigate = useNavigate();
     const [cartItems, setCartItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedItems, setSelectedItems] = useState(new Set());
+    const [selectAll, setSelectAll] = useState(true);
 
     useEffect(() => {
         const unsubscribe = listenToCart((items) => {
             setCartItems(items);
+            // Initialize all items as selected by default
+            const allItemIds = new Set(items.map(item => item.id || item.productId));
+            setSelectedItems(allItemIds);
+            setSelectAll(true);
             setLoading(false);
         });
         return () => unsubscribe && unsubscribe();
     }, []);
+
+    const toggleItemSelection = (itemId) => {
+        setSelectedItems(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(itemId)) {
+                newSet.delete(itemId);
+            } else {
+                newSet.add(itemId);
+            }
+            // Update selectAll based on new selection
+            setSelectAll(newSet.size === cartItems.length);
+            return newSet;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectAll) {
+            setSelectedItems(new Set());
+            setSelectAll(false);
+        } else {
+            const allItemIds = new Set(cartItems.map(item => item.id || item.productId));
+            setSelectedItems(allItemIds);
+            setSelectAll(true);
+        }
+    };
 
     const handleRemove = async (productId) => {
         await removeFromCart(productId);
@@ -41,7 +72,8 @@ export default function Cart() {
         await updateCartItemQuantity(item.id || item.productId, newQuantity);
     };
 
-    const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const selectedCartItems = cartItems.filter(item => selectedItems.has(item.id || item.productId));
+    const subtotal = selectedCartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const shipping = subtotal > 500 ? 0 : 50;
     const total = subtotal + shipping;
 
@@ -50,7 +82,12 @@ export default function Cart() {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
-        navigate('/checkout');
+        if (selectedItems.size === 0) {
+            alert('Please select at least one item to checkout');
+            return;
+        }
+        // Pass selected item IDs to checkout
+        navigate('/checkout', { state: { selectedItemIds: Array.from(selectedItems) } });
     };
 
     if (loading) {
@@ -89,8 +126,8 @@ export default function Cart() {
     }
 
     return (
-        <div className="bg-gray-50/20 min-h-screen">
-            <div className="container px-6 py-12 max-w-7xl mx-auto">
+        <div className="bg-gray-50/20 min-h-screen py-4 md:py-8">
+            <div className="container px-3 md:px-3 max-w-7xl mx-auto">
                 {/* Header */}
                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -111,126 +148,149 @@ export default function Cart() {
                 </div>
 
                 {/* Checkout Button - Top */}
-                <div className="mb-6">
+                <div className="mb-6 flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={selectAll}
+                            onChange={toggleSelectAll}
+                            className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                        />
+                        <span className="font-semibold text-gray-700">Select All ({cartItems.length})</span>
+                    </label>
                     <button
                         onClick={handleCheckout}
-                        className="w-full md:w-auto px-8 py-4 bg-gradient-to-r from-primary to-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
+                        disabled={selectedItems.size === 0}
+                        className="flex-1 md:flex-initial px-8 py-3 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-bold text-base shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                     >
-                        <ShoppingBag size={24} />
-                        Proceed to Checkout
-                        <ArrowRight size={24} />
+                        <ShoppingBag size={20} />
+                        Proceed to Checkout ({selectedItems.size})
+                        <ArrowRight size={20} />
                     </button>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Cart Items */}
-                    <div className="lg:col-span-2 space-y-4">
+                    <div className="lg:col-span-2 space-y-3">
                         <AnimatePresence mode="popLayout">
-                            {cartItems.map((item) => (
-                                <motion.div
-                                    key={item.id}
-                                    layout
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, x: -100 }}
-                                    className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-all"
-                                >
-                                    <div className="flex gap-6">
-                                        {/* Product Image */}
-                                        <div className="w-32 h-32 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-                                            <img
-                                                src={item.imageUrl || item.image}
-                                                alt={item.name}
-                                                className="w-full h-full object-contain p-2"
-                                            />
-                                        </div>
-
-                                        {/* Product Details */}
-                                        <div className="flex-1 flex flex-col">
-                                            <div className="flex justify-between items-start mb-3">
-                                                <div>
-                                                    <h3 className="font-bold text-gray-900 text-lg mb-1">
-                                                        {item.name}
-                                                    </h3>
-                                                    {item.category && (
-                                                        <p className="text-sm text-gray-500">{item.category}</p>
-                                                    )}
-                                                    {/* Variant Info */}
-                                                    {(item.selectedColor || item.selectedSize || item.selectedStorage) && (
-                                                        <div className="flex gap-2 mt-2 text-xs text-gray-600">
-                                                            {item.selectedColor && (
-                                                                <span className="px-2 py-1 bg-gray-100 rounded">
-                                                                    Color: {item.selectedColor}
-                                                                </span>
-                                                            )}
-                                                            {item.selectedSize && (
-                                                                <span className="px-2 py-1 bg-gray-100 rounded">
-                                                                    Size: {item.selectedSize}
-                                                                </span>
-                                                            )}
-                                                            {item.selectedStorage && (
-                                                                <span className="px-2 py-1 bg-gray-100 rounded">
-                                                                    Storage: {item.selectedStorage}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <button
-                                                    onClick={() => handleRemove(item.id || item.productId)}
-                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                    title="Remove from cart"
-                                                >
-                                                    <Trash2 size={20} />
-                                                </button>
+                            {cartItems.map((item) => {
+                                const isSelected = selectedItems.has(item.id || item.productId);
+                                return (
+                                    <motion.div
+                                        key={item.id}
+                                        layout
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, x: -100 }}
+                                        className={`bg-white rounded-xl border-2 p-4 shadow-sm hover:shadow-md transition-all ${isSelected ? 'border-primary' : 'border-gray-200'}`}
+                                    >
+                                        <div className="flex gap-4">
+                                            {/* Checkbox */}
+                                            <div className="flex items-start pt-1">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleItemSelection(item.id || item.productId)}
+                                                    className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                                                />
                                             </div>
 
-                                            {/* Price and Quantity */}
-                                            <div className="flex justify-between items-end mt-auto">
-                                                <div>
-                                                    <PriceDisplay
-                                                        product={{
-                                                            ...item,
-                                                            price: item.originalPrice || item.price,
-                                                            discountPrice: item.price
-                                                        }}
-                                                        size="md"
-                                                        showBadge={false}
-                                                    />
-                                                </div>
-
-                                                {/* Quantity Controls */}
-                                                <div className="flex items-center gap-3 bg-gray-100 rounded-xl p-1">
-                                                    <button
-                                                        onClick={() => handleQuantityChange(item, item.quantity - 1)}
-                                                        disabled={item.quantity <= 1}
-                                                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                                                    >
-                                                        <Minus size={16} />
-                                                    </button>
-                                                    <span className="w-12 text-center font-bold text-gray-900">
-                                                        {item.quantity}
-                                                    </span>
-                                                    <button
-                                                        onClick={() => handleQuantityChange(item, item.quantity + 1)}
-                                                        disabled={item.quantity >= (item.stock || 99)}
-                                                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                                                    >
-                                                        <Plus size={16} />
-                                                    </button>
-                                                </div>
+                                            {/* Product Image */}
+                                            <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                                                <img
+                                                    src={item.imageUrl || item.image}
+                                                    alt={item.name}
+                                                    className="w-full h-full object-contain p-1"
+                                                />
                                             </div>
 
-                                            {/* Stock Warning */}
-                                            {item.stock && item.stock < 5 && (
-                                                <p className="text-xs text-orange-600 font-semibold mt-2">
-                                                    Only {item.stock} left in stock!
-                                                </p>
-                                            )}
+                                            {/* Product Details */}
+                                            <div className="flex-1 flex flex-col min-w-0">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className="flex-1 min-w-0 pr-2">
+                                                        <h3 className="font-bold text-gray-900 text-sm mb-1 truncate">
+                                                            {item.name}
+                                                        </h3>
+                                                        {item.category && (
+                                                            <p className="text-xs text-gray-500">{item.category}</p>
+                                                        )}
+                                                        {/* Variant Info */}
+                                                        {(item.selectedColor || item.selectedSize || item.selectedStorage) && (
+                                                            <div className="flex gap-1 mt-1 text-xs text-gray-600 flex-wrap">
+                                                                {item.selectedColor && (
+                                                                    <span className="px-2 py-0.5 bg-gray-100 rounded">
+                                                                        {item.selectedColor}
+                                                                    </span>
+                                                                )}
+                                                                {item.selectedSize && (
+                                                                    <span className="px-2 py-0.5 bg-gray-100 rounded">
+                                                                        {item.selectedSize}
+                                                                    </span>
+                                                                )}
+                                                                {item.selectedStorage && (
+                                                                    <span className="px-2 py-0.5 bg-gray-100 rounded">
+                                                                        {item.selectedStorage}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleRemove(item.id || item.productId)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                                                        title="Remove from cart"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+
+                                                {/* Price and Quantity */}
+                                                <div className="flex justify-between items-end mt-auto">
+                                                    <div>
+                                                        <PriceDisplay
+                                                            product={{
+                                                                ...item,
+                                                                price: item.originalPrice || item.price,
+                                                                discountPrice: item.price
+                                                            }}
+                                                            size="sm"
+                                                            showBadge={false}
+                                                        />
+                                                    </div>
+
+                                                    {/* Quantity Controls */}
+                                                    <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-0.5">
+                                                        <button
+                                                            onClick={() => handleQuantityChange(item, item.quantity - 1)}
+                                                            disabled={item.quantity <= 1}
+                                                            className="w-7 h-7 flex items-center justify-center rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                                        >
+                                                            <Minus size={14} />
+                                                        </button>
+                                                        <span className="w-10 text-center font-bold text-gray-900 text-sm">
+                                                            {item.quantity}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleQuantityChange(item, item.quantity + 1)}
+                                                            disabled={item.quantity >= (item.stock || 99)}
+                                                            className="w-7 h-7 flex items-center justify-center rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                                        >
+                                                            <Plus size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Stock Warning */}
+                                                {item.stock && item.stock < 5 && (
+                                                    <p className="text-xs text-orange-600 font-semibold mt-1">
+                                                        Only {item.stock} left in stock!
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                </motion.div>
-                            ))}
+                                    </motion.div>
+                                );
+                            })}
                         </AnimatePresence>
                     </div>
 
@@ -244,7 +304,7 @@ export default function Cart() {
 
                             <div className="space-y-4 mb-6">
                                 <div className="flex justify-between text-gray-600">
-                                    <span>Subtotal ({cartItems.length} items)</span>
+                                    <span>Subtotal ({selectedItems.size} {selectedItems.size === 1 ? 'item' : 'items'})</span>
                                     <span className="font-semibold">₹{subtotal.toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between text-gray-600">
@@ -272,7 +332,8 @@ export default function Cart() {
 
                             <button
                                 onClick={handleCheckout}
-                                className="w-full py-4 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-black text-lg shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                                disabled={selectedItems.size === 0}
+                                className="w-full py-4 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-black text-lg shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                             >
                                 Proceed to Checkout
                                 <ArrowRight size={20} />

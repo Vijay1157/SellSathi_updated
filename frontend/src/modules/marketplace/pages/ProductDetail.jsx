@@ -532,7 +532,8 @@ export default function ProductDetail() {
         const productWithNumPrice = { ...product, price: Number(product.price) };
         const res = await addToCart(productWithNumPrice, selections);
         if (res.success) {
-            navigate('/checkout');
+            // Pass the product ID as state to checkout so it knows to select only this item
+            navigate('/checkout', { state: { buyNowProductId: productWithNumPrice.id } });
         } else {
             alert('❌ Failed to process. Please try again.');
         }
@@ -568,30 +569,43 @@ export default function ProductDetail() {
                             <div 
                                 className="media-stage glass-card"
                                 onMouseMove={(e) => {
+                                    if (!showZoomPreview) return;
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const x = ((e.clientX - rect.left) / rect.width) * 100;
                                     const y = ((e.clientY - rect.top) / rect.height) * 100;
                                     setZoomPosition({ x, y });
-                                    setShowZoomPreview(true);
                                 }}
+                                onMouseEnter={() => setShowZoomPreview(true)}
                                 onMouseLeave={() => setShowZoomPreview(false)}
                                 onClick={() => setIsZoomed(true)}
                             >
-                                <AnimatePresence mode="wait">
-                                    <motion.img
-                                        key={activeImageIndex}
-                                        src={images[activeImageIndex]}
-                                        alt={product.name}
-                                        initial={{ opacity: 0, x: 20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: -20 }}
-                                        transition={{ duration: 0.3 }}
-                                        className="product-main-image"
-                                    />
-                                </AnimatePresence>
+                                <motion.img
+                                    key={activeImageIndex}
+                                    src={images[activeImageIndex]}
+                                    alt={product.name}
+                                    className="product-main-image"
+                                />
                                 <div className="media-controls-bottom">
-                                    <button className="ctrl-btn-bottom" onClick={(e) => { e.stopPropagation(); prevImage(); }}><ChevronLeft size={20} /></button>
-                                    <button className="ctrl-btn-bottom" onClick={(e) => { e.stopPropagation(); nextImage(); }}><ChevronRight size={20} /></button>
+                                    <button 
+                                        className="ctrl-btn-bottom" 
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            prevImage(); 
+                                        }}
+                                        onMouseEnter={(e) => e.stopPropagation()}
+                                    >
+                                        <ChevronLeft size={20} />
+                                    </button>
+                                    <button 
+                                        className="ctrl-btn-bottom" 
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            nextImage(); 
+                                        }}
+                                        onMouseEnter={(e) => e.stopPropagation()}
+                                    >
+                                        <ChevronRight size={20} />
+                                    </button>
                                 </div>
                             </div>
 
@@ -599,7 +613,7 @@ export default function ProductDetail() {
                             <AnimatePresence>
                                 {showZoomPreview && (
                                     <motion.div
-                                        className="zoom-preview-panel"
+                                        className="zoom-preview-panel-right"
                                         initial={{ opacity: 0, x: -20 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         exit={{ opacity: 0, x: -20 }}
@@ -679,7 +693,7 @@ export default function ProductDetail() {
                                 </div>
                             </div>
                         </div>
-                        <div className="price-box glass-card">
+                        <div className="price-box">
                             <PriceDisplay
                                 product={product}
                                 selections={{
@@ -695,13 +709,7 @@ export default function ProductDetail() {
                             </div>
                         </div>
 
-                        <div className="pd-section">
-                            <h3>Delivery Options</h3>
-                            <div className="pincode-check">
-                                <input type="text" placeholder="Enter delivery pincode" />
-                                <button>Check</button>
-                            </div>
-                        </div>
+                        {/* Delivery Options Section Removed - Trust badges below are sufficient */}
 
                         {/* Dynamic Variant Sections - Colors */}
                         {product.colors && product.colors.length > 0 && (
@@ -827,7 +835,7 @@ export default function ProductDetail() {
 
 
                         <div className="pd-section">
-                            <div className="trust-card glass-card">
+                            <div className="trust-card">
                                 <div className="badge"><Truck size={20} /> <div><strong>Free Express Shipping</strong><span>On orders above ₹500</span></div></div>
                                 <div className="badge"><Shield size={20} /> <div><strong>Secure Multi-layer Packaging</strong><span>Damage-free delivery guaranteed</span></div></div>
                                 <div className="badge"><RotateCcw size={20} /> <div><strong>7 Days Replacement</strong><span>Easy returns & exchanges</span></div></div>
@@ -1290,7 +1298,11 @@ const pdStyles = `
 .show-more-reviews-blue-btn.show-less { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
 .show-more-reviews-blue-btn.show-less:hover { background: #fee2e2; }
 
-.pd-wrapper { padding-bottom: 3rem; }
+.pd-wrapper { padding: 16px 0 32px; }
+.pd-wrapper .container { padding-left: 12px; padding-right: 12px; }
+@media (max-width: 768px) {
+    .pd-wrapper .container { padding-left: 8px; padding-right: 8px; }
+}
 .pd-breadcrumb { padding: 0.75rem 0; font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 0.5rem; }
 .pd-breadcrumb button { color: var(--text-muted); transition: 0.2s; background: none; border: none; cursor: pointer; padding: 0; font-size: inherit; }
 .pd-breadcrumb button:hover { color: var(--primary); }
@@ -1323,11 +1335,27 @@ const pdStyles = `
 
 .thumbnail-track { display: flex; gap: 0.75rem; margin-top: 1rem; overflow-x: auto; padding-bottom: 0.5rem; }
 .thumb-item { 
-    width: 70px; height: 70px; border-radius: 6px; border: 2px solid transparent; 
-    padding: 4px; flex-shrink: 0; cursor: pointer; transition: 0.2s; overflow: hidden;
+    width: 100px; 
+    height: 100px; 
+    border-radius: 8px; 
+    border: 2px solid transparent; 
+    padding: 6px; 
+    flex-shrink: 0; 
+    cursor: pointer; 
+    transition: all 0.2s; 
+    overflow: hidden;
     background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
-.thumb-item.active { border-color: #f59e0b; }
+.thumb-item:hover {
+    border-color: #93C5FD;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+.thumb-item.active { 
+    border-color: #2563EB; 
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
 .thumb-item img { width: 100%; height: 100%; object-fit: contain; }
 
 .pd-info { display: flex; flex-direction: column; gap: 1rem; }
@@ -1336,7 +1364,7 @@ const pdStyles = `
 .actions-meta { display: flex; gap: 0.75rem; margin-left: auto; }
 .actions-meta button { display: flex; align-items: center; gap: 0.3rem; font-weight: 500; color: #666; font-size: 0.85rem; }
 
-.price-box { padding: 1rem 1.25rem; border-radius: 12px; background: #f8f8fa; border: none; }
+.price-box { padding: 1rem 1.25rem; border-radius: 12px; background: transparent; border: none; }
 .price-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem; }
 .final-price { font-size: 1.8rem; font-weight: 800; }
 .original-price { font-size: 1.1rem; color: #888; text-decoration: line-through; }
@@ -1362,12 +1390,7 @@ const pdStyles = `
 .size-pill:hover { border-color: #4f46e5; color: #4f46e5; }
 .size-pill.active { background: #EEF2FF; color: #4f46e5; border-color: #4f46e5; box-shadow: 0 0 0 1px #4f46e5; }
 
-.pincode-check { display: flex; gap: 0.5rem; max-width: 100%; }
-.pincode-check input { 
-    flex: 1; padding: 0.6rem 1rem; border-radius: 8px; 
-    border: 1px solid var(--border); background: #f1f5f9; font-size: 0.9rem;
-}
-.pincode-check button { background: var(--primary); color: white; padding: 0 1.5rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; }
+/* Pincode check styles removed - delivery options section removed */
 
 .pill-group { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .pill {
@@ -1384,12 +1407,49 @@ const pdStyles = `
 .variant-pill .v-label { font-size: 0.9rem; font-weight: 600; margin-bottom: 2px; }
 .variant-pill .v-price { font-size: 0.75rem; font-weight: 500; opacity: 0.6; }
 
-.trust-card { display: flex; flex-direction: column; gap: 1rem; background: #f8f8f9; padding: 1rem; border-radius: 12px; }
-.badge { display: flex; align-items: flex-start; gap: 0.75rem; }
-.badge svg { color: var(--primary); margin-top: 2px; flex-shrink: 0; }
-.badge div { display: flex; flex-direction: column; }
-.badge strong { font-size: 0.9rem; }
-.badge span { font-size: 0.8rem; color: #666; }
+/* Enhanced Trust Card Styling */
+.trust-card { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 1.5rem; 
+    background: transparent; 
+    padding: 1.5rem 0; 
+    border-radius: 0; 
+    border: none;
+    margin-bottom: 1.5rem;
+}
+.badge { 
+    display: flex; 
+    align-items: center; 
+    gap: 0.75rem; 
+    padding: 0;
+    background: white;
+    border-radius: 12px;
+    transition: all 0.2s;
+}
+.badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.badge svg { 
+    color: var(--primary); 
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    background: #eff6ff;
+    border-radius: 8px;
+}
+.badge div { display: flex; flex-direction: column; gap: 2px; }
+.badge strong { font-size: 0.9rem; font-weight: 700; color: #1e293b; }
+.badge span { font-size: 0.8rem; color: #64748b; font-weight: 500; }
+
+@media (max-width: 768px) {
+    .trust-card {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+}
 
 .pd-actions { 
     display: grid !important; 
@@ -1434,12 +1494,6 @@ const pdStyles = `
     justify-content: center !important;
 }
 .btn-buy-now:hover { background: #ea580c !important; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
-
-.pincode-check input { 
-    flex: 1; padding: 0.8rem 1.2rem; border-radius: 12px; 
-    border: 1px solid var(--border); background: #f1f5f9;
-}
-.pincode-check button { background: var(--primary); color: white; padding: 0 2rem; border-radius: 12px; font-weight: 700; }
 
 .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
 .opt-card { border: 2px solid #e2e8f0; border-radius: 16px; padding: 1.25rem; cursor: pointer; transition: 0.3s; display: flex; flex-direction: column; }
@@ -1679,52 +1733,63 @@ const pdStyles = `
 .rating .no-rating { display: flex; align-items: center; height: 18px; }
 .actions-meta button.active { color: #E11D48 !important; }
 
-/* Zoom Preview Panel */
-.zoom-preview-panel {
+/* Zoom Preview Panel - Positioned to the right of image */
+.zoom-preview-panel-right {
     position: absolute;
-    right: -320px;
     top: 0;
-    width: 300px;
-    height: 350px;
+    left: calc(100% + 20px);
+    width: 500px;
+    height: 100%;
     background: white;
-    border-radius: 8px;
-    border: 2px solid var(--border);
+    border-radius: 12px;
+    border: 3px solid #e2e8f0;
     overflow: hidden;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
     z-index: 100;
+    pointer-events: none;
 }
+
 .zoom-preview-image {
     width: 100%;
     height: 100%;
     background-repeat: no-repeat;
 }
+
 .media-controls-bottom {
     position: absolute;
-    bottom: 12px;
-    right: 12px;
+    bottom: 16px;
+    right: 16px;
     display: flex;
-    gap: 6px;
+    gap: 8px;
     pointer-events: auto;
     z-index: 10;
 }
+
 .ctrl-btn-bottom {
-    width: 32px;
-    height: 32px;
-    background: rgba(255, 255, 255, 0.95);
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%);
     border-radius: 50%;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #1a1a1a;
-    transition: all 0.2s;
-    border: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid rgba(255, 255, 255, 0.8);
     cursor: pointer;
     backdrop-filter: blur(10px);
 }
+
 .ctrl-btn-bottom:hover {
-    background: var(--primary);
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
     color: white;
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+    border-color: transparent;
+}
+
+.ctrl-btn-bottom:active {
     transform: scale(1.05);
 }
 
@@ -1779,11 +1844,14 @@ const pdStyles = `
     .fbt-details { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 2rem; }
     .similar-grid { grid-template-columns: 1fr 1fr; }
     .media-container { flex-direction: column; }
-    .zoom-preview-panel { 
-        position: relative;
-        right: auto;
-        width: 100%;
-        margin-top: 1rem;
+    .zoom-preview-panel-right { 
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90vw;
+        max-width: 450px;
+        height: 500px;
     }
 }
 @media (max-width: 768px) {
@@ -1792,5 +1860,13 @@ const pdStyles = `
     .similar-grid { grid-template-columns: 1fr; }
     .fbt-visual { flex-direction: column; }
     .plus { transform: rotate(90deg); }
+    .zoom-preview-panel-right {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 85vw;
+        height: 450px;
+    }
 }
 `;

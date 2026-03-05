@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import MarketplaceHome from '@/modules/marketplace/pages/Home';
 import ProductListing from '@/modules/marketplace/pages/ProductListing';
 import ProductDetail from '@/modules/marketplace/pages/ProductDetail';
+import Cart from '@/modules/marketplace/pages/Cart';
 import Checkout from '@/modules/marketplace/pages/Checkout';
 import OrderTracking from '@/modules/marketplace/pages/OrderTracking';
 import Invoice from '@/modules/marketplace/pages/Invoice';
@@ -41,6 +42,14 @@ function AppContent() {
           <Route path="/" element={<MarketplaceHome />} />
           <Route path="/products" element={<ProductListing />} />
           <Route path="/product/:id" element={<ProductDetail />} />
+          <Route
+            path="/cart"
+            element={
+              <ProtectedRoute requiredRole="CONSUMER">
+                <Cart />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/checkout"
             element={

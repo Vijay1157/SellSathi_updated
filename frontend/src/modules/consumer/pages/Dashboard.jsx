@@ -99,6 +99,15 @@ export default function ConsumerDashboard() {
         phone: ''
     });
     const [editingAddress, setEditingAddress] = useState(null);
+    
+    // Account Settings states
+    const [editingProfile, setEditingProfile] = useState(false);
+    const [profileData, setProfileData] = useState({
+        displayName: '',
+        email: '',
+        phone: ''
+    });
+    const [savingProfile, setSavingProfile] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -118,15 +127,32 @@ export default function ConsumerDashboard() {
                         const userData = userDoc.data();
                         setUserName(userData.name || userData.fullName || currentUser.displayName || 'User');
                         setUserPhoto(userData.photoURL || currentUser.photoURL || null);
+                        
+                        // Initialize profile data
+                        setProfileData({
+                            displayName: userData.name || userData.fullName || currentUser.displayName || '',
+                            email: userData.email || currentUser.email || '',
+                            phone: userData.phone || userData.phoneNumber || ''
+                        });
                     } else {
                         // Fallback: check localStorage
                         const localUser = JSON.parse(localStorage.getItem('user') || '{}');
                         setUserName(localUser.fullName || currentUser.displayName || 'User');
+                        setProfileData({
+                            displayName: localUser.fullName || currentUser.displayName || '',
+                            email: localUser.email || currentUser.email || '',
+                            phone: localUser.phone || ''
+                        });
                     }
                 } catch (e) {
                     // Error fetching user name from Firestore
                     const localUser = JSON.parse(localStorage.getItem('user') || '{}');
                     setUserName(localUser.fullName || currentUser.displayName || 'User');
+                    setProfileData({
+                        displayName: localUser.fullName || currentUser.displayName || '',
+                        email: localUser.email || currentUser.email || '',
+                        phone: localUser.phone || ''
+                    });
                 }
 
                 // Fetch data in parallel with timeout
@@ -433,6 +459,87 @@ export default function ConsumerDashboard() {
         }
     };
 
+    const handleSaveProfile = async () => {
+        if (!user) return;
+        
+        setSavingProfile(true);
+        try {
+            const response = await authFetch(`/api/user/${user.uid}/profile/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    profileData: {
+                        name: profileData.displayName,
+                        fullName: profileData.displayName,
+                        phone: profileData.phone
+                    }
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Update local state
+                setUserName(profileData.displayName);
+                
+                // Update localStorage
+                const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+                localUser.fullName = profileData.displayName;
+                localUser.name = profileData.displayName;
+                localUser.phone = profileData.phone;
+                localStorage.setItem('user', JSON.stringify(localUser));
+                localStorage.setItem('userName', profileData.displayName);
+                
+                setEditingProfile(false);
+                alert('Profile updated successfully!');
+            } else {
+                alert('Failed to update profile: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error updating profile:', error);
+            alert('Failed to update profile. Please try again.');
+        } finally {
+            setSavingProfile(false);
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        if (!user) return;
+        
+        const confirmed = window.confirm(
+            'Are you sure you want to delete your account? This action cannot be undone. All your data including orders, wishlist, and addresses will be permanently deleted.'
+        );
+        
+        if (!confirmed) return;
+        
+        const doubleConfirm = window.confirm(
+            'This is your final warning. Are you absolutely sure you want to delete your account?'
+        );
+        
+        if (!doubleConfirm) return;
+        
+        try {
+            const response = await authFetch(`/api/user/${user.uid}/delete`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Sign out and redirect
+                await auth.signOut();
+                localStorage.clear();
+                alert('Your account has been deleted successfully.');
+                navigate('/');
+            } else {
+                alert('Failed to delete account: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error deleting account:', error);
+            alert('Failed to delete account. Please contact support.');
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -447,7 +554,7 @@ export default function ConsumerDashboard() {
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
             <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div className="max-w-full mx-auto px-3 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <button
@@ -467,7 +574,7 @@ export default function ConsumerDashboard() {
             </div>
 
             {/* Main Content */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="max-w-full mx-auto px-3 py-6">
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                     {/* Enhanced Sidebar */}
                     <div className="lg:col-span-1">
@@ -1440,8 +1547,40 @@ export default function ConsumerDashboard() {
 
                         {activeTab === 'settings' && (
                             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                                <div className="px-6 py-4 border-b border-gray-200">
+                                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                                     <h2 className="text-lg font-semibold text-gray-900">Account Settings</h2>
+                                    {!editingProfile ? (
+                                        <button
+                                            onClick={() => setEditingProfile(true)}
+                                            className="px-4 py-2 text-sm font-medium text-primary hover:bg-blue-50 rounded-lg transition-colors"
+                                        >
+                                            Edit Profile
+                                        </button>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setEditingProfile(false);
+                                                    // Reset to original values
+                                                    setProfileData({
+                                                        displayName: userName,
+                                                        email: user?.email || '',
+                                                        phone: profileData.phone
+                                                    });
+                                                }}
+                                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleSaveProfile}
+                                                disabled={savingProfile}
+                                                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {savingProfile ? 'Saving...' : 'Save Changes'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="p-6">
                                     <div className="space-y-6">
@@ -1449,31 +1588,54 @@ export default function ConsumerDashboard() {
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Display Name</label>
                                             <input
                                                 type="text"
-                                                value={localStorage.getItem('userName') || userName || ''}
-                                                readOnly
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+                                                value={profileData.displayName}
+                                                onChange={(e) => setProfileData(prev => ({ ...prev, displayName: e.target.value }))}
+                                                readOnly={!editingProfile}
+                                                className={`w-full px-4 py-2 border border-gray-300 rounded-lg ${
+                                                    editingProfile ? 'bg-white' : 'bg-gray-50 text-gray-600'
+                                                } focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all`}
+                                                placeholder="Enter your display name"
                                             />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
                                             <input
                                                 type="email"
-                                                value={user?.email || ''}
+                                                value={profileData.email}
                                                 readOnly
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
                                             />
+                                            <p className="text-xs text-gray-500 mt-1">Email cannot be changed for security reasons</p>
                                         </div>
-                                        {localStorage.getItem('dob') && (
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">Age</label>
-                                                <input
-                                                    type="text"
-                                                    value={calculateAge(localStorage.getItem('dob'))}
-                                                    readOnly
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
-                                                />
-                                            </div>
-                                        )}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                                            <input
+                                                type="tel"
+                                                value={profileData.phone}
+                                                onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                                                readOnly={!editingProfile}
+                                                className={`w-full px-4 py-2 border border-gray-300 rounded-lg ${
+                                                    editingProfile ? 'bg-white' : 'bg-gray-50 text-gray-600'
+                                                } focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all`}
+                                                placeholder="Enter your phone number"
+                                            />
+                                        </div>
+                                        {(() => {
+                                            const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+                                            const dob = localUser.dateOfBirth;
+                                            const age = calculateAge(dob);
+                                            return age ? (
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">Age</label>
+                                                    <input
+                                                        type="text"
+                                                        value={age}
+                                                        readOnly
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+                                                    />
+                                                </div>
+                                            ) : null;
+                                        })()}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">User ID</label>
                                             <input
@@ -1502,7 +1664,10 @@ export default function ConsumerDashboard() {
                                                         {uploadingImage ? 'Uploading...' : 'Update Profile Picture'}
                                                     </label>
                                                 </div>
-                                                <button className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors text-left">
+                                                <button 
+                                                    onClick={handleDeleteAccount}
+                                                    className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors text-left"
+                                                >
                                                     Delete Account
                                                 </button>
                                             </div>

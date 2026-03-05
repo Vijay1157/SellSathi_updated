@@ -230,7 +230,7 @@ export default function Trending() {
                     display: flex;
                     flex-direction: column;
                     gap: 0.6rem;
-                    z-index: 3;
+                    z-index: 20;
                 }
                 .tool-btn {
                     width: 42px;

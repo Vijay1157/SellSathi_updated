@@ -235,17 +235,7 @@ export default function ProductListing() {
     return (
         <div className="listing-wrapper" style={{ background: '#F8F9FA' }}>
             <div className="container">
-                {/* Header with Breadcrumbs */}
-                <div className="listing-header">
-                    <div className="breadcrumb">
-                        <Link to="/">Home</Link> / <span>Products</span>
-                    </div>
-                    <div className="listing-title-row">
-                        <h1>{selectedCategory === 'All' ? 'All Products' : selectedCategory} <span className="count">({filteredProducts.length})</span></h1>
-                    </div>
-                </div>
-
-                <div className="listing-layout">{/* Rest remains same */}
+                <div className="listing-layout">
                     {/* Professional Filter Sidebar - LEFT SIDE */}
                     <aside className="filters-sidebar-pro glass-card">
                         <div className="sidebar-header">
@@ -367,6 +357,16 @@ export default function ProductListing() {
 
                     {/* Product Grid Area */}
                     <main className="product-main">
+                        {/* Header with Breadcrumbs - Aligned with content */}
+                        <div className="listing-header-inline">
+                            <div className="breadcrumb">
+                                <Link to="/">Home</Link> / <span>Products</span>
+                            </div>
+                            <div className="listing-title-row">
+                                <h1>{selectedCategory === 'All' ? 'All Products' : selectedCategory} <span className="count">({filteredProducts.length})</span></h1>
+                            </div>
+                        </div>
+
                         <div className="product-main-header">
                             <div className="view-toggle">
                                 <button className={viewMode === 'grid' ? 'active' : ''} onClick={() => setViewMode('grid')}><LayoutGrid size={18} /></button>
@@ -502,7 +502,7 @@ const listingStyles = `
 /* Professional Listing Layout */
 .listing-wrapper { 
     min-height: 100vh; 
-    padding: 24px 0 32px; 
+    padding: 16px 0 32px; 
 }
 .listing-wrapper .container {
     padding-left: 12px;
@@ -514,9 +514,11 @@ const listingStyles = `
         padding-right: 8px;
     }
 }
-.listing-header { 
+
+/* Inline Header - Inside product-main */
+.listing-header-inline { 
     margin-bottom: 16px;
-    padding-bottom: 12px;
+    padding: 16px 16px 12px 16px;
     border-bottom: 2px solid var(--border-light);
 }
 .breadcrumb { 
@@ -920,7 +922,7 @@ const listingStyles = `
     display: flex; 
     flex-direction: column; 
     gap: var(--space-1, 4px); 
-    z-index: 10; 
+    z-index: 20; 
 }
 .tool-btn { 
     width: 32px; 
@@ -1119,11 +1121,14 @@ const listingStyles = `
         max-height: 320px;
     }
     .listing-wrapper {
-        padding: 16px 0 24px;
+        padding: 12px 0 24px;
     }
-    .listing-header {
-        margin-bottom: 16px;
-        padding-bottom: 12px;
+    .listing-header-inline {
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+    }
+    .listing-title-row h1 {
+        font-size: 24px;
     }
 }
 

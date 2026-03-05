@@ -19,7 +19,6 @@ export default function Navbar() {
     const [cartCount, setCartCount] = useState(0);
     const [wishlistCount, setWishlistCount] = useState(0);
     const [dynamicMegaData, setDynamicMegaData] = useState({});
-    const [showCategories, setShowCategories] = useState(false);
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -41,16 +40,16 @@ export default function Navbar() {
     useEffect(() => {
         const fetchMegaData = async () => {
             try {
-                // Use cache with 10 minute TTL to reduce Firestore reads
+                // Use cache with 15 minute TTL to reduce Firestore reads
                 const products = await fetchWithCache(
                     'navbar_products',
                     async () => {
-                        // Limit to 100 products instead of fetching ALL
-                        const q = query(collection(db, "products"), limit(100));
+                        // Limit to 50 products instead of 100 for faster loading
+                        const q = query(collection(db, "products"), limit(50));
                         const snap = await getDocs(q);
                         return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     },
-                    10 * 60 * 1000 // 10 minutes cache
+                    15 * 60 * 1000 // 15 minutes cache (increased from 10)
                 );
 
                 // Only proceed if we have products from database
@@ -65,7 +64,7 @@ export default function Navbar() {
                     if (cat === "Today's Deals") {
                         catProducts = products.filter(p => p.discount || p.oldPrice);
                     } else if (cat === "New Arrivals") {
-                        catProducts = [...products].reverse().slice(0, 10);
+                        catProducts = [...products].reverse().slice(0, 8);
                     } else if (cat === "Trending") {
                         catProducts = products.filter(p => (p.rating || 0) >= 4.5);
                     } else if (cat === "Men's Fashion") {
@@ -131,7 +130,7 @@ export default function Navbar() {
                             categories: Object.keys(subGroups).map(sub => ({
                                 id: sub.toLowerCase().replace(/\s+/g, '-'),
                                 name: sub,
-                                items: subGroups[sub].slice(0, 4)
+                                items: subGroups[sub].slice(0, 4) // Limit to 4 items per subcategory
                             })),
                             popular: Array.from(new Set(catProducts.flatMap(p => p.tags || []))).slice(0, 4)
                         };
@@ -290,7 +289,7 @@ export default function Navbar() {
                                 className="btn btn-secondary icon-btn wishlist-btn-nav"
                             >
                                 <Heart size={20} />
-                                {wishlistCount > 0 && <span className="wishlist-badge">{wishlistCount}</span>}
+                                {user && wishlistCount > 0 && <span className="wishlist-badge">{wishlistCount}</span>}
                             </Link>
 
                             <Link
@@ -304,7 +303,7 @@ export default function Navbar() {
                                 className="btn btn-secondary icon-btn cart-btn-nav"
                             >
                                 <ShoppingCart size={20} />
-                                {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
+                                {user && cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
                             </Link>
 
                             {user ? (
@@ -351,24 +350,11 @@ export default function Navbar() {
                     </div>
                 </div>
 
-                {/* Hover trigger area for categories */}
-                {!location.pathname.startsWith('/checkout') && (
-                    <div 
-                        className="category-trigger-area"
-                        onMouseEnter={() => setShowCategories(true)}
-                    />
-                )}
-
+                {/* Categories section - Always visible (static) */}
                 {!location.pathname.startsWith('/checkout') && (
                     <div 
                         className="sub-nav-wrapper"
-                        style={{ display: showCategories ? 'block' : 'none' }}
-                        onMouseEnter={() => setShowCategories(true)}
-                        onMouseLeave={() => {
-                            if (!activeMegaMenu) {
-                                setShowCategories(false);
-                            }
-                        }}
+                        style={{ display: 'block' }}
                     >
                         <div className="container">
                             {/* First Row - Product Categories */}
@@ -446,11 +432,9 @@ export default function Navbar() {
                                 className="mega-menu animate-slide-down" 
                                 onMouseEnter={() => {
                                     setActiveMegaMenu(activeMegaMenu);
-                                    setShowCategories(true);
                                 }}
                                 onMouseLeave={() => {
                                     setActiveMegaMenu(null);
-                                    setShowCategories(false);
                                 }}
                             >
                                 <div className="container mega-menu-content">
@@ -569,15 +553,6 @@ const navStyles = `
     box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.06);
 }
 
-.category-trigger-area {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 10px;
-    z-index: 1019;
-}
-
 .main-nav-wrapper {
     background: #FFFFFF;
     border-bottom: 1px solid #E5E7EB;
@@ -591,6 +566,10 @@ const navStyles = `
     padding: 16px 24px;
     height: 70px;
     background: #FFFFFF;
+    max-width: 1280px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .brand-logo { 
@@ -776,6 +755,12 @@ const navStyles = `
     border-bottom: 1px solid #E5E7EB;
 }
 
+.sub-nav-wrapper .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 3px;
+}
+
 .sub-nav {
     display: flex;
     justify-content: center;
@@ -938,11 +923,12 @@ const navStyles = `
     }
 }
 
-/* Mega Menu Content - Professional Spacing */
+/* Mega Menu Content - Compact with reduced padding */
 .mega-menu {
     position: absolute;
     top: 100%;
     left: 0;
+    right: 0;
     width: 100%;
     background: #FFFFFF;
     border-top: 1px solid #E5E7EB;
@@ -950,42 +936,51 @@ const navStyles = `
     z-index: 1000;
 }
 
+/* Override container width only inside mega menu */
+.mega-menu .container {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
 .mega-menu-content {
     display: grid;
-    grid-template-columns: 240px 1fr;
-    height: 420px;
+    grid-template-columns: 220px 1fr;
+    height: 380px;
     background: #FFFFFF;
+    width: 100%;
 }
 
 .mega-sidebar {
-    padding: 24px 20px;
+    padding: 20px 12px;
     border-right: 1px solid #E5E7EB;
     background: #F9FAFB;
     overflow-y: auto;
-    height: 420px;
+    height: 380px;
 }
 
 .mega-sidebar h3 {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 800;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     color: #111827;
 }
 
 .sidebar-items {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 
 .sidebar-items button {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 13px;
     color: #6B7280;
     text-align: left;
     transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -995,9 +990,9 @@ const navStyles = `
 }
 
 .sidebar-items button.other-btn {
-    margin-top: 8px;
+    margin-top: 6px;
     border-top: 1px solid #E5E7EB;
-    padding-top: 14px;
+    padding-top: 12px;
     color: #2563EB;
     font-weight: 700;
 }
@@ -1026,20 +1021,20 @@ const navStyles = `
 }
 
 .mega-main {
-    padding: 24px 32px;
+    padding: 20px 24px;
     display: flex;
     flex-direction: column;
     background: #FFFFFF;
     overflow-y: auto;
-    height: 420px;
+    height: 380px;
 }
 
 .mega-title-row {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .mega-title-row h4 {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 800;
     color: #111827;
 }
@@ -1047,7 +1042,7 @@ const navStyles = `
 .mega-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
+    gap: 14px;
     flex: 1;
 }
 
@@ -1278,7 +1273,7 @@ const navStyles = `
 /* Search and Actions */
 .nav-search { 
     flex: 1; 
-    max-width: 600px; 
+    max-width: 700px; 
     margin: 0 var(--space-4, 16px); 
     position: relative; 
 }
@@ -1358,6 +1353,7 @@ const navStyles = `
     height: 44px;
     display: flex;
     align-items: center;
+    z-index: 10000; /* Highest layer - above everything */
 }
 
 .cart-btn-nav, .wishlist-btn-nav { 
@@ -1388,7 +1384,7 @@ const navStyles = `
     right: 0; 
     width: 280px; 
     padding: var(--space-2, 8px); 
-    z-index: var(--z-dropdown, 1000); 
+    z-index: 10001; /* Above profile container */
     animation: navFadeIn 0.2s ease-out;
     background: #FFFFFF;
     border-radius: 12px;

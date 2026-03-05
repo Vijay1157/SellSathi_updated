@@ -23,92 +23,13 @@ import {
 } from 'lucide-react';
 import { auth } from '@/modules/shared/config/firebase';
 import { authFetch } from '@/modules/shared/utils/api';
+import { VARIANT_CONFIGS } from '@/modules/shared/config/productVariants';
+import { SELLER_CATEGORIES } from '@/modules/shared/config/categories';
 
 // ─── Category Configuration ───────────────────────────────────────────────────
-// Defines which dynamic fields appear for each category
-const CATEGORY_CONFIG = {
-    "Fashion": {
-        icon: "👗",
-        hasSizes: true,
-        hasColors: true,
-        defaultSizes: ["XS", "S", "M", "L", "XL", "XXL"],
-        colorPresets: ["Black", "White", "Red", "Blue", "Green", "Pink", "Grey", "Navy", "Beige", "Brown"],
-        hasSpecifications: true,
-        specPresets: ["Fit", "Pattern", "Sleeve", "Collar", "Occasion", "Material", "Wash Care"]
-    },
-    "Electronics": {
-        icon: "📱",
-        hasVariants: true,
-        hasColors: true,
-        variantTypes: [
-            { key: "storage", label: "Storage", presets: ["64GB", "128GB", "256GB", "512GB", "1TB"] },
-            { key: "memory", label: "RAM / Memory", presets: ["4GB", "6GB", "8GB", "12GB", "16GB", "32GB"] }
-        ],
-        colorPresets: ["Black", "White", "Silver", "Space Gray", "Gold", "Blue", "Red"],
-        hasSpecifications: true,
-        specPresets: ["Processor", "Display", "Battery", "Camera", "Weight", "OS", "Warranty"]
-    },
-    "Home & Kitchen": {
-        icon: "🏠",
-        hasColors: true,
-        hasDimensions: true,
-        colorPresets: ["White", "Black", "Silver", "Wooden", "Grey", "Blue", "Green"],
-        hasSpecifications: true,
-        specPresets: ["Material", "Dimensions", "Weight", "Power", "Warranty", "Care Instructions"]
-    },
-    "Handicrafts": {
-        icon: "🎨",
-        hasColors: true,
-        hasCustomAttributes: true,
-        colorPresets: ["Natural", "Brown", "Red", "Blue", "Gold", "Multi-color"],
-        hasSpecifications: true,
-        specPresets: ["Material", "Origin", "Technique", "Weight", "Dimensions", "Care"]
-    },
-    "Food & Beverages": {
-        icon: "🍽️",
-        hasVariants: true,
-        variantTypes: [
-            { key: "weight", label: "Pack Size / Weight", presets: ["100g", "250g", "500g", "1kg", "2kg", "5kg"] }
-        ],
-        hasSpecifications: true,
-        specPresets: ["Ingredients", "Shelf Life", "Storage", "Allergens", "Nutritional Info", "FSSAI License"]
-    },
-    "Beauty & Personal Care": {
-        icon: "💄",
-        hasSizes: true,
-        hasColors: true,
-        defaultSizes: ["30ml", "50ml", "100ml", "150ml", "200ml", "250ml"],
-        colorPresets: ["Fair", "Medium", "Dark", "Universal"],
-        hasSpecifications: true,
-        specPresets: ["Skin Type", "Ingredients", "Volume", "Usage", "Shelf Life", "Country of Origin"]
-    },
-    "Sports & Fitness": {
-        icon: "🏋️",
-        hasSizes: true,
-        hasColors: true,
-        defaultSizes: ["S", "M", "L", "XL", "XXL", "Free Size"],
-        colorPresets: ["Black", "White", "Red", "Blue", "Grey", "Neon Green", "Orange"],
-        hasSpecifications: true,
-        specPresets: ["Material", "Weight Capacity", "Dimensions", "Warranty", "Usage"]
-    },
-    "Books & Stationery": {
-        icon: "📚",
-        hasSpecifications: true,
-        specPresets: ["Author", "Publisher", "Language", "Pages", "ISBN", "Edition", "Binding"]
-    },
-    "Others": {
-        icon: "📦",
-        hasColors: true,
-        hasCustomAttributes: true,
-        hasSizes: true,
-        defaultSizes: [],
-        colorPresets: ["Black", "White", "Red", "Blue", "Green"],
-        hasSpecifications: true,
-        specPresets: []
-    }
-};
-
-const categories = Object.keys(CATEGORY_CONFIG);
+// Use shared category configuration for consistency across the app
+const CATEGORY_CONFIG = VARIANT_CONFIGS;
+const categories = SELLER_CATEGORIES;
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const sty = {
