@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, Heart, Eye, ShoppingCart } from 'lucide-react';
-import { auth } from '@/modules/shared/config/firebase';
+import { collection, getDocs, query, limit } from 'firebase/firestore';
+import { db, auth } from '@/modules/shared/config/firebase';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
-import { getCachedProducts } from '@/modules/shared/utils/productCache';
 import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
 
 export default function NewArrivals() {
@@ -23,11 +23,12 @@ export default function NewArrivals() {
     useEffect(() => {
         const fetchNew = async () => {
             try {
-                // ✅ Use shared cache; sortBy='createdAt' ensures newest-first ordering
-                // which is what NewArrivals should show (previously missing)
-                const raw = await getCachedProducts(20, 'createdAt');
-                const data = raw.map(p => ({
-                    ...p,
+                // In a real app, we'd order by createdAt desc
+                const q = query(collection(db, "products"), limit(12));
+                const snap = await getDocs(q);
+                const data = snap.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
                     rating: (Math.random() * 0.5 + 4.5).toFixed(1),
                     reviews: Math.floor(Math.random() * 200) + 50
                 }));
@@ -312,6 +313,3 @@ export default function NewArrivals() {
         </div>
     );
 }
-
-
-

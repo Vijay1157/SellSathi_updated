@@ -1,12 +1,12 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { SellerHeader } from '../components/SellerHeader';
-import { Footer } from '../components/Footer';
-import { StatsSection } from '../components/StatsSection';
-import { WhySellSathi } from '../components/WhySellSathi';
-import { HowItWorks } from '../components/HowItWorks';
-import { Testimonals } from '../components/Testimonals';
+import { SellerHeader } from '@/modules/shared/components/common/SellerHeader';
+import { Footer } from '@/modules/shared/components/common/Footer';
+import { StatsSection } from '@/modules/shared/components/common/StatsSection';
+import { WhySellSathi } from '@/modules/shared/components/common/WhySellSathi';
+import { HowItWorks } from '@/modules/shared/components/common/HowItWorks';
+import { Testimonals } from '@/modules/shared/components/common/Testimonals';
 import { ArrowRight, BookOpen, Truck, Rocket, BarChart3, Mail, Zap, Play } from 'lucide-react';
 
 const categories = [

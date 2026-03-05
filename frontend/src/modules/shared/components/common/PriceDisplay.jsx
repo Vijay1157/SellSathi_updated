@@ -119,6 +119,3 @@ const PriceDisplay = ({
 };
 
 export default PriceDisplay;
-
-
-

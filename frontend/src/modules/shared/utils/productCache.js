@@ -10,7 +10,7 @@
  * collapses 3 × 12 = 36 firestore reads into a single read every 5 minutes.
  */
 import { collection, getDocs, query, limit, orderBy } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db } from '@/modules/shared/config/firebase';
 
 const _cache = {
     products: null,

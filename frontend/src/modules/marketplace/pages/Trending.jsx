@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, Heart, Eye, ShoppingCart, TrendingUp } from 'lucide-react';
-import { auth } from '@/modules/shared/config/firebase';
+import { collection, getDocs, query, limit } from 'firebase/firestore';
+import { db, auth } from '@/modules/shared/config/firebase';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
-import { addToWishlist, removeFromWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
-import { getCachedProducts } from '@/modules/shared/utils/productCache';
 import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
 
 export default function Trending() {
@@ -17,27 +16,29 @@ export default function Trending() {
     const [selectedQuickProduct, setSelectedQuickProduct] = useState(null);
 
     useEffect(() => {
+        const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
+        setWishlist(saved);
+    }, []);
+
+    useEffect(() => {
         const fetchTrending = async () => {
             try {
-                // ✅ Shared 5-min cache — no extra reads if Deals/NewArrivals already loaded
-                const raw = await getCachedProducts(20);
-                const data = raw.map(p => ({
-                    ...p,
+                const q = query(collection(db, "products"), limit(12));
+                const snap = await getDocs(q);
+                const data = snap.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
                     rating: (Math.random() * 0.4 + 4.6).toFixed(1),
                     reviews: Math.floor(Math.random() * 5000) + 1000
                 }));
                 setProducts(data);
                 setLoading(false);
             } catch (err) {
-                console.error('[Trending] fetch failed:', err);
+                console.error(err);
                 setLoading(false);
             }
         };
         fetchTrending();
-
-        // ✅ Use proper wishlist listener — stays in sync with other pages
-        const unsubscribe = listenToWishlist(setWishlist);
-        return () => unsubscribe();
     }, []);
 
     const handleAddToCart = async (e, p) => {
@@ -52,19 +53,23 @@ export default function Trending() {
         }
     };
 
-    const toggleWishlist = async (e, product) => {
+    const toggleWishlist = (e, product) => {
         if (e) e.stopPropagation();
         if (!auth.currentUser) {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
-        const isSaved = wishlist.some(item => item.id === product.id);
-        if (isSaved) {
-            await removeFromWishlist(product.id);
+        const saved = JSON.parse(localStorage.getItem('wishlist') || '[]');
+        const alreadySaved = saved.some(item => item.id === product.id);
+        let updated;
+        if (alreadySaved) {
+            updated = saved.filter(item => item.id !== product.id);
         } else {
-            await addToWishlist(product);
+            updated = [...saved, product];
         }
-        // wishlist state updates automatically via the listenToWishlist listener
+        localStorage.setItem('wishlist', JSON.stringify(updated));
+        setWishlist(updated);
+        window.dispatchEvent(new CustomEvent('wishlistUpdated'));
     };
 
     const openQuickView = (e, product) => {
@@ -300,6 +305,3 @@ export default function Trending() {
         </div>
     );
 }
-
-
-

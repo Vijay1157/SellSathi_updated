@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '@/modules/shared/config/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
 import { authFetch, API_BASE } from '@/modules/shared/utils/api';
 import { addToWishlist, removeFromWishlist, isInWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
@@ -12,6 +12,8 @@ import Rating from '@/modules/shared/components/common/Rating';
 import PriceDisplay from '@/modules/shared/components/common/PriceDisplay';
 import { getProductPricing } from '@/modules/shared/utils/priceUtils';
 import { fetchProductReviews, calculateRatingStats, clearProductReviewCache } from '@/modules/shared/utils/reviewUtils';
+import { getFrequentlyBoughtTogether, getSimilarProducts } from '@/modules/shared/utils/recommendationUtils';
+import { useTranslation } from 'react-i18next';
 
 const ExpandableText = ({ text, maxLength = 180 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -37,6 +39,7 @@ const ExpandableText = ({ text, maxLength = 180 }) => {
 export default function ProductDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const [product, setProduct] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('description');
@@ -44,10 +47,15 @@ export default function ProductDetail() {
     const [selectedSize, setSelectedSize] = useState('M');
     const [selectedStorage, setSelectedStorage] = useState(null);
     const [selectedMemory, setSelectedMemory] = useState(null);
+    const [selectedVariant, setSelectedVariant] = useState({});
     const [purchaseOption, setPurchaseOption] = useState('standard');
     const [isZoomed, setIsZoomed] = useState(false);
     const [activeImageIndex, setActiveImageIndex] = useState(0);
+    const [showZoomPreview, setShowZoomPreview] = useState(false);
+    const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
     const [fbtSelections, setFbtSelections] = useState({ 0: true, 1: false, 2: false });
+    const [fbtProducts, setFbtProducts] = useState([]);
+    const [similarProducts, setSimilarProducts] = useState([]);
     const [recentlyViewed, setRecentlyViewed] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -72,182 +80,251 @@ export default function ProductDetail() {
         });
     }, [product, selectedSize, selectedStorage, selectedMemory, purchaseOption]);
 
-    const images = product?.images || [product?.image || product?.imageUrl];
+    // Build comprehensive images array including main image, additional images, and variant images
+    const images = useMemo(() => {
+        if (!product) return [];
+        
+        const imageSet = new Set();
+        
+        // Add main image
+        if (product.image) imageSet.add(product.image);
+        if (product.imageUrl) imageSet.add(product.imageUrl);
+        
+        // Add additional images array
+        if (product.images && Array.isArray(product.images)) {
+            product.images.forEach(img => {
+                if (img && typeof img === 'string') imageSet.add(img);
+            });
+        }
+        
+        // Add variant images
+        if (product.variantImages && typeof product.variantImages === 'object') {
+            Object.values(product.variantImages).forEach(img => {
+                if (img && typeof img === 'string') imageSet.add(img);
+            });
+        }
+        
+        const imagesArray = Array.from(imageSet).filter(Boolean);
+        return imagesArray.length > 0 ? imagesArray : ['/placeholder-image.jpg'];
+    }, [product]);
 
     const nextImage = () => setActiveImageIndex((prev) => (prev + 1) % images.length);
     const prevImage = () => setActiveImageIndex((prev) => (prev - 1 + images.length) % images.length);
 
-    const setupSellerListener = async (sellerId) => {
-        if (!sellerId || sellerId === "system_generated" || sellerId === "official") {
-            setSeller(null);
-            return;
-        }
-
-        // Primary: Fetch seller via public backend API (no auth needed, avoids Firestore quota)
-        try {
-            const response = await fetch(`${API_BASE}/api/seller/${sellerId}/public-profile`);
-            const data = await response.json();
-
-            if (data.success && data.seller) {
-                const s = data.seller;
-                setSeller({
-                    name: s.name || "Verified Seller",
-                    shopName: s.shopName || "SellSathi Partner",
-                    companyName: s.shopName || "Registered Hub",
-                    city: s.city || "India",
-                    category: s.category || "General",
-                    joinedAt: s.joinedAt ? new Date(s.joinedAt) : null
-                });
-                return;
-            }
-        } catch (apiErr) {
-            console.log("API seller fetch failed, trying Firestore:", apiErr.message);
-        }
-
-        // Fallback: Firestore direct — use one-time getDoc (NOT onSnapshot).
-        // Seller info is static; a real-time listener wastes quota on reconnects
-        // and fires a read on every doc mutation in the background.
-        try {
-            const sSnap = await getDoc(doc(db, "sellers", sellerId));
-            if (sSnap.exists()) {
-                const sData = sSnap.data();
-                if (sData.sellerStatus !== 'APPROVED') { setSeller(null); return; }
-
-                const uSnap = await getDoc(doc(db, "users", sellerId));
-                const uData = uSnap.exists() ? uSnap.data() : {};
-                let city = "India";
-                if (sData.address) {
-                    const parts = sData.address.split(',').map(p => p.trim());
-                    const vtcPart = parts.find(p => p.startsWith('VTC:'));
-                    if (vtcPart) city = vtcPart.replace('VTC:', '').trim();
-                    else if (parts.length >= 2) city = parts[1];
-                    else city = parts[0];
-                }
-                setSeller({
-                    name: uData.fullName || sData.extractedName || "Verified Seller",
-                    shopName: sData.shopName || "SellSathi Partner",
-                    companyName: sData.shopName || "Registered Hub",
-                    city, category: sData.category || "General",
-                    joinedAt: sData.approvedAt ?
-                        (sData.approvedAt.toDate ? sData.approvedAt.toDate() : new Date(sData.approvedAt._seconds * 1000)) :
-                        (sData.appliedAt ? (sData.appliedAt.toDate ? sData.appliedAt.toDate() : new Date(sData.appliedAt._seconds * 1000)) : null)
-                });
-            } else { setSeller(null); }
-        } catch (err) {
-            console.error("All seller fetch methods failed:", err);
-            setSeller(null);
-        }
-    };
-
-    const fetchProduct = async () => {
-        try {
-            const docRef = doc(db, "products", id);
-            const docSnap = await getDoc(docRef);
-            let data = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
-
-            const mock = deals[id] || (id.includes('fashion') ? deals["fashion-1"] : (id.includes('deal') ? deals["deal-1"] : deals["generic"]));
-            if (mock) {
-                data = {
-                    ...mock,
-                    ...data,
-                    colors: (data?.colors && data.colors.length > 0) ? data.colors : mock.colors,
-                    materials: (data?.materials && data.materials.length > 0) ? data.materials : mock.materials,
-                    types: (data?.types && data.types.length > 0) ? data.types : mock.types,
-                    specifications: (data?.specifications && Object.keys(data.specifications).length > 0) ? data.specifications : mock.specifications,
-                    description: data?.description || mock.description || ("Premium " + (data?.name || mock.name || "Product") + " with cutting-edge features.")
-                };
-            }
-
-            if (data) {
-                data.id = data.id || id;
-                // Normalise: seller products store `title` not `name`
-                if (!data.name && data.title) data.name = data.title;
-                setProduct(data);
-                if (data.colors && data.colors.length > 0) setSelectedColor(data.colors[0]);
-                if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[1] || data.sizes[0]);
-                if (data.storage && data.storage.length > 0) setSelectedStorage(data.storage[0]);
-                if (data.memory && data.memory.length > 0) setSelectedMemory(data.memory[0]);
-                updateRecentlyViewed(data);
-                setupSellerListener(data.sellerId);
-            }
-            setLoading(false);
-        } catch (err) {
-            console.error(err);
-            setLoading(false);
-        }
-    };
-
-    const setupReviewsListener = () => {
-        const loadReviews = async () => {
-            try {
-                const { reviews, stats } = await fetchProductReviews(id);
-                setReviews(reviews);
-                setReviewStats(stats);
-            } catch (err) {
-                console.error("Failed to load reviews:", err);
-            }
-        };
-
-        const checkEligibility = async (retryCount = 0) => {
-            let currentUid = auth.currentUser?.uid;
-
-            if (!currentUid) {
-                try {
-                    const localUser = JSON.parse(localStorage.getItem('user'));
-                    currentUid = localUser?.uid;
-                } catch (e) { }
-            }
-
-            if (!currentUid) {
-                // If no user yet, retry in 1s (Firebase auth might still be initializing)
-                if (retryCount < 3) {
-                    setTimeout(() => checkEligibility(retryCount + 1), 1000);
-                }
-                return;
-            }
-
-            try {
-                const res = await authFetch(`/api/user/${currentUid}/reviewable-orders`);
-                if (!res.ok) throw new Error('Failed to fetch eligibility');
-
-                const data = await res.json();
-                if (data.success && data.orders) {
-                    // Match by ID or ProductID, trimmed and case-insensitive
-                    const order = data.orders.find(o =>
-                        String(o.productId).trim().toLowerCase() === String(id).trim().toLowerCase()
-                    );
-
-                    if (order) {
-                        setIsEligibleForReview(true);
-                        setEligibleOrder(order);
-                        return; // Success
-                    }
-                }
-                setIsEligibleForReview(false);
-                setEligibleOrder(null);
-            } catch (err) {
-                console.error("Eligibility check error:", err);
-                // Silently ignore, but maybe retry once
-                if (retryCount < 1) {
-                    setTimeout(() => checkEligibility(retryCount + 1), 2000);
-                }
-            }
-        };
-
-        loadReviews();
-        checkEligibility();
-
-        const handleUserChange = () => checkEligibility();
-        window.addEventListener('userDataChanged', handleUserChange);
-        window.addEventListener('reviewsUpdate', loadReviews);
-
-        return () => {
-            window.removeEventListener('reviewsUpdate', loadReviews);
-            window.removeEventListener('userDataChanged', handleUserChange);
-        };
-    };
+    // Reset active image index when product changes
+    useEffect(() => {
+        setActiveImageIndex(0);
+    }, [product?.id]);
 
     useEffect(() => {
+        const setupSellerListener = async (sellerId) => {
+            if (!sellerId || sellerId === "system_generated" || sellerId === "official") {
+                setSeller(null);
+                return;
+            }
+
+            // Primary: Fetch seller via public backend API (no auth needed, avoids Firestore quota)
+            try {
+                const response = await fetch(`${API_BASE}/api/seller/${sellerId}/public-profile`);
+                const data = await response.json();
+
+                if (data.success && data.seller) {
+                    const s = data.seller;
+                    setSeller({
+                        name: s.name || "Verified Seller",
+                        shopName: s.shopName || "SellSathi Partner",
+                        companyName: s.shopName || "Registered Hub",
+                        city: s.city || "India",
+                        category: s.category || "General",
+                        joinedAt: s.joinedAt ? new Date(s.joinedAt) : null
+                    });
+                    return;
+                }
+            } catch (apiErr) {
+                // Fallback to Firestore if API fails
+            }
+
+            // Fallback: Firestore direct - Use one-time read instead of onSnapshot to reduce quota
+            try {
+                const sellerSnap = await getDoc(doc(db, "sellers", sellerId));
+                if (sellerSnap.exists()) {
+                    const sData = sellerSnap.data();
+                    if (sData.sellerStatus !== 'APPROVED') { 
+                        setSeller(null); 
+                        return; 
+                    }
+
+                    const userSnap = await getDoc(doc(db, "users", sellerId));
+                    const uData = userSnap.exists() ? userSnap.data() : {};
+                    let city = "India";
+                    if (sData.address) {
+                        const parts = sData.address.split(',').map(p => p.trim());
+                        const vtcPart = parts.find(p => p.startsWith('VTC:'));
+                        if (vtcPart) city = vtcPart.replace('VTC:', '').trim();
+                        else if (parts.length >= 2) city = parts[1];
+                        else city = parts[0];
+                    }
+                    setSeller({
+                        name: uData.fullName || sData.extractedName || "Verified Seller",
+                        shopName: sData.shopName || "SellSathi Partner",
+                        companyName: sData.shopName || "Registered Hub",
+                        city, category: sData.category || "General",
+                        joinedAt: sData.approvedAt ?
+                            (sData.approvedAt.toDate ? sData.approvedAt.toDate() : new Date(sData.approvedAt._seconds * 1000)) :
+                            (sData.appliedAt ? (sData.appliedAt.toDate ? sData.appliedAt.toDate() : new Date(sData.appliedAt._seconds * 1000)) : null)
+                    });
+                } else { 
+                    setSeller(null); 
+                }
+            } catch (err) {
+                console.error("All seller fetch methods failed:", err);
+                setSeller(null);
+            }
+        };
+
+        const fetchProduct = async () => {
+            try {
+                const docRef = doc(db, "products", id);
+                const docSnap = await getDoc(docRef);
+                
+                if (!docSnap.exists()) {
+                    setProduct(null);
+                    setLoading(false);
+                    return;
+                }
+
+                let data = { id: docSnap.id, ...docSnap.data() };
+
+                // Normalize: seller products store `title` not `name`
+                if (!data.name && data.title) data.name = data.title;
+                
+                // Ensure description exists
+                if (!data.description) {
+                    data.description = `Premium ${data.name || "Product"} with cutting-edge features.`;
+                }
+
+                setProduct(data);
+                
+                // Initialize variant selections
+                if (data.colors && data.colors.length > 0) {
+                    setSelectedColor(data.colors[0]);
+                }
+                if (data.sizes && data.sizes.length > 0) {
+                    setSelectedSize(data.sizes[1] || data.sizes[0]);
+                }
+                if (data.storage && data.storage.length > 0) {
+                    setSelectedStorage(data.storage[0]);
+                }
+                if (data.memory && data.memory.length > 0) {
+                    setSelectedMemory(data.memory[0]);
+                }
+                
+                updateRecentlyViewed(data);
+                setupSellerListener(data.sellerId);
+                
+                // Load dynamic recommendations
+                loadDynamicRecommendations(data);
+                
+                setLoading(false);
+            } catch (err) {
+                console.error("Error fetching product:", err);
+                setProduct(null);
+                setLoading(false);
+            }
+        };
+
+        const loadDynamicRecommendations = async (productData) => {
+            try {
+                // Load frequently bought together
+                const fbt = await getFrequentlyBoughtTogether(productData.id);
+                if (fbt.length > 0) {
+                    setFbtProducts(fbt);
+                    // Initialize selections with first product selected
+                    const selections = { 0: true };
+                    fbt.forEach((_, idx) => {
+                        if (idx > 0) selections[idx] = false;
+                    });
+                    setFbtSelections(selections);
+                }
+                
+                // Load similar products
+                const similar = await getSimilarProducts(productData);
+                setSimilarProducts(similar);
+            } catch (err) {
+                console.error('Error loading recommendations:', err);
+            }
+        };
+
+        const setupReviewsListener = () => {
+            const loadReviews = async () => {
+                try {
+                    const { reviews, stats } = await fetchProductReviews(id);
+                    setReviews(reviews);
+                    setReviewStats(stats);
+                } catch (err) {
+                    console.error("Failed to load reviews:", err);
+                }
+            };
+
+            const checkEligibility = async (retryCount = 0) => {
+                let currentUid = auth.currentUser?.uid;
+
+                if (!currentUid) {
+                    try {
+                        const localUser = JSON.parse(localStorage.getItem('user'));
+                        currentUid = localUser?.uid;
+                    } catch (e) { }
+                }
+
+                if (!currentUid) {
+                    // If no user yet, retry in 1s (Firebase auth might still be initializing)
+                    if (retryCount < 3) {
+                        setTimeout(() => checkEligibility(retryCount + 1), 1000);
+                    }
+                    return;
+                }
+
+                try {
+                    const res = await authFetch(`/api/user/${currentUid}/reviewable-orders`);
+                    if (!res.ok) throw new Error('Failed to fetch eligibility');
+
+                    const data = await res.json();
+                    if (data.success && data.orders) {
+                        // Match by ID or ProductID, trimmed and case-insensitive
+                        const order = data.orders.find(o =>
+                            String(o.productId).trim().toLowerCase() === String(id).trim().toLowerCase()
+                        );
+
+                        if (order) {
+                            setIsEligibleForReview(true);
+                            setEligibleOrder(order);
+                            return; // Success
+                        }
+                    }
+                    setIsEligibleForReview(false);
+                    setEligibleOrder(null);
+                } catch (err) {
+                    console.error("Eligibility check error:", err);
+                    // Silently ignore, but maybe retry once
+                    if (retryCount < 1) {
+                        setTimeout(() => checkEligibility(retryCount + 1), 2000);
+                    }
+                }
+            };
+
+            loadReviews();
+            checkEligibility();
+
+            const handleUserChange = () => checkEligibility();
+            window.addEventListener('userDataChanged', handleUserChange);
+            window.addEventListener('reviewsUpdate', loadReviews);
+
+            return () => {
+                window.removeEventListener('reviewsUpdate', loadReviews);
+                window.removeEventListener('userDataChanged', handleUserChange);
+            };
+        };
+
         fetchProduct();
         loadRecentlyViewed();
         // Sync wishlist status
@@ -310,7 +387,7 @@ export default function ProductDetail() {
         }
 
         try {
-            const response = await authFetch('/reviews', {
+            const response = await authFetch('/api/reviews', {
                 method: 'POST',
                 body: JSON.stringify({
                     productId: id,
@@ -368,7 +445,7 @@ export default function ProductDetail() {
                 setNewReview(prev => ({ ...prev, images: [...prev.images, data.url] }));
             }
         } catch (err) {
-            // console.error(err);
+            console.error('Error submitting review:', err);
         } finally {
             setUploading(false);
         }
@@ -461,153 +538,6 @@ export default function ProductDetail() {
         }
     };
 
-    const deals = {
-        "deal-1": {
-            id: "deal-1", name: "MacBook Pro M2 Max", price: 129999, oldPrice: 149498, rating: 4.8, reviews: 1256, category: "Electronics",
-            image: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800", discount: "13%",
-            colors: ['Space Gray', 'Silver'], materials: ['Aluminium', 'Recycled Plastics'], types: ['Standard', 'Custom Config'],
-            specifications: { "Processor": "Apple M2 Max chip", "Memory": "32GB Unified Memory", "Storage": "1TB SSD", "Display": "14.2-inch Liquid Retina XDR", "Battery": "Up to 18 hours", "Weight": "1.63 kg" }
-        },
-        "deal-2": {
-            id: "deal-2", name: "Sony WH-1000XM4 Noise Cancelling", price: 19999, oldPrice: 29999, rating: 4.9, reviews: 892, category: "Electronics",
-            image: "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=800", discount: "33%",
-            stock: 0, status: 'Out of Stock',
-            colors: ['Black', 'Silver', 'Midnight Blue'], materials: ['Premium Plastic', 'Synthetic Leather'], types: ['Wireless', 'Wired'],
-            specifications: { "Driver Unit": "40mm, dome type", "Frequency Response": "4Hz-40,000Hz", "Bluetooth": "Version 5.0", "Battery Life": "Max. 30 hours", "Weight": "254g" }
-        },
-        "deal-3": {
-            id: "deal-3", name: "Apple Watch Series 8", price: 34999, oldPrice: 42999, rating: 4.8, reviews: 567, category: "Electronics",
-            image: "https://images.unsplash.com/photo-1434494878577-86c23bddad0f?w=800", discount: "18%",
-            colors: ['Midnight', 'Starlight', 'Silver', 'Red'], materials: ['Aluminium', 'Stainless Steel'], types: ['GPS', 'GPS + Cellular'],
-            specifications: { "Display": "Always-On Retina", "Sensor": "Blood Oxygen, ECG", "Water Resistance": "WR50", "Dust Resistance": "IP6X", "Battery": "Up to 18 hours" }
-        },
-        "deal-4": {
-            id: "deal-4", name: "iPad Pro M2 12.9", price: 99999, oldPrice: 112999, rating: 4.9, reviews: 345, category: "Electronics",
-            image: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=800", discount: "11%",
-            stock: 0, status: 'Out of Stock',
-            colors: ['Space Gray', 'Silver'], materials: ['Aluminium'], types: ['WiFi', 'WiFi + Cellular'],
-            specifications: { "Processor": "Apple M2 chip", "Camera": "12MP Wide, 10MP Ultra Wide", "Face ID": "Enabled", "Apple Pencil": "Gen 2 Support" }
-        },
-        "fashion-1": {
-            id: "fashion-1", name: "Premium Cotton Formal Shirt", price: 2499, oldPrice: 3499, rating: 4.5, reviews: 456, category: "Men's Fashion",
-            image: "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=800", discount: "28%",
-            stock: 0, status: 'Out of Stock',
-            colors: ['White', 'Light Blue', 'Pink'], materials: ['100% Cotton'], types: ['Slim Fit', 'Regular Fit'],
-            sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-            specifications: { "Fit": "Slim Fit", "Pattern": "Solid", "Sleeve": "Full Sleeve", "Collar": "Spread Collar", "Occasion": "Formal" }
-        },
-        "fashion-11": {
-            id: "fashion-11", name: "Slim Fit Casual Shirt", price: 1899, oldPrice: 2499, rating: 4.4, reviews: 128, category: "Men's Fashion",
-            image: "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800",
-            colors: ['Blue', 'Grey'], materials: ['Cotton Blend'], types: ['Casual'],
-            sizes: ['M', 'L', 'XL']
-        },
-        "fashion-2": {
-            id: "fashion-2", name: "Midnight Blue Textured Blazer", price: 5999, oldPrice: 7999, rating: 4.6, reviews: 231, category: "Men's Fashion",
-            image: "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?w=800",
-            colors: ['Midnight Blue', 'Charcoal', 'Black'], materials: ['Wool Blend'], types: ['Single Breasted'],
-            sizes: ['38', '40', '42', '44'],
-            specifications: { "Lining": "Satin", "Pockets": "3 Outer, 2 Inner", "Closure": "Button", "Vents": "Double", "Lapel": "Notch" }
-        },
-        "fashion-12": {
-            id: "fashion-12", name: "Straight Fit Denim Jeans", price: 2999, oldPrice: 3999, rating: 4.5, reviews: 890, category: "Men's Fashion",
-            image: "https://images.unsplash.com/photo-1542272604-787c3835535d?w=800",
-            stock: 0, status: 'Out of Stock',
-            colors: ['Indigo', 'Light Blue'], materials: ['Denim'], types: ['Straight Fit'],
-            sizes: ['30', '32', '34', '36']
-        },
-        "fashion-3": {
-            id: "fashion-3", name: "Floral Print Chiffon Dress", price: 3999, oldPrice: 4999, rating: 4.7, reviews: 124, category: "Women's Fashion",
-            image: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=800", discount: "20%",
-            colors: ['Floral Pink', 'Summer Yellow', 'Blue Bloom'], materials: ['Chiffon'], types: ['Maxi', 'Midi'],
-            sizes: ['XS', 'S', 'M', 'L', 'XL'],
-            specifications: { "Style": "Maxi", "Neck": "V-Neck", "Sleeve": "Short", "Length": "Full", "Closure": "Zipper" }
-        },
-        "fashion-13": {
-            id: "fashion-13", name: "White Embroidered Top", price: 1599, oldPrice: 1999, rating: 4.6, reviews: 67, category: "Women's Fashion",
-            image: "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=800",
-            stock: 0, status: 'Out of Stock',
-            colors: ['White'], materials: ['Georgette'], types: ['Regular Fit'],
-            sizes: ['S', 'M', 'L']
-        },
-        "fashion-4": {
-            id: "fashion-4", name: "Banarasi Silk Saree", price: 8499, oldPrice: 12999, rating: 4.8, reviews: 342, category: "Women's Fashion",
-            image: "https://images.unsplash.com/photo-1610030469668-93510cb6f43e?w=800",
-            colors: ['Royal Red', 'Golden Mustard', 'Emerald'], materials: ['Banarasi Silk'], types: ['Ethnic'],
-            sizes: ['One Size'],
-            specifications: { "Work": "Zari Weaving", "Blouse Piece": "Included", "Saree Length": "5.5m", "Blouse Length": "0.8m", "Occasion": "Wedding" }
-        },
-        "fashion-14": {
-            id: "fashion-14", name: "Designer Kurta Set", price: 3499, oldPrice: 4599, rating: 4.7, reviews: 215, category: "Women's Fashion",
-            image: "https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?w=800",
-            stock: 0, status: 'Out of Stock',
-            colors: ['Maroon', 'Teal'], materials: ['Cotton Silk'], types: ['Anarkali'],
-            sizes: ['S', 'M', 'L', 'XL']
-        },
-        "e1": { id: "e1", name: "Smart Watch X", price: 12999, category: "Electronics", image: "https://images.unsplash.com/photo-1546868871-70ca48370731", rating: 4.5, reviews: 88, description: "Advanced smart watch with health tracking.", specifications: { "Screen": "OLED", "Battery": "48 Hours" } },
-        "e2": { id: "e2", name: "Noise Buds", price: 2999, category: "Electronics", image: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df", rating: 4.2, reviews: 156, description: "High-quality wireless earbuds." },
-        "e3": { id: "e3", name: "Elite Laptop", price: 89999, category: "Electronics", image: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853", rating: 4.9, reviews: 42, description: "Powerful laptop for professionals." },
-        "m1": { id: "m1", name: "Classic Polo", price: 1499, category: "Men's Fashion", image: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518", rating: 4.3, reviews: 210, description: "Comfortable cotton polo shirt." },
-        "m2": { id: "m2", name: "Denim Jacket", price: 3999, category: "Men's Fashion", image: "https://images.unsplash.com/photo-1523205771623-e0faa4d2813d", rating: 4.6, reviews: 75 },
-        "m3": { id: "m3", name: "Slim Fit Chinos", price: 2499, category: "Men's Fashion", image: "https://images.unsplash.com/photo-1473966968600-fa801b869a1a", rating: 4.4, reviews: 112 },
-        "w1": { id: "w1", name: "Silk Saree", price: 4999, category: "Women's Fashion", image: "https://images.unsplash.com/photo-1610030469983-98e550d6193c", rating: 4.8, reviews: 94 },
-        "w2": { id: "w2", name: "Floral Maxi Dress", price: 2999, category: "Women's Fashion", image: "https://images.unsplash.com/photo-1496747611176-843222e1e57c", rating: 4.7, reviews: 63 },
-        "w3": { id: "w3", name: "Silver Handbag", price: 1599, category: "Women's Fashion", image: "https://images.unsplash.com/photo-1584917865442-de89df76afd3", rating: 4.5, reviews: 48 },
-        "h1": { id: "h1", name: "Wall Art", price: 899, category: "Home & Living", image: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38", rating: 4.1, reviews: 35 },
-        "h2": { id: "h2", name: "Velvet Cushion", price: 499, category: "Home & Living", image: "https://images.unsplash.com/photo-1584132967334-10e028bd69f7", rating: 4.4, reviews: 120 },
-        "h3": { id: "h3", name: "Ceramic Vase", price: 1299, category: "Home & Living", image: "https://images.unsplash.com/photo-1578500494198-246f612d3b3d", rating: 4.6, reviews: 28 },
-        "b1": { id: "b1", name: "Matte Lipstick", price: 799, category: "Beauty", image: "https://images.unsplash.com/photo-1586773860418-d37222d8fce3", rating: 4.5, reviews: 200 },
-        "b2": { id: "b2", name: "Night Cream", price: 1499, category: "Beauty", image: "https://images.unsplash.com/photo-1556228720-195a672e8a03", rating: 4.7, reviews: 85 },
-        "b3": { id: "b3", name: "Perfume Gold", price: 3499, category: "Beauty", image: "https://images.unsplash.com/photo-1544467328-345179a4573b", rating: 4.9, reviews: 15 },
-        "s1": { id: "s1", name: "Yoga Mat", price: 999, category: "Sports", image: "https://images.unsplash.com/photo-1592431594448-ddc91c038f38", rating: 4.3, reviews: 310 },
-        "s2": { id: "s2", name: "Running Shoes", price: 4999, category: "Sports", image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff", rating: 4.8, reviews: 1500 },
-        "s3": { id: "s3", name: "Dumbbell Set", price: 2999, category: "Sports", image: "https://images.unsplash.com/photo-1586401100295-7a8096fd231a", rating: 4.6, reviews: 420 },
-        "a1": { id: "a1", name: "Leather Wallet", price: 1299, category: "Accessories", image: "https://images.unsplash.com/photo-1627123424574-724758594e93", rating: 4.4, reviews: 95 },
-        "a2": { id: "a2", name: "Sunglasses", price: 1999, category: "Accessories", image: "https://images.unsplash.com/photo-1572635196237-14b3f281503f", rating: 4.7, reviews: 120 },
-        "a3": { id: "a3", name: "Belt Black", price: 899, category: "Accessories", image: "https://images.unsplash.com/photo-1624222247344-550fb8ec505d", rating: 4.2, reviews: 55 },
-        "generic": { id: "generic", name: "Premium Product", price: 999, category: "Other", image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30", rating: 4.5, reviews: 10, description: "A high-quality product from Sellsathi." },
-        "deal-special": {
-            id: "deal-special", name: "Premium Ultra Pro Max Elite", price: 199999, oldPrice: 249999, rating: 5.0, reviews: 9999, category: "Electronics",
-            image: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=800", discount: "20%",
-            colors: ['Mystic Black', 'Phantom Silver', 'Nebula Blue'], materials: ['Aerospace Titanium', 'Sapphire Glass'], types: ['Standard', 'Luxury Edition'],
-            specifications: { "Processor": "Quantum X1 chip", "Memory": "128GB Unified Memory", "Storage": "4TB Superfast SSD", "Display": "8K Ultra Motion OLED", "Battery": "Up to 48 hours", "Weight": "1.2 kg" },
-            description: "The Premium Ultra Pro Max Elite is not just a device; it is a masterpiece of engineering and design. Crafted from aerospace-grade titanium and protected by sapphire glass, this flagship product redefines luxury and performance in the modern era. With the revolutionary Quantum X1 chip, it delivers speeds that were previously thought impossible, handling complex tasks with ease while maintaining exceptional battery efficiency. The 8K Ultra Motion OLED display provides a visual experience that is truly breathtaking, with colors so vibrant and blacks so deep that every frame feels alive. Whether you are a professional creator needing extreme power, a gaming enthusiast seeking the ultimate performance, or someone who simply appreciates the finest technology, the Ultra Pro Max Elite is the definitive choice. Its multi-layer secure communication system ensures your data stays private, while its integrated AI assistant learns your habits to make every interaction seamless. Experience the future today with the one device that truly has it all. This product includes worldwide express shipping, a lifetime warranty, and 24/7 dedicated concierge support to ensure your satisfaction is always guaranteed."
-        }
-    };
-
-    const allDeals = React.useMemo(() => Object.values(deals), [deals]);
-
-    const similarProducts = React.useMemo(() => {
-        if (!product) return [];
-        let matches = allDeals.filter(p => p.id !== product.id);
-
-        // Priority 1: Same Sub-Category
-        const subCatMatches = matches.filter(p => p.subCategory === product.subCategory);
-        if (subCatMatches.length >= 4) return subCatMatches.slice(0, 4);
-
-        // Priority 2: Same Category
-        const catMatches = matches.filter(p => p.category === product.category);
-        const combined = [...new Set([...subCatMatches, ...catMatches])];
-
-        return combined.slice(0, 4);
-    }, [product, allDeals]);
-
-    const fbtProducts = React.useMemo(() => {
-        if (!product) return [];
-        // Intelligently pick FBT based on category
-        let pool = allDeals.filter(p => p.id !== product.id);
-
-        if (product.category === "Electronics") {
-            // Pick other electronics or accessories
-            return pool.filter(p => p.category === "Electronics").slice(0, 3);
-        } else if (product.category?.includes("Fashion")) {
-            // Pick other fashion items
-            return pool.filter(p => p.category?.includes("Fashion")).slice(0, 3);
-        }
-
-        return pool.slice(0, 3);
-    }, [product, allDeals]);
-
     const toggleFbt = (index) => {
         setFbtSelections(prev => ({ ...prev, [index]: !prev[index] }));
     };
@@ -634,26 +564,61 @@ export default function ProductDetail() {
                 <div className="pd-main-grid">
                     {/* Left: Interactive Media */}
                     <div className="pd-media">
-                        <div className="media-stage glass-card">
-                            <AnimatePresence mode="wait">
-                                <motion.img
-                                    key={activeImageIndex}
-                                    src={images[activeImageIndex]}
-                                    alt={product.name}
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                />
-                            </AnimatePresence>
-                            <div className="media-controls">
-                                <button className="ctrl-btn left" onClick={prevImage}><ChevronLeft size={24} /></button>
-                                <button className="ctrl-btn right" onClick={nextImage}><ChevronRight size={24} /></button>
-                                <button className="ctrl-btn zoom" onClick={() => setIsZoomed(true)}><ZoomIn size={20} /></button>
+                        <div className="media-container">
+                            <div 
+                                className="media-stage glass-card"
+                                onMouseMove={(e) => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                                    setZoomPosition({ x, y });
+                                    setShowZoomPreview(true);
+                                }}
+                                onMouseLeave={() => setShowZoomPreview(false)}
+                                onClick={() => setIsZoomed(true)}
+                            >
+                                <AnimatePresence mode="wait">
+                                    <motion.img
+                                        key={activeImageIndex}
+                                        src={images[activeImageIndex]}
+                                        alt={product.name}
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -20 }}
+                                        transition={{ duration: 0.3 }}
+                                        className="product-main-image"
+                                    />
+                                </AnimatePresence>
+                                <div className="media-controls-bottom">
+                                    <button className="ctrl-btn-bottom" onClick={(e) => { e.stopPropagation(); prevImage(); }}><ChevronLeft size={20} /></button>
+                                    <button className="ctrl-btn-bottom" onClick={(e) => { e.stopPropagation(); nextImage(); }}><ChevronRight size={20} /></button>
+                                </div>
                             </div>
+
+                            {/* Zoom Preview - Shows to the right on hover */}
+                            <AnimatePresence>
+                                {showZoomPreview && (
+                                    <motion.div
+                                        className="zoom-preview-panel"
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -20 }}
+                                        transition={{ duration: 0.2 }}
+                                    >
+                                        <div 
+                                            className="zoom-preview-image"
+                                            style={{
+                                                backgroundImage: `url(${images[activeImageIndex]})`,
+                                                backgroundPosition: `${zoomPosition.x}% ${zoomPosition.y}%`,
+                                                backgroundSize: '250%'
+                                            }}
+                                        />
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
 
-                        {/* Zoom Overlay */}
+                        {/* Zoom Modal - Click to open full image */}
                         <AnimatePresence>
                             {isZoomed && (
                                 <motion.div
@@ -664,18 +629,22 @@ export default function ProductDetail() {
                                     onClick={() => setIsZoomed(false)}
                                 >
                                     <motion.div
-                                        className="zoom-content"
-                                        initial={{ scale: 0.8 }}
-                                        animate={{ scale: 1 }}
-                                        exit={{ scale: 0.8 }}
+                                        className="zoom-modal-content"
+                                        initial={{ scale: 0.9, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0.9, opacity: 0 }}
+                                        transition={{ duration: 0.2 }}
                                         onClick={e => e.stopPropagation()}
                                     >
-                                        <img src={images[activeImageIndex]} alt="Zoomed" />
-                                        <button className="close-zoom" onClick={() => setIsZoomed(false)}><ArrowLeft size={24} /> Back</button>
+                                        <img src={images[activeImageIndex]} alt="Full size" />
+                                        <button className="close-zoom-btn" onClick={() => setIsZoomed(false)}>
+                                            <X size={24} />
+                                        </button>
                                     </motion.div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
+                        
                         <div className="thumbnail-track">
                             {images.map((img, i) => (
                                 <div
@@ -734,40 +703,35 @@ export default function ProductDetail() {
                             </div>
                         </div>
 
-                        <div className="pd-section">
-                            <h3>Purchase Options</h3>
-                            <div className="options-grid">
-                                <div
-                                    className={`opt-card ${purchaseOption === 'standard' ? 'active' : ''}`}
-                                    onClick={() => setPurchaseOption('standard')}
-                                >
-                                    <span className="p">₹{Math.round(productPriceInfo.baseSellingPrice).toLocaleString()}</span>
-                                    <span className="l">Buy without exchange</span>
-                                </div>
-                                <div
-                                    className={`opt-card ${purchaseOption === 'exchange' ? 'active' : ''}`}
-                                    onClick={() => setPurchaseOption('exchange')}
-                                >
-                                    <span className="p">₹{Math.round(productPriceInfo.baseSellingPrice * 1.1).toLocaleString()}</span>
-                                    <span className="l">Buy with exchange</span>
-                                </div>
-                            </div>
-                        </div>
-
+                        {/* Dynamic Variant Sections - Colors */}
                         {product.colors && product.colors.length > 0 && (
                             <div className="pd-section">
-                                <h3>Color: <span className="selected-val">{selectedColor?.name || selectedColor}</span></h3>
+                                <h3>{t('product.color')}: <span className="selected-val">{typeof selectedColor === 'object' ? selectedColor.name : selectedColor}</span></h3>
                                 <div className="pill-group">
-                                    {product.colors.map(c => (
-                                        <button
-                                            key={c.name || c}
-                                            type="button"
-                                            className={`pill ${selectedColor === c ? 'active' : ''}`}
-                                            onClick={() => setSelectedColor(c)}
-                                        >
-                                            {c.name || c}
-                                        </button>
-                                    ))}
+                                    {product.colors.map((c, idx) => {
+                                        const colorName = typeof c === 'object' ? c.name : c;
+                                        const colorKey = typeof c === 'object' ? c.name : c;
+                                        return (
+                                            <button
+                                                key={idx}
+                                                type="button"
+                                                className={`pill ${selectedColor === c ? 'active' : ''}`}
+                                                onClick={() => {
+                                                    setSelectedColor(c);
+                                                    // Update image if variant image exists
+                                                    if (product.variantImages && product.variantImages[colorKey]) {
+                                                        const variantImageUrl = product.variantImages[colorKey];
+                                                        const variantImageIndex = images.indexOf(variantImageUrl);
+                                                        if (variantImageIndex !== -1) {
+                                                            setActiveImageIndex(variantImageIndex);
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                {colorName}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -795,38 +759,68 @@ export default function ProductDetail() {
 
                         {product.storage && product.storage.length > 0 && (
                             <div className="pd-section">
-                                <h3>Storage: <span className="selected-val">{selectedStorage?.label || selectedStorage}</span></h3>
+                                <h3>{t('product.storage')}: <span className="selected-val">{selectedStorage?.label || selectedStorage}</span></h3>
                                 <div className="pill-group">
-                                    {product.storage.map((s) => (
-                                        <button
-                                            key={s.label || s}
-                                            type="button"
-                                            className={`pill variant-pill ${selectedStorage === s ? 'active' : ''}`}
-                                            onClick={() => setSelectedStorage(s)}
-                                        >
-                                            <span className="v-label">{s.label || s}</span>
-                                            <span className="v-price">{s.priceOffset ? (s.priceOffset > 0 ? `+₹${s.priceOffset.toLocaleString()}` : `-₹${Math.abs(s.priceOffset).toLocaleString()}`) : 'Included'}</span>
-                                        </button>
-                                    ))}
+                                    {product.storage.map((s, idx) => {
+                                        const isActive = selectedStorage && (
+                                            (typeof s === 'object' && typeof selectedStorage === 'object' && s.label === selectedStorage.label) ||
+                                            s === selectedStorage
+                                        );
+                                        return (
+                                            <button
+                                                key={s.label || s || idx}
+                                                type="button"
+                                                className={`pill variant-pill ${isActive ? 'active' : ''}`}
+                                                onClick={() => {
+                                                    setSelectedStorage(s);
+                                                    // Update image if variant image exists
+                                                    if (product.variantImages && product.variantImages[s.label || s]) {
+                                                        const variantImageIndex = images.indexOf(product.variantImages[s.label || s]);
+                                                        if (variantImageIndex !== -1) {
+                                                            setActiveImageIndex(variantImageIndex);
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                <span className="v-label">{s.label || s}</span>
+                                                <span className="v-price">{s.priceOffset ? (s.priceOffset > 0 ? `+₹${s.priceOffset.toLocaleString()}` : `-₹${Math.abs(s.priceOffset).toLocaleString()}`) : 'Included'}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
 
                         {product.memory && product.memory.length > 0 && (
                             <div className="pd-section">
-                                <h3>Memory: <span className="selected-val">{selectedMemory?.label || selectedMemory}</span></h3>
+                                <h3>{t('product.memory')}: <span className="selected-val">{selectedMemory?.label || selectedMemory}</span></h3>
                                 <div className="pill-group">
-                                    {product.memory.map((m) => (
-                                        <button
-                                            key={m.label || m}
-                                            type="button"
-                                            className={`pill variant-pill ${selectedMemory === m ? 'active' : ''}`}
-                                            onClick={() => setSelectedMemory(m)}
-                                        >
-                                            <span className="v-label">{m.label || m}</span>
-                                            <span className="v-price">{m.priceOffset ? (m.priceOffset > 0 ? `+₹${m.priceOffset.toLocaleString()}` : `-₹${Math.abs(m.priceOffset).toLocaleString()}`) : 'Included'}</span>
-                                        </button>
-                                    ))}
+                                    {product.memory.map((m, idx) => {
+                                        const isActive = selectedMemory && (
+                                            (typeof m === 'object' && typeof selectedMemory === 'object' && m.label === selectedMemory.label) ||
+                                            m === selectedMemory
+                                        );
+                                        return (
+                                            <button
+                                                key={m.label || m || idx}
+                                                type="button"
+                                                className={`pill variant-pill ${isActive ? 'active' : ''}`}
+                                                onClick={() => {
+                                                    setSelectedMemory(m);
+                                                    // Update image if variant image exists
+                                                    if (product.variantImages && product.variantImages[m.label || m]) {
+                                                        const variantImageIndex = images.indexOf(product.variantImages[m.label || m]);
+                                                        if (variantImageIndex !== -1) {
+                                                            setActiveImageIndex(variantImageIndex);
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                <span className="v-label">{m.label || m}</span>
+                                                <span className="v-price">{m.priceOffset ? (m.priceOffset > 0 ? `+₹${m.priceOffset.toLocaleString()}` : `-₹${Math.abs(m.priceOffset).toLocaleString()}`) : 'Included'}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -847,6 +841,7 @@ export default function ProductDetail() {
                                 disabled={product.stock === 0 || product.status === 'Out of Stock'}
                                 style={product.stock === 0 || product.status === 'Out of Stock' ? { background: '#94a3b8', cursor: 'not-allowed' } : {}}
                             >
+                                <ShoppingCart size={20} />
                                 Add to Cart
                             </button>
                             <button
@@ -1070,60 +1065,82 @@ export default function ProductDetail() {
                 )}
 
                 {/* Frequently Bought Together */}
-                <div className="fbt-section">
-                    <h2>Frequently Bought Together</h2>
-                    <div className="fbt-container glass-card">
-                        <div className="fbt-visual">
-                            {fbtProducts.map((p, i) => (
-                                <div key={i} className="fbt-item-wrapper">
-                                    <div className={`fbt-img-card ${fbtSelections[i] ? 'selected' : ''}`}>
-                                        <img src={p.image} alt={p.name} />
-                                        <input type="checkbox" checked={fbtSelections[i]} onChange={() => toggleFbt(i)} />
-                                    </div>
-                                    {i < fbtProducts.length - 1 && <span className="plus">+</span>}
-                                </div>
-                            ))}
-                        </div>
-                        <div className="fbt-details">
-                            {fbtProducts.map((p, i) => (
-                                <div key={i} className={`fbt-row ${fbtSelections[i] ? '' : 'disabled'}`}>
-                                    <div className="fbt-info">
-                                        <span className="p-name">{p.name}</span>
-                                        <div className="rating">
-                                            <span className="no-rating">No reviews</span>
+                {fbtProducts.length > 0 ? (
+                    <div className="fbt-section">
+                        <h2>Frequently Bought Together</h2>
+                        <div className="fbt-container glass-card">
+                            <div className="fbt-visual">
+                                {fbtProducts.map((p, i) => (
+                                    <div key={i} className="fbt-item-wrapper">
+                                        <div className={`fbt-img-card ${fbtSelections[i] ? 'selected' : ''}`}>
+                                            <img src={p.image} alt={p.name} />
+                                            <input type="checkbox" checked={fbtSelections[i]} onChange={() => toggleFbt(i)} />
                                         </div>
+                                        {i < fbtProducts.length - 1 && <span className="plus">+</span>}
                                     </div>
-                                    <span className="p-price">₹{(p.price || 0).toLocaleString()}</span>
+                                ))}
+                            </div>
+                            <div className="fbt-details">
+                                {fbtProducts.map((p, i) => (
+                                    <div key={i} className={`fbt-row ${fbtSelections[i] ? '' : 'disabled'}`}>
+                                        <div className="fbt-info">
+                                            <span className="p-name">{p.name}</span>
+                                            <div className="rating">
+                                                <span className="no-rating">No reviews</span>
+                                            </div>
+                                        </div>
+                                        <span className="p-price">₹{(p.price || 0).toLocaleString()}</span>
+                                    </div>
+                                ))}
+                                <div className="fbt-total-row">
+                                    <div className="total-meta">
+                                        <span>Total price for {fbtTotalCount} items</span>
+                                        <span className="total-price">₹{fbtTotalPrice.toLocaleString()}</span>
+                                    </div>
+                                    <button className="fbt-add-btn">Add {fbtTotalCount} to Cart</button>
                                 </div>
-                            ))}
-                            <div className="fbt-total-row">
-                                <div className="total-meta">
-                                    <span>Total price for {fbtTotalCount} items</span>
-                                    <span className="total-price">₹{fbtTotalPrice.toLocaleString()}</span>
-                                </div>
-                                <button className="fbt-add-btn">Add {fbtTotalCount} to Cart</button>
                             </div>
                         </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="fbt-section">
+                        <h2>Frequently Bought Together</h2>
+                        <div className="empty-recommendations glass-card">
+                            <div className="empty-icon">📦</div>
+                            <h3>No Bundle Recommendations Yet</h3>
+                            <p>Products frequently bought together will appear here once we have more order data from customers.</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Similar Products */}
-                <div className="similar-section">
-                    <h2>Similar Products</h2>
-                    <p>You might also like these products</p>
-                    <div className="similar-grid">
-                        {similarProducts.map(p => (
-                            <div key={p.id} className="similar-card glass-card">
-                                <img src={p.image} alt={p.name} />
-                                <h3>{p.name}</h3>
-                                <div className="rating">
-                                    <span className="no-rating">No reviews</span>
+                {similarProducts.length > 0 ? (
+                    <div className="similar-section">
+                        <h2>Similar Products</h2>
+                        <p>You might also like these products</p>
+                        <div className="similar-grid">
+                            {similarProducts.map(p => (
+                                <div key={p.id} className="similar-card glass-card" onClick={() => navigate('/product/' + p.id)}>
+                                    <img src={p.image} alt={p.name} />
+                                    <h3>{p.name}</h3>
+                                    <div className="rating">
+                                        <span className="no-rating">No reviews</span>
+                                    </div>
+                                    <span className="price">₹{(p.price || 0).toLocaleString()}</span>
                                 </div>
-                                <span className="price">₹{(p.price || 0).toLocaleString()}</span>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="similar-section">
+                        <h2>Similar Products</h2>
+                        <div className="empty-recommendations glass-card">
+                            <div className="empty-icon">🔍</div>
+                            <h3>No Similar Products Found</h3>
+                            <p>Similar products in this category will appear here as more items are added to our catalog.</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Recently Viewed */}
                 {recentlyViewed.length > 1 && (
@@ -1218,240 +1235,206 @@ export default function ProductDetail() {
 }
 
 const pdStyles = `
-.pd-details-scroller { display: flex; flex-direction: column; gap: 3rem; margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 3rem; }
-.block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-.block-header h2 { font-size: 1.8rem; font-weight: 800; }
-.header-stats { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 0.5rem 1rem; border-radius: 99px; }
+.pd-details-scroller { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
+.block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+.block-header h2 { font-size: 1.3rem; font-weight: 700; }
+.header-stats { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 0.4rem 0.8rem; border-radius: 99px; font-size: 0.85rem; }
 
 .desc-content-modern { position: relative; }
 .clamped-desc { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-.show-more-blue-btn { color: #2563eb; font-weight: 700; font-size: 0.95rem; margin-top: 0.75rem; transition: 0.2s; background: none; border: none; cursor: pointer; padding: 0; }
+.show-more-blue-btn { color: #2563eb; font-weight: 600; font-size: 0.9rem; margin-top: 0.5rem; transition: 0.2s; background: none; border: none; cursor: pointer; padding: 0; }
 .show-more-blue-btn:hover { text-decoration: underline; color: #1d4ed8; }
 
-.review-write-box { padding: 2.5rem; border-radius: 24px; margin-bottom: 3rem; background: #fafafa; border: 1px solid #eee; }
-.rev-inline-form { display: flex; flex-direction: column; gap: 1.5rem; }
-.star-rating-input { display: flex; gap: 0.5rem; }
-.star-rating-input button { opacity: 0.3; transition: 0.2s; }
-.star-rating-input button.active { opacity: 1; transform: scale(1.1); }
-.rev-inline-form input, .rev-inline-form textarea { width: 100%; padding: 1rem; border-radius: 12px; border: 1px solid #ddd; background: white; font-size: 1rem; }
-.rev-upload-section { display: flex; flex-direction: column; gap: 1rem; }
-.image-upload-trigger { display: flex; align-items: center; gap: 0.5rem; color: #2563eb; font-weight: 700; cursor: pointer; width: fit-content; padding: 0.5rem 1rem; background: #eff6ff; border-radius: 8px; font-size: 0.9rem; }
-.rev-preview-grid { display: flex; gap: 1rem; flex-wrap: wrap; }
-.preview-item { width: 80px; height: 80px; border-radius: 8px; position: relative; border: 1px solid #ddd; }
-.preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
-.preview-item button { position: absolute; -10px; -10px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; }
-.rev-submit-btn { background: #1a1a1a; color: white; padding: 1.25rem; border-radius: 12px; font-weight: 800; font-size: 1.1rem; transition: 0.3s; }
-.rev-submit-btn:hover { background: #333; transform: translateY(-2px); }
+.review-write-box { padding: 1.5rem; border-radius: 16px; margin-bottom: 2rem; background: #fafafa; border: 1px solid #eee; }
+.rev-inline-form { display: flex; flex-direction: column; gap: 1rem; }
+.star-rating-input { display: flex; gap: 0.4rem; }
+.star-rating-input button { opacity: 0.3; transition: 0.2s; background: none; border: none; cursor: pointer; padding: 0; }
+.star-rating-input button.active { opacity: 1; transform: scale(1.05); }
+.input-group { display: flex; flex-direction: column; gap: 0.75rem; width: 100%; }
+.rev-inline-form input, .rev-inline-form textarea { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #ddd; background: white; font-size: 0.9rem; box-sizing: border-box; }
+.rev-inline-form textarea { resize: vertical; min-height: 80px; font-family: inherit; }
+.rev-upload-section { display: flex; flex-direction: column; gap: 0.75rem; }
+.upload-meta { display: flex; align-items: center; justify-content: space-between; }
+.image-upload-trigger { display: flex; align-items: center; gap: 0.4rem; color: #2563eb; font-weight: 600; cursor: pointer; width: fit-content; padding: 0.4rem 0.8rem; background: #eff6ff; border-radius: 6px; font-size: 0.85rem; transition: 0.2s; }
+.image-upload-trigger:hover { background: #dbeafe; }
+.upload-hint { font-size: 0.8rem; color: #666; }
+.rev-preview-grid { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.preview-item { position: relative; width: 60px; height: 60px; border-radius: 6px; overflow: hidden; border: 1px solid #ddd; }
+.preview-item img { width: 100%; height: 100%; object-fit: cover; }
+.preview-item button { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.7); color: white; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; padding: 0; }
+.rev-submit-btn { width: 100%; padding: 0.9rem; background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%); color: white; border-radius: 8px; font-weight: 700; font-size: 1rem; border: none; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15); }
+.rev-submit-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(37, 99, 235, 0.25); }
+.rev-submit-btn:active { transform: translateY(0); }
+.rev-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.write-rev-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.write-rev-header h3 { font-size: 1.2rem; font-weight: 700; margin: 0; }
+.review-eligibility-badge { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.8rem; background: #fef3c7; color: #92400e; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
 
-.rev-list-modern { display: flex; flex-direction: column; gap: 1.5rem; }
-.rev-card-vertical { padding: 2rem; background: white; border: 1px solid #f1f5f9; border-radius: 20px; }
-.rev-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
-.rev-user-id { display: flex; align-items: center; gap: 1rem; }
-.u-circ { width: 44px; height: 44px; border-radius: 50%; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem; }
+.rev-list-modern { display: flex; flex-direction: column; gap: 1.25rem; }
+.rev-card-vertical { padding: 1.5rem; background: white; border: 1px solid #f1f5f9; border-radius: 12px; }
+.rev-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }
+.rev-user-id { display: flex; align-items: center; gap: 0.75rem; }
+.u-circ { width: 36px; height: 36px; border-radius: 50%; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem; }
 .u-meta { display: flex; flex-direction: column; }
-.un { font-weight: 800; font-size: 1rem; }
-.ud { font-size: 0.8rem; color: #64748b; font-weight: 600; }
-.rt { font-size: 1.15rem; font-weight: 800; margin-bottom: 0.5rem; }
-.rb { color: #4b5563; line-height: 1.6; font-size: 1rem; position: relative; }
-.show-more-btn-text { color: #3b82f6; font-weight: 700; font-size: 0.9rem; background: none; border: none; padding: 0; cursor: pointer; margin-left: 5px; transition: 0.2s; }
+.un { font-weight: 700; font-size: 0.95rem; }
+.ud { font-size: 0.75rem; color: #64748b; font-weight: 600; }
+.rt { font-size: 1rem; font-weight: 700; margin-bottom: 0.4rem; }
+.rb { color: #4b5563; line-height: 1.5; font-size: 0.9rem; position: relative; }
+.show-more-btn-text { color: #3b82f6; font-weight: 600; font-size: 0.85rem; background: none; border: none; padding: 0; cursor: pointer; margin-left: 5px; transition: 0.2s; }
 .show-more-btn-text:hover { color: #2563eb; text-decoration: underline; }
-.ri { display: flex; gap: 1rem; margin-top: 1.5rem; }
-.ri img { width: 120px; height: 120px; border-radius: 12px; object-fit: cover; cursor: pointer; border: 1px solid #eee; }
-.reviews-expand-actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
-.show-more-reviews-blue-btn { flex: 1; padding: 1.25rem; background: #eff6ff; color: #2563eb; border: 2px dashed #bfdbfe; border-radius: 16px; font-weight: 800; transition: 0.2s; cursor: pointer; }
+.ri { display: flex; gap: 0.75rem; margin-top: 1rem; }
+.ri img { width: 90px; height: 90px; border-radius: 8px; object-fit: cover; cursor: pointer; border: 1px solid #eee; }
+.reviews-expand-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+.show-more-reviews-blue-btn { flex: 1; padding: 1rem; background: #eff6ff; color: #2563eb; border: 2px dashed #bfdbfe; border-radius: 12px; font-weight: 700; transition: 0.2s; cursor: pointer; font-size: 0.9rem; }
 .show-more-reviews-blue-btn:hover { background: #dbeafe; }
 .show-more-reviews-blue-btn.show-less { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
 .show-more-reviews-blue-btn.show-less:hover { background: #fee2e2; }
-.rev-loader { width: 30px; height: 30px; border: 3px solid #f3f3f3; border-top: 3px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; }
 
-.no-rating { color: #64748b; font-size: 0.9rem; font-weight: 500; font-style: italic; }
-.rating .no-rating { display: flex; align-items: center; height: 20px; }
-
-.about-seller-section { margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 3rem; }
-.seller-card { padding: 2.5rem; border-radius: 24px; position: relative; overflow: hidden; }
-.seller-main-info { display: flex; align-items: center; gap: 2rem; margin-bottom: 2.5rem; }
-.seller-avatar { width: 80px; height: 80px; border-radius: 20px; background: linear-gradient(135deg, #4f46e5, #818cf8); color: white; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; box-shadow: 0 10px 20px rgba(79, 70, 229, 0.2); }
-.seller-text { flex: 1; }
-.shop-name { font-size: 1.8rem; font-weight: 850; margin-bottom: 0.5rem; color: #1a1a1a; }
-.seller-badges { display: flex; gap: 1rem; }
-.badge-item { padding: 0.4rem 0.8rem; border-radius: 99px; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; }
-.badge-item.verified { background: #ecfdf5; color: #059669; }
-.badge-item.category { background: #f1f5f9; color: #475569; }
-.visit-store-btn { padding: 1rem 1.8rem; background: #1a1a1a; color: white; border-radius: 12px; font-weight: 750; display: flex; align-items: center; gap: 0.75rem; transition: 0.3s; }
-.visit-store-btn:hover { background: #333; transform: translateX(5px); }
-
-.seller-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; border-top: 1px solid #f1f5f9; padding-top: 2rem; }
-.detail-item { display: flex; flex-direction: column; gap: 0.5rem; }
-.detail-item .label { font-size: 0.85rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.detail-item .value { font-size: 1.1rem; color: #1a1a1a; font-weight: 750; }
-
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-.pd-wrapper { padding-bottom: 8rem; }
-.pd-breadcrumb { padding: 1.5rem 0; font-size: 0.9rem; color: var(--text-muted); display: flex; gap: 0.5rem; }
+.pd-wrapper { padding-bottom: 3rem; }
+.pd-breadcrumb { padding: 0.75rem 0; font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 0.5rem; }
 .pd-breadcrumb button { color: var(--text-muted); transition: 0.2s; background: none; border: none; cursor: pointer; padding: 0; font-size: inherit; }
 .pd-breadcrumb button:hover { color: var(--primary); }
 .pd-breadcrumb .current { color: var(--text); font-weight: 700; }
 
-.actions-meta button.active { color: #E11D48 !important; }
+.pd-main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 0.5rem; }
 
-/* Share Modal Styles */
-.share-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.4);
-    backdrop-filter: blur(4px);
-    z-index: 2000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.pd-media { position: sticky; top: 70px; height: fit-content; }
+.media-container { 
+    display: flex; 
+    gap: 1rem; 
+    position: relative;
 }
-.share-modal {
-    width: 400px;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 16px;
-    padding: 1.5rem;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.4);
+.media-stage { 
+    flex: 1;
+    height: 350px; background: white; border-radius: 8px; 
+    display: flex; align-items: center; justify-content: center;
+    padding: 1rem; position: relative; overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
 }
-.share-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
+
+.product-main-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    max-width: 100%;
+    max-height: 100%;
 }
-.share-header h3 { font-size: 1.2rem; font-weight: 800; }
-.close-btn { background: none; border: none; cursor: pointer; color: #666; }
-.stock-status { font-size: 0.95rem; font-weight: 700; margin-top: 0.5rem; }
+
+.thumbnail-track { display: flex; gap: 0.75rem; margin-top: 1rem; overflow-x: auto; padding-bottom: 0.5rem; }
+.thumb-item { 
+    width: 70px; height: 70px; border-radius: 6px; border: 2px solid transparent; 
+    padding: 4px; flex-shrink: 0; cursor: pointer; transition: 0.2s; overflow: hidden;
+    background: white;
+}
+.thumb-item.active { border-color: #f59e0b; }
+.thumb-item img { width: 100%; height: 100%; object-fit: contain; }
+
+.pd-info { display: flex; flex-direction: column; gap: 1rem; }
+.main-title { font-size: 1.4rem; font-weight: 700; line-height: 1.3; margin-bottom: 0.25rem; color: #1a1a1a; }
+.rating-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.actions-meta { display: flex; gap: 0.75rem; margin-left: auto; }
+.actions-meta button { display: flex; align-items: center; gap: 0.3rem; font-weight: 500; color: #666; font-size: 0.85rem; }
+
+.price-box { padding: 1rem 1.25rem; border-radius: 12px; background: #f8f8fa; border: none; }
+.price-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem; }
+.final-price { font-size: 1.8rem; font-weight: 800; }
+.original-price { font-size: 1.1rem; color: #888; text-decoration: line-through; }
+.discount-tag { background: #f97316; color: white; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700; font-size: 0.75rem; }
+.emi-info { color: #666; font-size: 0.85rem; }
+.stock-status { font-size: 0.85rem; font-weight: 700; margin-top: 0.25rem; }
 .stock-status.in { color: #10b981; }
 .stock-status.out { color: #ef4444; }
 
-.pd-section { margin-bottom: 2.5rem; }
-.link-box {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #f1f5f9;
-    padding: 0.75rem 1rem;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-}
-.link-info { display: flex; flex-direction: column; overflow: hidden; }
-.link-info .domain { font-size: 0.85rem; font-weight: 700; }
-.link-info .full-url { font-size: 0.75rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.copy-btn { 
-    display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
-    background: white; border: 1px solid var(--border); padding: 0.5rem; border-radius: 8px;
-    font-size: 0.7rem; font-weight: 700; min-width: 70px;
-}
-
-.share-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-}
-.share-option {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-}
-.share-option .icon-box {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    color: white;
-}
-.share-option span { font-size: 0.75rem; font-weight: 600; text-align: center; }
-.icon-box.whatsapp { background: #25D366; }
-.icon-box.facebook { background: #1877F2; }
-.icon-box.twitter { background: #000000; }
-.icon-box.email { background: #EA4335; }
-
-.share-footer { border-top: 1px solid var(--border); padding-top: 1.5rem; }
-.nearby-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1rem;
-    padding: 0.75rem;
-    border-radius: 8px;
-    background: #f8fafc;
-    border: 1px solid var(--border);
-    font-weight: 700;
-    transition: 0.2s;
-}
-.nearby-btn:hover { background: #f1f5f9; }
-
-.pd-main-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 5rem; margin-top: 1rem; }
-
-.pd-media { position: sticky; top: 100px; height: fit-content; }
-.media-stage { 
-    height: 550px; background: white; border-radius: 12px; 
-    display: flex; align-items: center; justify-content: center;
-    padding: 0; position: relative; overflow: hidden;
-    border: 1px solid var(--border);
-}
-.media-stage img { width: 100%; height: 100%; object-fit: cover; }
-.media-controls { position: absolute; inset: 0; pointer-events: none; }
-.ctrl-btn { 
-    position: absolute; pointer-events: auto; width: 44px; height: 44px; 
-    background: white; border-radius: 50%; box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-    display: flex; align-items: center; justify: center; color: var(--text); transition: 0.2s;
-    border: none; cursor: pointer;
-}
-.ctrl-btn:hover { background: var(--primary); color: white; }
-.ctrl-btn.left { left: 1rem; top: 50%; transform: translateY(-50%); }
-.ctrl-btn.right { right: 1rem; top: 50%; transform: translateY(-50%); }
-.ctrl-btn.zoom { top: 1rem; right: 1rem; }
-
-.thumbnail-track { display: flex; gap: 1rem; margin-top: 1.5rem; overflow-x: auto; padding-bottom: 0.5rem; }
-.thumb-item { 
-    width: 100px; height: 100px; border-radius: 8px; border: 2px solid transparent; 
-    padding: 0; flex-shrink: 0; cursor: pointer; transition: 0.2s; overflow: hidden;
-}
-.thumb-item.active { border-color: #f59e0b; }
-.thumb-item img { width: 100%; height: 100%; object-fit: cover; }
-
-.pd-info { display: flex; flex-direction: column; gap: 2rem; }
-.main-title { font-size: 2.5rem; font-weight: 800; line-height: 1.1; margin-bottom: 0.5rem; color: #1a1a1a; }
-.rating-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.stars { display: flex; gap: 2px; }
-.review-meta { font-weight: 600; color: #666; font-size: 0.95rem; }
-.actions-meta { display: flex; gap: 1rem; margin-left: auto; }
-.actions-meta button { display: flex; align-items: center; gap: 0.4rem; font-weight: 500; color: #666; font-size: 0.9rem; }
-
-.price-box { padding: 1.5rem 2rem; border-radius: 24px; background: #f8f8fa; border: none; }
-.price-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
-.final-price { font-size: 2.8rem; font-weight: 800; }
-.original-price { font-size: 1.4rem; color: #888; text-decoration: line-through; }
-.discount-tag { background: #f97316; color: white; padding: 0.2rem 0.6rem; border-radius: 99px; font-weight: 700; font-size: 0.85rem; }
-.emi-info { color: #666; font-size: 0.9rem; }
-
-.pd-section h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 1.25rem; color: #1a1a1a; display: flex; align-items: center; gap: 0.5rem; }
+.pd-section { margin-bottom: 1rem; }
+.pd-section h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.75rem; color: #1a1a1a; display: flex; align-items: center; gap: 0.5rem; }
 .pd-section h3 .selected-val { color: #64748b; font-weight: 500; }
-.section-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
-.size-guide-btn { color: var(--primary); font-weight: 700; font-size: 0.9rem; text-decoration: underline; background: none; border: none; padding: 0; cursor: pointer; transition: 0.2s; }
-.size-guide-btn:hover { color: #4338ca; }
+.section-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.size-guide-btn { color: var(--primary); font-weight: 600; font-size: 0.85rem; text-decoration: underline; background: none; border: none; padding: 0; cursor: pointer; transition: 0.2s; }
 
-.size-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 1rem; }
+.size-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 0.75rem; }
 .size-pill { 
-    height: 52px; border: 1px solid #e2e8f0; border-radius: 12px;
+    height: 42px; border: 1px solid #e2e8f0; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 700; color: #475569; background: white; transition: 0.2s;
-    cursor: pointer; font-size: 0.95rem;
+    font-weight: 600; color: #475569; background: white; transition: 0.2s;
+    cursor: pointer; font-size: 0.9rem;
 }
 .size-pill:hover { border-color: #4f46e5; color: #4f46e5; }
 .size-pill.active { background: #EEF2FF; color: #4f46e5; border-color: #4f46e5; box-shadow: 0 0 0 1px #4f46e5; }
 
-.pincode-check { display: flex; gap: 0.5rem; max-width: 400px; }
+.pincode-check { display: flex; gap: 0.5rem; max-width: 100%; }
+.pincode-check input { 
+    flex: 1; padding: 0.6rem 1rem; border-radius: 8px; 
+    border: 1px solid var(--border); background: #f1f5f9; font-size: 0.9rem;
+}
+.pincode-check button { background: var(--primary); color: white; padding: 0 1.5rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; }
+
+.pill-group { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.pill {
+    padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid #e2e8f0;
+    background: white; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.2s;
+}
+.pill:hover { border-color: #4f46e5; color: #4f46e5; }
+.pill.active { background: #EEF2FF; color: #4f46e5; border-color: #4f46e5; box-shadow: 0 0 0 1px #4f46e5; }
+
+.variant-pill { 
+    display: flex; flex-direction: column; align-items: flex-start; min-width: 100px;
+    padding: 0.6rem 1rem !important; border-radius: 8px !important;
+}
+.variant-pill .v-label { font-size: 0.9rem; font-weight: 600; margin-bottom: 2px; }
+.variant-pill .v-price { font-size: 0.75rem; font-weight: 500; opacity: 0.6; }
+
+.trust-card { display: flex; flex-direction: column; gap: 1rem; background: #f8f8f9; padding: 1rem; border-radius: 12px; }
+.badge { display: flex; align-items: flex-start; gap: 0.75rem; }
+.badge svg { color: var(--primary); margin-top: 2px; flex-shrink: 0; }
+.badge div { display: flex; flex-direction: column; }
+.badge strong { font-size: 0.9rem; }
+.badge span { font-size: 0.8rem; color: #666; }
+
+.pd-actions { 
+    display: grid !important; 
+    grid-template-columns: 1fr 1fr !important; 
+    gap: 0.75rem !important; 
+    margin-top: 0.75rem !important;
+    width: 100% !important;
+    min-height: 50px !important;
+}
+.btn-add-cart { 
+    padding: 0.9rem !important; 
+    background: #2563EB !important; 
+    color: white !important; 
+    border-radius: 8px !important; 
+    font-weight: 700 !important; 
+    font-size: 1rem !important; 
+    border: none !important; 
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+    transition: all 0.2s !important;
+    min-height: 48px !important;
+    width: 100% !important;
+}
+.btn-add-cart:hover { background: #1D4ED8 !important; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+.btn-buy-now { 
+    padding: 0.9rem !important; 
+    background: #f97316 !important; 
+    color: white !important; 
+    border-radius: 8px !important; 
+    font-weight: 700 !important; 
+    font-size: 1rem !important; 
+    border: none !important; 
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    min-height: 48px !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+.btn-buy-now:hover { background: #ea580c !important; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
+
 .pincode-check input { 
     flex: 1; padding: 0.8rem 1.2rem; border-radius: 12px; 
     border: 1px solid var(--border); background: #f1f5f9;
@@ -1486,10 +1469,6 @@ const pdStyles = `
 .badge div { display: flex; flex-direction: column; }
 .badge strong { font-size: 1rem; }
 .badge span { font-size: 0.85rem; color: #666; }
-
-.pd-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
-.btn-add-cart { padding: 1.2rem; background: var(--primary); color: white; border-radius: 99px; font-weight: 700; font-size: 1.1rem; }
-.btn-buy-now { padding: 1.2rem; background: #f97316; color: white; border-radius: 99px; font-weight: 700; font-size: 1.1rem; }
 
 .pd-tabs-container { margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 2rem; }
 .tabs-header { display: flex; gap: 2rem; margin-bottom: 2rem; border-bottom: none; }
@@ -1575,50 +1554,237 @@ const pdStyles = `
 .submit-review-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 20px hsla(230, 85%, 60%, 0.2); }
 .submit-review-btn:disabled { opacity: 0.7; cursor: not-allowed; }
 
-.fbt-section { margin-top: 5rem; }
-.fbt-section h2 { margin-bottom: 2rem; }
-.fbt-container { display: grid; grid-template-columns: 1.5fr 1fr; gap: 3rem; padding: 2.5rem; }
-.fbt-visual { display: flex; align-items: center; gap: 1.5rem; }
-.fbt-item-wrapper { display: flex; align-items: center; gap: 1.5rem; }
+/* About the Seller Section */
+.about-seller-section { margin-top: 2.5rem; border-top: 1px solid var(--border); padding-top: 2rem; }
+.seller-card { padding: 1.5rem; border-radius: 16px; position: relative; overflow: hidden; background: white; }
+.seller-main-info { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; }
+.seller-avatar { 
+    width: 60px; 
+    height: 60px; 
+    border-radius: 12px; 
+    background: linear-gradient(135deg, #4f46e5, #818cf8); 
+    color: white; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    font-size: 1.8rem; 
+    font-weight: 700; 
+    box-shadow: 0 8px 16px rgba(79, 70, 229, 0.2);
+    flex-shrink: 0;
+}
+.seller-text { flex: 1; }
+.shop-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.4rem; color: #1a1a1a; line-height: 1.2; }
+.seller-badges { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.badge-item { 
+    padding: 0.3rem 0.6rem; 
+    border-radius: 99px; 
+    font-size: 0.8rem; 
+    font-weight: 600; 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 0.3rem;
+    white-space: nowrap;
+}
+.badge-item.verified { background: #ecfdf5; color: #059669; }
+.badge-item.category { background: #f1f5f9; color: #475569; }
+.seller-details-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
+    gap: 1.5rem; 
+    border-top: 1px solid #f1f5f9; 
+    padding-top: 1.5rem; 
+}
+.detail-item { display: flex; flex-direction: column; gap: 0.4rem; }
+.detail-item .label { 
+    font-size: 0.8rem; 
+    color: #64748b; 
+    font-weight: 600; 
+    text-transform: uppercase; 
+    letter-spacing: 0.3px; 
+}
+.detail-item .value { 
+    font-size: 1rem; 
+    color: #1a1a1a; 
+    font-weight: 700; 
+    word-break: break-word;
+}
+
+.fbt-section { margin-top: 2.5rem; }
+.fbt-section h2 { margin-bottom: 1.25rem; font-size: 1.3rem; font-weight: 700; }
+.fbt-container { display: grid; grid-template-columns: 1.5fr 1fr; gap: 2rem; padding: 1.5rem; border-radius: 12px; }
+.fbt-visual { display: flex; align-items: center; gap: 1rem; }
+.fbt-item-wrapper { display: flex; align-items: center; gap: 1rem; }
 .fbt-img-card { 
-    width: 150px; height: 150px; border-radius: 12px; background: white; 
-    border: 1px solid var(--border); position: relative; padding: 10px;
+    width: 110px; height: 110px; border-radius: 8px; background: white; 
+    border: 1px solid var(--border); position: relative; padding: 8px;
 }
 .fbt-img-card.selected { border-color: #f97316; }
 .fbt-img-card img { width: 100%; height: 100%; object-fit: contain; }
-.fbt-img-card input { position: absolute; top: 8px; right: 8px; border-radius: 4px; }
-.plus { font-size: 2rem; color: #999; }
-.fbt-details { display: flex; flex-direction: column; gap: 1rem; border-left: 1px solid var(--border); padding-left: 3rem; }
+.fbt-img-card input { position: absolute; top: 6px; right: 6px; border-radius: 3px; }
+.plus { font-size: 1.5rem; color: #999; }
+.fbt-details { display: flex; flex-direction: column; gap: 0.75rem; border-left: 1px solid var(--border); padding-left: 2rem; }
 .fbt-row { display: flex; justify-content: space-between; align-items: center; }
 .fbt-row.disabled { opacity: 0.5; }
 .fbt-info { display: flex; flex-direction: column; }
-.fbt-info .p-name { font-weight: 700; }
-.fbt-row .rating { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #666; }
-.fbt-total-row { border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; }
+.fbt-info .p-name { font-weight: 600; font-size: 0.9rem; }
+.fbt-row .rating { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: #666; }
+.fbt-total-row { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 0.75rem; display: flex; justify-content: space-between; align-items: center; }
 .total-meta { display: flex; flex-direction: column; }
-.total-price { font-size: 1.5rem; font-weight: 800; }
-.fbt-add-btn { background: #f97316; color: white; padding: 1rem 2rem; border-radius: 8px; font-weight: 700; }
+.total-price { font-size: 1.3rem; font-weight: 700; }
+.fbt-add-btn { background: #f97316; color: white; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: 700; font-size: 0.9rem; border: none; cursor: pointer; }
 
-.similar-section { margin-top: 5rem; padding-bottom: 5rem; }
-.similar-section h2 { margin-bottom: 0.5rem; }
-.similar-section p { color: #666; margin-bottom: 2.5rem; }
-.similar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-.similar-card { padding: 1.5rem; transition: 0.3s; }
-.similar-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); }
-.similar-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; margin-bottom: 1rem; }
-.similar-card h3 { font-size: 1rem; margin-bottom: 0.5rem; }
-.similar-card .rating { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #666; margin-bottom: 0.5rem; }
-.similar-card .price { font-size: 1.1rem; font-weight: 700; }
+.similar-section { margin-top: 2.5rem; padding-bottom: 2.5rem; }
+.similar-section h2 { margin-bottom: 0.4rem; font-size: 1.3rem; font-weight: 700; }
+.similar-section p { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
+.similar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
+.similar-card { padding: 1rem; transition: 0.3s; cursor: pointer; border-radius: 12px; }
+.similar-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.similar-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; margin-bottom: 0.75rem; }
+.similar-card h3 { font-size: 0.9rem; margin-bottom: 0.4rem; font-weight: 600; }
+.similar-card .rating { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: #666; margin-bottom: 0.4rem; }
+.similar-card .price { font-size: 1rem; font-weight: 700; }
 
-.recently-viewed-section { margin-top: 5rem; padding-bottom: 2rem; }
-.recently-viewed-section h2 { margin-bottom: 0.5rem; }
-.recently-viewed-section p { color: #666; margin-bottom: 2.5rem; }
+.empty-recommendations {
+    padding: 2.5rem 2rem;
+    text-align: center;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 16px;
+    border: 2px dashed #cbd5e1;
+}
+.empty-recommendations .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.6;
+}
+.empty-recommendations h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.5rem;
+}
+.empty-recommendations p {
+    color: #64748b;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    max-width: 450px;
+    margin: 0 auto;
+}
+
+.recently-viewed-section { margin-top: 2.5rem; padding-bottom: 1.5rem; }
+.recently-viewed-section h2 { margin-bottom: 0.4rem; font-size: 1.3rem; font-weight: 700; }
+.recently-viewed-section p { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+/* Misc Styles */
+.no-rating { color: #64748b; font-size: 0.85rem; font-weight: 500; font-style: italic; }
+.rating .no-rating { display: flex; align-items: center; height: 18px; }
+.actions-meta button.active { color: #E11D48 !important; }
+
+/* Zoom Preview Panel */
+.zoom-preview-panel {
+    position: absolute;
+    right: -320px;
+    top: 0;
+    width: 300px;
+    height: 350px;
+    background: white;
+    border-radius: 8px;
+    border: 2px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    z-index: 100;
+}
+.zoom-preview-image {
+    width: 100%;
+    height: 100%;
+    background-repeat: no-repeat;
+}
+.media-controls-bottom {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    gap: 6px;
+    pointer-events: auto;
+    z-index: 10;
+}
+.ctrl-btn-bottom {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #1a1a1a;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+}
+.ctrl-btn-bottom:hover {
+    background: var(--primary);
+    color: white;
+    transform: scale(1.05);
+}
+
+/* Zoom Modal Styles */
+.zoom-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+.zoom-modal-content {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    background: transparent;
+}
+.zoom-modal-content img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    max-height: 90vh;
+}
+.close-zoom-btn {
+    position: absolute;
+    top: -50px;
+    right: 0;
+    width: 40px;
+    height: 40px;
+    background: white;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #1a1a1a;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.close-zoom-btn:hover {
+    background: #f1f5f9;
+    transform: scale(1.1);
+}
 
 @media (max-width: 1200px) {
     .pd-main-grid { grid-template-columns: 1fr; gap: 4rem; }
     .fbt-container { grid-template-columns: 1fr; gap: 2rem; }
     .fbt-details { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 2rem; }
     .similar-grid { grid-template-columns: 1fr 1fr; }
+    .media-container { flex-direction: column; }
+    .zoom-preview-panel { 
+        position: relative;
+        right: auto;
+        width: 100%;
+        margin-top: 1rem;
+    }
 }
 @media (max-width: 768px) {
     .main-title { font-size: 2rem; }
@@ -1628,6 +1794,3 @@ const pdStyles = `
     .plus { transform: rotate(90deg); }
 }
 `;
-
-
-

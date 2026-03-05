@@ -163,6 +163,3 @@ const styles = `
 .btn-explore { display: inline-block; background: #1e293b; color: white; padding: 1rem 2.5rem; border-radius: 16px; font-weight: 800; transition: 0.3s; }
 .btn-explore:hover { background: #334155; transform: translateY(-3px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
 `;
-
-
-

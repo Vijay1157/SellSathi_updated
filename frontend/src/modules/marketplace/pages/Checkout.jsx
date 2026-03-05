@@ -204,7 +204,7 @@ export default function Checkout() {
                     description: 'Order Payment',
                     image: '/logo.png',
                     handler: async function (response) {
-                        console.log('Razorpay Payment Success:', response);
+                        // Razorpay Payment Success
                         // Verify payment on backend
                         try {
                             const verifyResponse = await authFetch('/payment/verify', {
@@ -234,7 +234,7 @@ export default function Checkout() {
                                             ...shippingAddress,
                                             isDefault: setAsDefault
                                         };
-                                        await authFetch(`/consumer/${user.uid}/address`, {
+                                        await authFetch(`/api/user/${user.uid}/address/save`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ address: newAddress })
@@ -328,7 +328,7 @@ export default function Checkout() {
                             ...shippingAddress,
                             isDefault: setAsDefault
                         };
-                        await authFetch(`/consumer/${user.uid}/address`, {
+                        await authFetch(`/api/user/${user.uid}/address/save`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ address: newAddress })
@@ -390,25 +390,15 @@ export default function Checkout() {
             window.dispatchEvent(new Event('openLoginModal'));
             return;
         }
-        console.log('=== handleContinue called ===');
-        console.log('Current step:', step);
-        console.log('Payment method:', paymentMethod);
-        console.log('Shipping address:', shippingAddress);
 
         if (step === 1) {
-            console.log('Validating step 1 (address)...');
             if (validateForm()) {
-                console.log('Step 1 validation passed, moving to step 2');
                 setStep(2);
             } else {
-                console.log('Step 1 validation failed. Errors:', errors);
                 alert('Please fill in all required address fields correctly.');
             }
         } else {
-            console.log('Validating step 2 (payment)...');
             const isValid = validateForm();
-            console.log('Validation result:', isValid);
-            console.log('Validation errors:', errors);
 
             if (isValid) {
                 // Handle Razorpay separately
@@ -418,8 +408,6 @@ export default function Checkout() {
                     processOrder(paymentMethod);
                 }
             } else {
-                console.log('Step 2 validation failed!');
-                console.log('Current errors:', errors);
                 alert('Please fix the validation errors before continuing.');
             }
         }
@@ -428,8 +416,7 @@ export default function Checkout() {
     const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
     const handleAnimationComplete = () => {
-        setShowAnimation(false);
-        setIsOrdered(true);
+        navigate(`/track?orderId=${orderId}`);
     };
 
     if (isOrdered) {
@@ -481,7 +468,7 @@ export default function Checkout() {
 
                     <div className="flex flex-col sm:flex-row gap-4 pt-4">
                         <button
-                            onClick={() => navigate(`/track?orderId=${orderId}`)}
+                            onClick={() => window.location.href = `/track?orderId=${orderId}`}
                             className="flex-1 py-5 bg-primary text-white rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
                         >
                             Track Detailed Status
@@ -1031,6 +1018,3 @@ export default function Checkout() {
         </div>
     );
 }
-
-
-

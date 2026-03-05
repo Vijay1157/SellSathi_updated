@@ -1,0 +1,556 @@
+/**
+ * UX Enhancements - Professional Backgrounds, Hovers, and Visual Feedback
+ * Optimized for visibility, accessibility, and user experience
+ */
+
+/* ============================================
+   BACKGROUND COLORS - Professional & Clean
+   ============================================ */
+
+/* Page Backgrounds */
+.bg-primary-page {
+    background: #FFFFFF;
+}
+
+.bg-secondary-page {
+    background: #F8F9FA;
+}
+
+.bg-tertiary-page {
+    background: linear-gradient(180deg, #FFFFFF 0%, #F8F9FA 100%);
+}
+
+/* Section Backgrounds */
+.section-white {
+    background: #FFFFFF;
+}
+
+.section-light {
+    background: #F8F9FA;
+}
+
+.section-gradient {
+    background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%);
+}
+
+/* Card Backgrounds */
+.card-bg-white {
+    background: #FFFFFF;
+}
+
+.card-bg-hover {
+    background: #FAFBFC;
+}
+
+/* ============================================
+   BUTTON STYLES - Professional & Accessible
+   ============================================ */
+
+/* Primary Button */
+.btn-primary-pro {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+    color: #FFFFFF;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+.btn-primary-pro:hover {
+    background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(37, 99, 235, 0.25);
+}
+
+.btn-primary-pro:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+.btn-primary-pro:disabled {
+    background: #94A3B8;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    opacity: 0.6;
+}
+
+/* Secondary Button */
+.btn-secondary-pro {
+    background: #FFFFFF;
+    color: #1F2937;
+    border: 2px solid #E5E7EB;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-secondary-pro:hover {
+    background: #F9FAFB;
+    border-color: #2563EB;
+    color: #2563EB;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.btn-secondary-pro:active {
+    transform: translateY(0);
+}
+
+/* Outline Button */
+.btn-outline-pro {
+    background: transparent;
+    color: #2563EB;
+    border: 2px solid #2563EB;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-outline-pro:hover {
+    background: #2563EB;
+    color: #FFFFFF;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(37, 99, 235, 0.25);
+}
+
+/* Icon Button */
+.btn-icon-pro {
+    width: 44px;
+    height: 44px;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    color: #6B7280;
+}
+
+.btn-icon-pro:hover {
+    background: #2563EB;
+    border-color: #2563EB;
+    color: #FFFFFF;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+/* Danger Button */
+.btn-danger-pro {
+    background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+    color: #FFFFFF;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
+}
+
+.btn-danger-pro:hover {
+    background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(239, 68, 68, 0.25);
+}
+
+/* ============================================
+   CARD HOVER EFFECTS - Smooth & Professional
+   ============================================ */
+
+.card-hover-lift {
+    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover-lift:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+}
+
+.card-hover-subtle {
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover-subtle:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+}
+
+.card-hover-glow {
+    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover-glow:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(37, 99, 235, 0.15);
+    border-color: #2563EB;
+}
+
+/* ============================================
+   SCROLL EFFECTS - Smooth & Visible
+   ============================================ */
+
+/* Custom Scrollbar - Professional */
+.scrollbar-professional::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.scrollbar-professional::-webkit-scrollbar-track {
+    background: #F3F4F6;
+    border-radius: 10px;
+}
+
+.scrollbar-professional::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #CBD5E1 0%, #94A3B8 100%);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.scrollbar-professional::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #94A3B8 0%, #64748B 100%);
+}
+
+.scrollbar-professional {
+    scrollbar-width: thin;
+    scrollbar-color: #CBD5E1 #F3F4F6;
+}
+
+/* Smooth Scroll Behavior */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Scroll Snap for Carousels */
+.scroll-snap-x {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+}
+
+.scroll-snap-item {
+    scroll-snap-align: start;
+}
+
+/* ============================================
+   FOCUS STATES - Accessible & Visible
+   ============================================ */
+
+/* Focus Ring - Professional */
+.focus-ring-pro:focus {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+    border-color: #2563EB;
+}
+
+.focus-ring-pro:focus-visible {
+    outline: 2px solid #2563EB;
+    outline-offset: 2px;
+}
+
+/* Button Focus */
+button:focus-visible {
+    outline: 2px solid #2563EB;
+    outline-offset: 2px;
+}
+
+/* Input Focus */
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: #2563EB;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+/* ============================================
+   LOADING STATES - Clear Feedback
+   ============================================ */
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #E5E7EB;
+    border-top-color: #2563EB;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   DISABLED STATES - Clear Visual Feedback
+   ============================================ */
+
+.disabled-state {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #F3F4F6;
+    color: #9CA3AF;
+}
+
+/* ============================================
+   HOVER BACKGROUNDS - Subtle & Professional
+   ============================================ */
+
+.hover-bg-light:hover {
+    background: #F9FAFB;
+}
+
+.hover-bg-primary:hover {
+    background: rgba(37, 99, 235, 0.05);
+}
+
+.hover-bg-gray:hover {
+    background: #F3F4F6;
+}
+
+/* ============================================
+   INTERACTIVE FEEDBACK - Micro-interactions
+   ============================================ */
+
+.interactive-scale {
+    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.interactive-scale:hover {
+    transform: scale(1.02);
+}
+
+.interactive-scale:active {
+    transform: scale(0.98);
+}
+
+/* ============================================
+   BADGE STYLES - Clear & Visible
+   ============================================ */
+
+.badge-success-pro {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: #FFFFFF;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-error-pro {
+    background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+    color: #FFFFFF;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-warning-pro {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    color: #FFFFFF;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-info-pro {
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+    color: #FFFFFF;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ============================================
+   TOOLTIP STYLES - Clear & Helpful
+   ============================================ */
+
+.tooltip-pro {
+    position: relative;
+}
+
+.tooltip-pro::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1F2937;
+    color: #FFFFFF;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms;
+    z-index: 1000;
+}
+
+.tooltip-pro:hover::after {
+    opacity: 1;
+}
+
+/* ============================================
+   SKELETON LOADING - Professional
+   ============================================ */
+
+.skeleton-pro {
+    background: linear-gradient(
+        90deg,
+        #F3F4F6 25%,
+        #E5E7EB 50%,
+        #F3F4F6 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s ease-in-out infinite;
+    border-radius: 8px;
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* ============================================
+   GLASS MORPHISM - Modern & Clean
+   ============================================ */
+
+.glass-pro {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-dark-pro {
+    background: rgba(31, 41, 55, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   ELEVATION SYSTEM - Consistent Shadows
+   ============================================ */
+
+.elevation-1 {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.elevation-2 {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.elevation-3 {
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.10);
+}
+
+.elevation-4 {
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+}
+
+.elevation-5 {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================
+   RESPONSIVE VISIBILITY - Mobile Optimization
+   ============================================ */
+
+@media (max-width: 768px) {
+    .hide-mobile {
+        display: none !important;
+    }
+    
+    .show-mobile {
+        display: block !important;
+    }
+}
+
+@media (min-width: 769px) {
+    .hide-desktop {
+        display: none !important;
+    }
+    
+    .show-desktop {
+        display: block !important;
+    }
+}
+
+/* ============================================
+   ACCESSIBILITY - High Contrast Mode
+   ============================================ */
+
+@media (prefers-contrast: high) {
+    .btn-primary-pro {
+        border: 2px solid #000000;
+    }
+    
+    .card-hover-lift:hover {
+        border: 2px solid #2563EB;
+    }
+}
+
+/* ============================================
+   REDUCED MOTION - Accessibility
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

@@ -17,29 +17,29 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 export const fetchProductReviews = async (productId) => {
     const cacheKey = `reviews_${productId}`;
     const cached = reviewCache.get(cacheKey);
-
+    
     // Return cached data if still valid
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         return cached.data;
     }
-
+    
     try {
         const response = await authFetch(`/api/products/${productId}/reviews`);
         const data = await response.json();
-
+        
         if (data.success) {
             const reviews = data.reviews || [];
             const stats = calculateRatingStats(reviews);
-
+            
             // Cache the results
             reviewCache.set(cacheKey, {
                 data: { reviews, stats },
                 timestamp: Date.now()
             });
-
+            
             return { reviews, stats };
         }
-
+        
         return { reviews: [], stats: getEmptyStats() };
     } catch (error) {
         console.error(`Failed to fetch reviews for product ${productId}:`, error);
@@ -54,11 +54,11 @@ export const calculateRatingStats = (reviews) => {
     if (!reviews || reviews.length === 0) {
         return getEmptyStats();
     }
-
+    
     const totalReviews = reviews.length;
     const totalRating = reviews.reduce((sum, review) => sum + (review.rating || 0), 0);
     const averageRating = totalRating / totalReviews;
-
+    
     // Calculate distribution
     const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
     reviews.forEach(review => {
@@ -67,7 +67,7 @@ export const calculateRatingStats = (reviews) => {
             distribution[rating]++;
         }
     });
-
+    
     return {
         averageRating: parseFloat(averageRating.toFixed(1)),
         totalReviews,
@@ -104,26 +104,26 @@ export const clearAllReviewCache = () => {
  */
 export const submitReview = async (productId, reviewData) => {
     try {
-        const response = await authFetch('/reviews', {
+        const response = await authFetch('/api/reviews', {
             method: 'POST',
             body: JSON.stringify({
                 productId,
                 ...reviewData
             })
         });
-
+        
         const data = await response.json();
-
+        
         if (data.success) {
             // Clear cache for this product to force refresh
             clearProductReviewCache(productId);
-
+            
             // Dispatch event to update UI across components
-            window.dispatchEvent(new CustomEvent('reviewsUpdate', {
-                detail: { productId, review: data.review }
+            window.dispatchEvent(new CustomEvent('reviewsUpdate', { 
+                detail: { productId, review: data.review } 
             }));
         }
-
+        
         return data;
     } catch (error) {
         console.error('Failed to submit review:', error);

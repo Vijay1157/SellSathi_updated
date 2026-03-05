@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '@/modules/shared/config/firebase';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 import {
     ShoppingBag,
     Heart,
@@ -15,7 +15,6 @@ import {
     User,
     MapPin,
     CreditCard,
-    HelpCircle,
     RotateCcw,
     Download,
     ShoppingCart,
@@ -24,12 +23,12 @@ import {
     LayoutDashboard,
     Shield,
     Banknote,
-    Star,
-    MessageSquare
+    Star
 } from 'lucide-react';
 import { listenToWishlist, removeFromWishlist as removeFromWishlistAPI } from '@/modules/shared/utils/wishlistUtils';
 import { authFetch } from '@/modules/shared/utils/api';
 import ReviewModal from '@/modules/shared/components/common/ReviewModal';
+import { fetchWithCache } from '@/modules/shared/utils/firestoreCache';
 
 // Helper function to format dates from Firestore Timestamp
 const formatDate = (timestamp) => {
@@ -112,29 +111,30 @@ export default function ConsumerDashboard() {
             if (currentUser) {
                 setUser(currentUser);
 
-                // Single read for user doc — used for name, photo AND addresses
-                // Previously called twice: once here + once in fetchAddresses()
+                // Fetch real user name from Firestore (not Firebase Auth displayName which can be stale)
                 try {
                     const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
                     if (userDoc.exists()) {
                         const userData = userDoc.data();
                         setUserName(userData.name || userData.fullName || currentUser.displayName || 'User');
                         setUserPhoto(userData.photoURL || currentUser.photoURL || null);
-                        setAddresses(userData.addresses || []);
                     } else {
+                        // Fallback: check localStorage
                         const localUser = JSON.parse(localStorage.getItem('user') || '{}');
                         setUserName(localUser.fullName || currentUser.displayName || 'User');
                     }
                 } catch (e) {
+                    // Error fetching user name from Firestore
                     const localUser = JSON.parse(localStorage.getItem('user') || '{}');
                     setUserName(localUser.fullName || currentUser.displayName || 'User');
                 }
 
-                // Fetch orders and reviewable orders in parallel
+                // Fetch data in parallel with timeout
                 try {
                     await Promise.race([
                         Promise.all([
                             fetchOrders(currentUser.uid),
+                            fetchAddresses(currentUser.uid),
                             fetchReviewableOrders(currentUser.uid)
                         ]),
                         new Promise((_, reject) =>
@@ -142,14 +142,19 @@ export default function ConsumerDashboard() {
                         )
                     ]);
                 } catch (error) {
-                    console.error('[Dashboard] Error loading data:', error);
+                    console.error('Error loading dashboard data:', error);
                 }
 
+                // Use wishlist listener
                 wishlistUnsubscribe = listenToWishlist((items) => {
-                    if (mounted) setWishlist(items);
+                    if (mounted) {
+                        setWishlist(items);
+                    }
                 });
 
-                if (mounted) setLoading(false);
+                if (mounted) {
+                    setLoading(false);
+                }
             } else {
                 navigate('/');
             }
@@ -167,37 +172,52 @@ export default function ConsumerDashboard() {
     const fetchOrders = async (userId) => {
         try {
             const ordersRef = collection(db, 'orders');
-            // Try userId first, then fallback to uid field
+            // Try both 'userId' and 'uid' fields
             const q1 = query(ordersRef, where('userId', '==', userId));
+            const q2 = query(ordersRef, where('uid', '==', userId));
+
             let ordersData = [];
+
             try {
-                const snap1 = await getDocs(q1);
-                snap1.forEach(d => ordersData.push({ id: d.id, ...d.data() }));
-            } catch (e) { /* field may not exist — try uid next */ }
+                const querySnapshot1 = await getDocs(q1);
+                querySnapshot1.forEach((doc) => {
+                    ordersData.push({ id: doc.id, ...doc.data() });
+                });
+            } catch (e) {
+                // Query with userId failed
+            }
 
             if (ordersData.length === 0) {
                 try {
-                    const q2 = query(ordersRef, where('uid', '==', userId));
-                    const snap2 = await getDocs(q2);
-                    snap2.forEach(d => ordersData.push({ id: d.id, ...d.data() }));
-                } catch (e) { /* silently ignore */ }
+                    const querySnapshot2 = await getDocs(q2);
+                    querySnapshot2.forEach((doc) => {
+                        ordersData.push({ id: doc.id, ...doc.data() });
+                    });
+                } catch (e) {
+                    // Query with uid also failed
+                }
             }
 
             setOrders(ordersData);
+
             const total = ordersData.length;
             const pending = ordersData.filter(o => o.status === 'Pending' || o.status === 'Processing').length;
             const delivered = ordersData.filter(o => o.status === 'Delivered').length;
             const totalSpent = ordersData.reduce((sum, o) => sum + (o.total || 0), 0);
+
             setStats({ total, pending, delivered, totalSpent });
-            if (ordersData.length > 0) setSelectedOrder(ordersData[0]);
+
+            if (ordersData.length > 0) {
+                setSelectedOrder(ordersData[0]);
+            }
         } catch (error) {
-            console.error('[Dashboard] Error fetching orders:', error);
+            console.error('Error fetching orders:', error);
         }
     };
 
     const fetchReviewableOrders = async (userId) => {
         try {
-            const response = await authFetch(`/orders/${userId}/reviewable-orders`);
+            const response = await authFetch(`/api/user/${userId}/reviewable-orders`);
             const data = await response.json();
             if (data.success) {
                 setReviewableOrders(data.orders || []);
@@ -234,7 +254,7 @@ export default function ConsumerDashboard() {
     const saveAddress = async () => {
         try {
             const addressToSave = editingAddress || newAddress;
-            const response = await authFetch(`/consumer/${user.uid}/address`, {
+            const response = await authFetch(`/api/user/${user.uid}/address/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: addressToSave })
@@ -262,7 +282,7 @@ export default function ConsumerDashboard() {
     const setAsDefaultAddress = async (addressIndex) => {
         try {
             const addressToUpdate = { ...addresses[addressIndex], id: addressIndex, isDefault: true };
-            const response = await authFetch(`/consumer/${user.uid}/address`, {
+            const response = await authFetch(`/api/user/${user.uid}/address/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: addressToUpdate })
@@ -278,7 +298,7 @@ export default function ConsumerDashboard() {
 
     const deleteAddress = async (addressId) => {
         try {
-            const response = await authFetch(`/consumer/${user.uid}/address/delete`, {
+            const response = await authFetch(`/api/user/${user.uid}/address/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ addressId })
@@ -294,7 +314,7 @@ export default function ConsumerDashboard() {
 
     const handleDownloadInvoice = async (orderId) => {
         try {
-            const response = await authFetch(`/orders/invoice/${orderId}`);
+            const response = await authFetch(`/api/invoice/${orderId}`);
             if (!response.ok) throw new Error('Failed to download invoice');
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
@@ -311,13 +331,54 @@ export default function ConsumerDashboard() {
         }
     };
 
-    const recentProducts = [
-        { id: 1, name: 'Laptop Pro', price: 56999, image: null },
-        { id: 2, name: 'Air Fryer', price: 3499, image: null },
-        { id: 3, name: 'Sneakers', price: 2199, image: null },
-        { id: 4, name: 'Smart Watch', price: 1299, image: null },
-        { id: 5, name: 'Headphones', price: 899, image: null },
-    ];
+    // Load recently viewed products from localStorage (tracked in ProductDetail)
+    const [recentlyViewed, setRecentlyViewed] = useState([]);
+    const [recommendedProducts, setRecommendedProducts] = useState([]);
+
+    useEffect(() => {
+        // Load recently viewed from localStorage
+        const viewed = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');
+        setRecentlyViewed(viewed.slice(0, 5));
+        
+        // Load recommended products based on user's order history
+        if (orders.length > 0) {
+            fetchRecommendedProducts();
+        }
+    }, [orders]);
+
+    const fetchRecommendedProducts = async () => {
+        try {
+            // Get categories from user's orders
+            const orderCategories = orders
+                .flatMap(order => order.items || [])
+                .map(item => item.category)
+                .filter(Boolean);
+            
+            if (orderCategories.length === 0) return;
+
+            // Use cache with 10 minute TTL to reduce reads
+            const products = await fetchWithCache(
+                `recommended_${user.uid}`,
+                async () => {
+                    const productsRef = collection(db, 'products');
+                    // Fetch more products but limit to 20 instead of all
+                    const q = query(productsRef, limit(20));
+                    const snapshot = await getDocs(q);
+                    
+                    return snapshot.docs
+                        .map(doc => ({ id: doc.id, ...doc.data() }))
+                        .filter(p => orderCategories.includes(p.category))
+                        .slice(0, 5);
+                },
+                10 * 60 * 1000 // 10 minutes cache
+            );
+            
+            setRecommendedProducts(products);
+        } catch (error) {
+            console.error('Error fetching recommended products:', error);
+        }
+    };
+
 
     const handleProfilePictureUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -337,7 +398,7 @@ export default function ConsumerDashboard() {
 
             if (data.success && data.url) {
                 // Update Firestore user document
-                await authFetch(`/consumer/${user.uid}/profile/update`, {
+                await authFetch(`/api/user/${user.uid}/profile/update`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ profileData: { photoURL: data.url } })
@@ -511,15 +572,6 @@ export default function ConsumerDashboard() {
                                 >
                                     <Settings size={18} />
                                     <span>Account Settings</span>
-                                </button>
-
-                                <button
-                                    onClick={() => setActiveTab('help')}
-                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'help' ? 'bg-blue-50 text-primary' : 'text-gray-700 hover:bg-gray-50'
-                                        }`}
-                                >
-                                    <HelpCircle size={18} />
-                                    <span>Help & Support</span>
                                 </button>
 
                                 <div className="border-t border-gray-200 my-2"></div>
@@ -701,84 +753,83 @@ export default function ConsumerDashboard() {
                                                 </button>
                                             </div>
                                             <div className="p-4">
-                                                <div className="grid grid-cols-5 gap-4">
-                                                    {recentProducts.map((product) => (
-                                                        <div
-                                                            key={product.id}
-                                                            className="group cursor-pointer"
+                                                {recentlyViewed.length > 0 ? (
+                                                    <div className="grid grid-cols-5 gap-4">
+                                                        {recentlyViewed.map((product) => (
+                                                            <div
+                                                                key={product.id}
+                                                                className="group cursor-pointer"
+                                                                onClick={() => navigate(`/product/${product.id}`)}
+                                                            >
+                                                                <div className="aspect-square bg-gray-100 rounded-lg mb-2 overflow-hidden">
+                                                                    <img
+                                                                        src={product.imageUrl || product.image || '/placeholder.png'}
+                                                                        alt={product.name}
+                                                                        className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform"
+                                                                    />
+                                                                </div>
+                                                                <p className="text-xs text-gray-700 font-medium truncate">{product.name}</p>
+                                                                <div className="flex items-center justify-between mt-1">
+                                                                    <p className="text-sm font-bold text-gray-900">₹{product.price?.toLocaleString()}</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center py-8">
+                                                        <Package size={48} className="text-gray-300 mx-auto mb-3" />
+                                                        <p className="text-gray-500 text-sm">No recently viewed products</p>
+                                                        <button
                                                             onClick={() => navigate('/products')}
+                                                            className="mt-3 text-primary text-sm font-medium hover:underline"
                                                         >
-                                                            <div className="aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
-                                                                <Package size={32} className="text-gray-400" />
-                                                            </div>
-                                                            <p className="text-xs text-gray-700 font-medium truncate">{product.name}</p>
-                                                            <div className="flex items-center justify-between mt-1">
-                                                                <p className="text-sm font-bold text-gray-900">₹{product.price.toLocaleString()}</p>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        navigate('/products');
-                                                                    }}
-                                                                    className="w-6 h-6 bg-primary rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                >
-                                                                    <ShoppingCart size={14} className="text-white" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                                            Start Shopping
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
                                         {/* Recommended Products */}
-                                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mt-6">
-                                            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <h2 className="text-base font-semibold text-gray-900">Recommended</h2>
-                                                    <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded">HOT</span>
+                                        {recommendedProducts.length > 0 && (
+                                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 mt-6">
+                                                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <h2 className="text-base font-semibold text-gray-900">Recommended for You</h2>
+                                                        <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded">HOT</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => navigate('/products')}
+                                                        className="text-sm text-primary hover:underline"
+                                                    >
+                                                        View All
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => navigate('/products')}
-                                                    className="text-sm text-primary hover:underline"
-                                                >
-                                                    View All
-                                                </button>
-                                            </div>
-                                            <div className="p-4">
-                                                <div className="grid grid-cols-5 gap-4">
-                                                    {[
-                                                        { id: 1, name: 'Mobile Phone', price: 24999 },
-                                                        { id: 2, name: 'Tablet', price: 18999 },
-                                                        { id: 3, name: 'Camera', price: 45999 },
-                                                        { id: 4, name: 'Speaker', price: 2999 },
-                                                        { id: 5, name: 'Power Bank', price: 1499 },
-                                                    ].map((product) => (
-                                                        <div
-                                                            key={product.id}
-                                                            className="group cursor-pointer"
-                                                            onClick={() => navigate('/products')}
-                                                        >
-                                                            <div className="aspect-square bg-gradient-to-br from-orange-50 to-red-50 rounded-lg mb-2 flex items-center justify-center group-hover:from-orange-100 group-hover:to-red-100 transition-colors border border-orange-200">
-                                                                <Package size={32} className="text-orange-500" />
+                                                <div className="p-4">
+                                                    <div className="grid grid-cols-5 gap-4">
+                                                        {recommendedProducts.map((product) => (
+                                                            <div
+                                                                key={product.id}
+                                                                className="group cursor-pointer"
+                                                                onClick={() => navigate(`/product/${product.id}`)}
+                                                            >
+                                                                <div className="aspect-square bg-gray-100 rounded-lg mb-2 overflow-hidden">
+                                                                    <img
+                                                                        src={product.imageUrl || product.image || '/placeholder.png'}
+                                                                        alt={product.name}
+                                                                        className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform"
+                                                                    />
+                                                                </div>
+                                                                <p className="text-xs text-gray-700 font-medium truncate">{product.name}</p>
+                                                                <div className="flex items-center justify-between mt-1">
+                                                                    <p className="text-sm font-bold text-gray-900">₹{product.price?.toLocaleString()}</p>
+                                                                </div>
                                                             </div>
-                                                            <p className="text-xs text-gray-700 font-medium truncate">{product.name}</p>
-                                                            <div className="flex items-center justify-between mt-1">
-                                                                <p className="text-sm font-bold text-gray-900">₹{product.price.toLocaleString()}</p>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        navigate('/products');
-                                                                    }}
-                                                                    className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                >
-                                                                    <ShoppingCart size={14} className="text-white" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
 
                                     {/* Order Details Sidebar */}
@@ -1461,101 +1512,6 @@ export default function ConsumerDashboard() {
                             </div>
                         )}
 
-                        {activeTab === 'help' && (
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                                <div className="px-6 py-4 border-b border-gray-200">
-                                    <h2 className="text-lg font-semibold text-gray-900">Help & Support</h2>
-                                </div>
-                                <div className="p-6">
-                                    <div className="space-y-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors cursor-pointer">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                                        <HelpCircle size={20} className="text-blue-600" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-gray-900">FAQs</h3>
-                                                </div>
-                                                <p className="text-sm text-gray-600">Find answers to commonly asked questions</p>
-                                            </div>
-
-                                            <div className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors cursor-pointer">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                                                        <Package size={20} className="text-green-600" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-gray-900">Track Order</h3>
-                                                </div>
-                                                <p className="text-sm text-gray-600">Check your order status and delivery</p>
-                                            </div>
-
-                                            <div className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors cursor-pointer">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                                                        <RotateCcw size={20} className="text-orange-600" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-gray-900">Returns & Refunds</h3>
-                                                </div>
-                                                <p className="text-sm text-gray-600">Learn about our return policy</p>
-                                            </div>
-
-                                            <div className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors cursor-pointer">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                                                        <Shield size={20} className="text-purple-600" />
-                                                    </div>
-                                                    <h3 className="font-semibold text-gray-900">Payment Security</h3>
-                                                </div>
-                                                <p className="text-sm text-gray-600">Information about secure payments</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="border-t border-gray-200 pt-6">
-                                            <h3 className="font-semibold text-gray-900 mb-4">Contact Support</h3>
-                                            <div className="space-y-3">
-                                                <div className="flex items-center gap-3 text-sm">
-                                                    <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                                                        <User size={16} className="text-gray-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Email Support</p>
-                                                        <p className="text-gray-600">support@sellsathi.com</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-3 text-sm">
-                                                    <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                                                        <User size={16} className="text-gray-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Phone Support</p>
-                                                        <p className="text-gray-600">1800-123-4567 (Toll Free)</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-3 text-sm">
-                                                    <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                                                        <Clock size={16} className="text-gray-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Support Hours</p>
-                                                        <p className="text-gray-600">Mon-Sat: 9 AM - 6 PM IST</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                            <h4 className="font-semibold text-gray-900 mb-2">Need Immediate Help?</h4>
-                                            <p className="text-sm text-gray-600 mb-3">
-                                                Our support team is here to help you with any questions or concerns.
-                                            </p>
-                                            <button className="px-6 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-                                                Start Live Chat
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
@@ -1580,6 +1536,3 @@ export default function ConsumerDashboard() {
         </div>
     );
 }
-
-
-

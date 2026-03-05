@@ -1,4 +1,4 @@
-import { auth } from '../config/firebase';
+import { auth } from '@/modules/shared/config/firebase';
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -49,7 +49,7 @@ export async function authFetch(path, options = {}) {
     const currentUser = auth.currentUser;
     if (currentUser) {
         try {
-            const idToken = await currentUser.getIdToken(false);
+            const idToken = await currentUser.getIdToken(true);
             headers['Authorization'] = `Bearer ${idToken}`;
         } catch (err) {
             console.warn('[authFetch] Token refresh failed, falling back to X-Test-UID:', err.message);

@@ -1,4 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import './styles/design-system.css';
+@import './styles/ux-enhancements.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -970,3 +973,5 @@ h4 {
   color: white !important;
   font-weight: 700 !important;
 }
+
+

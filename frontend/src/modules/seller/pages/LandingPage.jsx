@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { SellerHeader } from '../components/SellerHeader';
-import { Footer } from '../components/Footer';
+import { SellerHeader } from '@/modules/shared/components/common/SellerHeader';
+import { Footer } from '@/modules/shared/components/common/Footer';
 import { ArrowRight, ShoppingBag, Users, Zap } from 'lucide-react';
 
 export const LandingPage = () => {

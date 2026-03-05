@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import SellerHeader from '../components/SellerHeader.jsx';
-import Footer from '../components/Footer.jsx';
-import StatsSection from '../components/StatsSection.jsx';
-import WhySellSathi from '../components/WhySellSathi.jsx';
-import HowItWorks from '../components/HowItWorks.jsx';
-import Testimonials from "../components/Testimonials.jsx";
+import SellerHeader from '@/modules/seller/components/SellerHeader';
+import Footer from '@/modules/seller/components/Footer';
+import StatsSection from '@/modules/seller/components/StatsSection';
+import WhySellSathi from '@/modules/seller/components/WhySellSathi';
+import HowItWorks from '@/modules/seller/components/HowItWorks';
+import Testimonials from '@/modules/seller/components/Testimonials';
 import { ArrowRight, BookOpen, Truck, Rocket, BarChart3, Mail, Zap, Play, ArrowLeft, CheckCircle2, Upload, Camera, Store, User, Phone, CreditCard, MapPin, Tag, Loader } from 'lucide-react';
 import { auth } from '@/modules/shared/config/firebase';
 import { authFetch } from '@/modules/shared/utils/api';
