@@ -46,7 +46,8 @@ const SellerOnboarding = () => {
     pickupPincode: '',
 
     // Bank Details
-    bankAccountName: '',
+    bankName: '',
+    accountHolderName: '',
     accountNumber: '',
     ifscCode: '',
     upiId: '',
@@ -113,7 +114,8 @@ const SellerOnboarding = () => {
           sellerData.pickupState &&
           sellerData.pickupPincode?.length === 6;
       case 4: // Bank Details
-        return sellerData.bankAccountName &&
+        return sellerData.bankName &&
+          sellerData.accountHolderName &&
           sellerData.accountNumber &&
           sellerData.ifscCode?.length === 11;
       default:
@@ -708,7 +710,8 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
 
 // Bank Details Step Component
 const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loading }) => {
-  const isFormValid = sellerData.bankAccountName &&
+  const isFormValid = sellerData.bankName &&
+    sellerData.accountHolderName &&
     sellerData.accountNumber &&
     sellerData.ifscCode;
 
@@ -722,12 +725,25 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
       <div className="space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
+            Bank Name *
+          </label>
+          <input
+            type="text"
+            value={sellerData.bankName}
+            onChange={(e) => updateSellerData('bankName', e.target.value)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            placeholder="Enter bank name (e.g., State Bank of India)"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Account Holder Name *
           </label>
           <input
             type="text"
-            value={sellerData.bankAccountName}
-            onChange={(e) => updateSellerData('bankAccountName', e.target.value)}
+            value={sellerData.accountHolderName}
+            onChange={(e) => updateSellerData('accountHolderName', e.target.value)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             placeholder="Enter account holder name"
           />

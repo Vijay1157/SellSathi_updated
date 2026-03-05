@@ -1,58 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { X, CreditCard, Building, DollarSign, Smartphone, Loader, User } from 'lucide-react';
-import { authFetch } from '@/modules/shared/utils/api';
 
-export default function BankDetailsModal({ sellerId, onClose }) {
+export default function BankDetailsModal({ seller, onClose }) {
     const [bankDetails, setBankDetails] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     useEffect(() => {
-        fetchBankDetails();
-    }, [sellerId]);
-
-    const fetchBankDetails = async () => {
-        try {
-            setLoading(true);
-            // Fetch bank details using seller ID
-            const response = await authFetch(`/api/admin/seller/${sellerId}/bank-details`);
-            const data = await response.json();
-
-            if (data.success && data.bankDetails) {
-                setBankDetails(data.bankDetails);
+        if (seller) {
+            console.log('[BankDetailsModal] Seller data received:', seller);
+            
+            // Extract bank details directly from seller object
+            const details = {
+                bankName: seller.bankName || '',
+                accountHolderName: seller.accountHolderName || '',
+                accountNumber: seller.accountNumber || '',
+                ifscCode: seller.ifscCode || '',
+                upiId: seller.upiId || ''
+            };
+            
+            console.log('[BankDetailsModal] Extracted bank details:', details);
+            
+            // Check if any bank details exist
+            if (details.bankName || details.accountHolderName || 
+                details.accountNumber || details.ifscCode || details.upiId) {
+                setBankDetails(details);
+                setError('');
             } else {
-                // If no bank details found, check if they exist in seller record
-                const sellerResponse = await authFetch(`/api/admin/seller/${sellerId}`);
-                const sellerData = await sellerResponse.json();
-                
-                if (sellerData.success && sellerData.seller) {
-                    const seller = sellerData.seller;
-                    const manualBankDetails = {
-                        bankName: seller.bankName || '',
-                        accountHolderName: seller.accountHolderName || '',
-                        accountNumber: seller.accountNumber || '',
-                        ifscCode: seller.ifscCode || '',
-                        upiId: seller.upiId || ''
-                    };
-                    
-                    // Check if any bank details exist
-                    if (manualBankDetails.bankName || manualBankDetails.accountHolderName || 
-                        manualBankDetails.accountNumber || manualBankDetails.ifscCode || manualBankDetails.upiId) {
-                        setBankDetails(manualBankDetails);
-                    } else {
-                        setError('Bank details not submitted.');
-                    }
-                } else {
-                    setError('Bank details not submitted.');
-                }
+                console.log('[BankDetailsModal] No bank details found in seller data');
+                setError('Bank details not submitted by seller.');
             }
-        } catch (error) {
-            console.error('Error fetching bank details:', error);
-            setError('Failed to fetch bank details.');
-        } finally {
-            setLoading(false);
+        } else {
+            console.log('[BankDetailsModal] No seller data provided');
+            setError('Seller data not available.');
         }
-    };
+        setLoading(false);
+    }, [seller]);
 
     return (
         <div
@@ -102,7 +85,7 @@ export default function BankDetailsModal({ sellerId, onClose }) {
                                 Bank Details
                             </h2>
                             <p className="text-muted" style={{ margin: 0, fontSize: '0.875rem' }}>
-                                Seller ID: {sellerId}
+                                {seller?.shopName || seller?.name || 'Seller Information'}
                             </p>
                         </div>
                     </div>

@@ -9,6 +9,7 @@ router.use(verifyAuth);
 router.use(verifyAdmin);
 
 router.get('/stats', adminController.getStats);
+router.get('/sellers', adminController.getPendingSellers);
 router.get('/all-sellers', adminController.getAllSellers);
 router.get('/products', adminController.getAllProducts);
 router.get('/orders', adminController.getAllOrders);
@@ -25,5 +26,6 @@ router.post('/seller/:uid/unblock', adminController.unblockSeller);
 router.delete('/seller/:uid', adminController.deleteSeller);
 router.delete('/blocked-sellers/all', adminController.deleteAllBlockedSellers);
 router.delete('/rejected-sellers/all', adminController.deleteAllRejectedSellers);
+router.delete('/review/:reviewId', adminController.deleteReview);
 
 module.exports = router;

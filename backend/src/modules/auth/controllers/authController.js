@@ -150,8 +150,10 @@ const applySeller = async (req, res) => {
 
         const sellerRef = db.collection("sellers").doc(uid);
         await sellerRef.set({
-            uid, ...sellerDetails,
+            uid, 
+            ...sellerDetails,
             sellerStatus: "PENDING",
+            isBlocked: false,
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 

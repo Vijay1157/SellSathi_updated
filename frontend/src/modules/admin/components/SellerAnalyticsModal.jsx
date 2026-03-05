@@ -489,7 +489,7 @@ export default function SellerAnalyticsModal({ seller, onClose, onDownloadPDF, i
             {/* Bank Details Modal */}
             {showBankDetails && (
                 <BankDetailsModal 
-                    sellerId={seller.uid} 
+                    seller={seller} 
                     onClose={() => setShowBankDetails(false)} 
                 />
             )}
