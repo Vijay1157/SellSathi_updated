@@ -30,13 +30,14 @@ export default function BankDetailsModal({ sellerId, onClose }) {
                     const manualBankDetails = {
                         bankName: seller.bankName || '',
                         accountHolderName: seller.accountHolderName || '',
+                        accountNumber: seller.accountNumber || '',
                         ifscCode: seller.ifscCode || '',
                         upiId: seller.upiId || ''
                     };
                     
                     // Check if any bank details exist
                     if (manualBankDetails.bankName || manualBankDetails.accountHolderName || 
-                        manualBankDetails.ifscCode || manualBankDetails.upiId) {
+                        manualBankDetails.accountNumber || manualBankDetails.ifscCode || manualBankDetails.upiId) {
                         setBankDetails(manualBankDetails);
                     } else {
                         setError('Bank details not submitted.');
@@ -157,6 +158,31 @@ export default function BankDetailsModal({ sellerId, onClose }) {
                                     </small>
                                     <p style={{ fontWeight: 600, margin: 0, fontSize: '1rem' }}>
                                         {bankDetails.accountHolderName || 'Not provided'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Account Number */}
+                            <div className="flex items-start gap-3">
+                                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-yellow-100 flex-shrink-0 mt-1">
+                                    <CreditCard size={18} className="text-yellow-600" />
+                                </div>
+                                <div className="flex-1">
+                                    <small className="text-muted d-block mb-1" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        Account Number
+                                    </small>
+                                    <p style={{ 
+                                        fontWeight: 600, 
+                                        margin: 0, 
+                                        fontSize: '1rem',
+                                        fontFamily: 'monospace',
+                                        letterSpacing: '0.1em',
+                                        backgroundColor: 'var(--surface)',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        border: '1px solid var(--border)'
+                                    }}>
+                                        {bankDetails.accountNumber || 'Not provided'}
                                     </p>
                                 </div>
                             </div>

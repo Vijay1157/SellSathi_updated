@@ -17,6 +17,7 @@ export default function ManualSellerRegistration({ onClose }) {
         bankDetails: {
             bankName: '',
             accountHolderName: '',
+            accountNumber: '',
             ifscCode: '',
             upiId: ''
         },
@@ -59,7 +60,7 @@ export default function ManualSellerRegistration({ onClose }) {
             case 'personalDetails':
                 return stepData.fullName && stepData.phoneNumber && stepData.emailAddress && stepData.aadhaarNumber;
             case 'bankDetails':
-                return stepData.bankName && stepData.accountHolderName && stepData.ifscCode;
+                return stepData.bankName && stepData.accountHolderName && stepData.accountNumber && stepData.ifscCode;
             case 'companyDetails':
                 return stepData.companyName && stepData.companyHolderName && stepData.companyEmail && stepData.companyPhoneNumber;
             case 'pickupAddress':
@@ -226,6 +227,17 @@ export default function ManualSellerRegistration({ onClose }) {
                                 onChange={(e) => updateFormData('bankDetails', 'accountHolderName', e.target.value)}
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                                 placeholder="Enter account holder name"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Account Number *</label>
+                            <input
+                                type="text"
+                                value={stepData.accountNumber}
+                                onChange={(e) => updateFormData('bankDetails', 'accountNumber', e.target.value)}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                placeholder="Enter account number"
                             />
                         </div>
 

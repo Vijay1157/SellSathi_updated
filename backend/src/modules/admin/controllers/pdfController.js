@@ -23,6 +23,7 @@ const generateAnalyticsPDF = async (req, res) => {
         const bankDetails = {
             bankName: sellerData.bankName || 'Not provided',
             accountHolderName: sellerData.accountHolderName || 'Not provided',
+            accountNumber: sellerData.accountNumber || 'Not provided',
             ifscCode: sellerData.ifscCode || 'Not provided',
             upiId: sellerData.upiId || 'Not provided'
         };
@@ -149,13 +150,16 @@ const generateAnalyticsPDF = async (req, res) => {
         doc.text('Account Holder:', 320, bankDetailsY + 30);
         doc.text(bankDetails.accountHolderName, 420, bankDetailsY + 30);
 
-        doc.text('IFSC Code:', 55, bankDetailsY + 50);
-        doc.text(bankDetails.ifscCode, 150, bankDetailsY + 50);
-        doc.text('UPI ID:', 320, bankDetailsY + 50);
-        doc.text(bankDetails.upiId, 420, bankDetailsY + 50);
+        doc.text('Account Number:', 55, bankDetailsY + 50);
+        doc.text(bankDetails.accountNumber, 150, bankDetailsY + 50);
+        doc.text('IFSC Code:', 320, bankDetailsY + 50);
+        doc.text(bankDetails.ifscCode, 420, bankDetailsY + 50);
+
+        doc.text('UPI ID:', 55, bankDetailsY + 70);
+        doc.text(bankDetails.upiId, 150, bankDetailsY + 70);
 
         // Performance Summary
-        const perfSummaryY = bankDetailsY + 80;
+        const perfSummaryY = bankDetailsY + 100;
         doc.rect(50, perfSummaryY, 495, 15).fillAndStroke('#f3f4f6', '#e5e7eb');
         doc.fontSize(11).fillColor('#000000').font('Helvetica-Bold').text('PERFORMANCE SUMMARY', 55, perfSummaryY + 5);
 
@@ -252,6 +256,7 @@ const generateInvoicePDF = async (req, res) => {
         const bankDetails = {
             bankName: sellerData.bankName || 'Not provided',
             accountHolderName: sellerData.accountHolderName || 'Not provided',
+            accountNumber: sellerData.accountNumber || 'Not provided',
             ifscCode: sellerData.ifscCode || 'Not provided',
             upiId: sellerData.upiId || 'Not provided'
         };
@@ -342,16 +347,20 @@ const generateInvoicePDF = async (req, res) => {
         doc.text('Account Holder:', 320, 310);
         doc.text(bankDetails.accountHolderName, 440, 310);
 
-        doc.text('IFSC Code:', 55, 330);
-        doc.text(bankDetails.ifscCode, 180, 330);
-        doc.text('UPI ID:', 320, 330);
-        doc.text(bankDetails.upiId, 440, 330);
+        doc.text('Account Number:', 55, 330);
+        doc.text(bankDetails.accountNumber, 180, 330);
+        doc.text('IFSC Code:', 320, 330);
+        doc.text(bankDetails.ifscCode, 440, 330);
+
+        doc.text('UPI ID:', 55, 350);
+        doc.text(bankDetails.upiId, 180, 350);
 
         // Summary
-        doc.rect(50, 375, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
-        doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold').text('INVOICE SUMMARY', 55, 381);
+        const summaryY = 380;
+        doc.rect(50, summaryY, 495, 18).fillAndStroke('#f3f4f6', '#e5e7eb');
+        doc.fontSize(12).fillColor('#000000').font('Helvetica-Bold').text('INVOICE SUMMARY', 55, summaryY + 6);
 
-        const boxY = 415;
+        const boxY = summaryY + 40;
         const boxWidth = 115;
         const boxHeight = 70;
         const boxGap = 10;

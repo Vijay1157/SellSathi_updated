@@ -113,6 +113,12 @@ const getAllSellers = async (req, res) => {
                 category: sellerData.category,
                 isBlocked: sellerData.isBlocked || false,
                 blockReason: sellerData.blockReason || null,
+                // Include bank details
+                bankName: sellerData.bankName || null,
+                accountHolderName: sellerData.accountHolderName || null,
+                accountNumber: sellerData.accountNumber || null,
+                ifscCode: sellerData.ifscCode || null,
+                upiId: sellerData.upiId || null,
                 financials: {
                     totalProducts: productCountMap[doc.id] || 0,
                     totalRevenue: fin.totalRevenue,
@@ -835,6 +841,7 @@ const getSellerAnalytics = async (req, res) => {
                 // Include bank details
                 bankName: sellerData.bankName || null,
                 accountHolderName: sellerData.accountHolderName || null,
+                accountNumber: sellerData.accountNumber || null,
                 ifscCode: sellerData.ifscCode || null,
                 upiId: sellerData.upiId || null,
                 metrics: { 
@@ -873,6 +880,7 @@ const getSellerBankDetails = async (req, res) => {
         const bankDetails = {
             bankName: sellerData.bankName || null,
             accountHolderName: sellerData.accountHolderName || null,
+            accountNumber: sellerData.accountNumber || null,
             ifscCode: sellerData.ifscCode || null,
             upiId: sellerData.upiId || null
         };
