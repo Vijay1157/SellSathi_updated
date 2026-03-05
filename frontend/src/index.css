@@ -9,9 +9,10 @@ html {
 }
 
 :root {
-  --primary: #4f46e5;
-  --secondary: #6366f1;
-  --accent: #f59e0b;
+  --primary: #7B4DDB;
+  --secondary: #6A3FD8;
+  --accent: #5A32C8;
+  --primary-rgb: 123, 77, 219;
   --background: #ffffff;
   --surface: #ffffff;
   --surface-hover: #f8fafc;
@@ -30,8 +31,8 @@ html {
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-full: 9999px;
-  --brand: #4f46e5;
-  --brand-hover: #4338ca;
+  --brand: #7B4DDB;
+  --brand-hover: #6A3FD8;
 }
 
 * {

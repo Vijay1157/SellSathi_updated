@@ -182,9 +182,7 @@ export default function SellerPageWithAuth() {
     return (
       <div className="min-h-screen bg-white flex flex-col lg:flex-row overflow-hidden font-sans">
         {/* Left Side - Branding & Info (Full Height) */}
-        <div className="lg:w-1/2 bg-[#6A3FD8] p-8 lg:p-16 text-white flex flex-col justify-center relative min-h-[40vh] lg:min-h-screen">
-          {/* Clean background with subtle gradient */}
-          <div className="absolute inset-0 bg-gradient-to-br from-[#7B4DDB] to-[#5A32C8] opacity-50" />
+        <div className="lg:w-1/2 p-8 lg:p-16 text-white flex flex-col justify-center relative min-h-[40vh] lg:min-h-screen" style={{ background: 'linear-gradient(135deg, #7B4DDB 0%, #6A3FD8 50%, #5A32C8 100%)' }}>
 
           <div className="relative z-10">
             <Link to="/seller" className="inline-flex items-center gap-2 text-white/80 hover:text-white mb-12 transition-colors">
@@ -229,7 +227,7 @@ export default function SellerPageWithAuth() {
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-8 lg:p-10 border border-gray-100 flex flex-col max-h-[90vh]"
+            className="w-full max-w-5xl bg-white rounded-3xl shadow-xl p-8 lg:p-10 border border-gray-100 flex flex-col max-h-[90vh]"
           >
             <div className="overflow-y-auto pr-2 custom-scrollbar">
               {error && (

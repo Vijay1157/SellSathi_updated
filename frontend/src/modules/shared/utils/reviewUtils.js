@@ -136,7 +136,7 @@ export const submitReview = async (productId, reviewData) => {
  */
 export const checkReviewEligibility = async (productId) => {
     try {
-        const response = await authFetch(`/api/check-review-eligibility/${productId}`);
+        const response = await authFetch(`/reviews/check-eligibility/${productId}`);
         const data = await response.json();
         return data.success ? data : { eligible: false, reason: 'Failed to check eligibility' };
     } catch (error) {

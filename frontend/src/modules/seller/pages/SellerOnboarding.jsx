@@ -55,7 +55,10 @@ const SellerOnboarding = () => {
     supplierName: '',
     businessType: '',
     productCategory: '',
-    contactEmail: ''
+    contactEmail: '',
+
+    // Aadhaar Image
+    aadhaarImageUrl: ''
   });
 
   // Handle Aadhaar extracted data
@@ -71,7 +74,8 @@ const SellerOnboarding = () => {
         phoneNumber: extractedData.phoneNumber || prev.phoneNumber,
         age: extractedData.age || prev.age,
         shopAddress: extractedData.shopAddress || prev.shopAddress,
-        pincode: extractedData.pincode || prev.pincode
+        pincode: extractedData.pincode || prev.pincode,
+        aadhaarImageUrl: extractedData.aadhaarImageUrl || prev.aadhaarImageUrl
       }));
     }
   }, [location.state]);
@@ -267,8 +271,8 @@ const SellerOnboarding = () => {
         </div>
 
         {/* Scrollable Form Body */}
-        <div className="flex-1 overflow-y-auto p-8 lg:p-12 scrollbar-hide">
-          <div className="w-full max-w-2xl mx-auto pb-12">
+        <div className="flex-1 overflow-y-auto p-8 lg:p-12 custom-scrollbar">
+          <div className="w-full max-w-5xl mx-auto pb-12">
             <div className="bg-white rounded-[2rem] shadow-xl p-8 lg:p-10 border border-gray-100">
               {error && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-medium">
@@ -328,21 +332,20 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
               type="text"
               value={sellerData.fullName}
               onChange={(e) => updateSellerData('fullName', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
               placeholder="Enter your full name"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Aadhaar Number *
+              Aadhaar Number (Locked) *
             </label>
             <input
               type="text"
-              maxLength={12}
+              readOnly
               value={sellerData.aadhaarNumber}
-              onChange={(e) => updateSellerData('aadhaarNumber', e.target.value.replace(/\D/g, ''))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter 12-digit Aadhaar number"
+              className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 cursor-not-allowed"
+              placeholder="12-digit Aadhaar number"
             />
           </div>
         </div>
@@ -357,20 +360,20 @@ const PersonalDetailsStep = ({ sellerData, updateSellerData, nextStep }) => {
               maxLength={10}
               value={sellerData.phoneNumber}
               onChange={(e) => updateSellerData('phoneNumber', e.target.value.replace(/\D/g, ''))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
               placeholder="Enter 10-digit phone number"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Age *
+              Age (Locked) *
             </label>
             <input
-              type="number"
+              type="text"
+              readOnly
               value={sellerData.age}
-              onChange={(e) => updateSellerData('age', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter your age"
+              className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-lg text-gray-500 cursor-not-allowed"
+              placeholder="Age"
             />
           </div>
         </div>
@@ -639,7 +642,7 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
             rows={3}
             value={sellerData.pickupAddress}
             onChange={(e) => updateSellerData('pickupAddress', e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
             placeholder="Enter complete pickup address"
           />
         </div>
@@ -653,7 +656,7 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
               type="text"
               value={sellerData.pickupCity}
               onChange={(e) => updateSellerData('pickupCity', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
               placeholder="Enter city"
             />
           </div>
@@ -665,7 +668,7 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
               type="text"
               value={sellerData.pickupState}
               onChange={(e) => updateSellerData('pickupState', e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
               placeholder="Enter state"
             />
           </div>
@@ -680,7 +683,7 @@ const PickupAddressStep = ({ sellerData, updateSellerData, nextStep, prevStep })
             maxLength={6}
             value={sellerData.pickupPincode}
             onChange={(e) => updateSellerData('pickupPincode', e.target.value.replace(/\D/g, ''))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
             placeholder="Enter 6-digit pincode"
           />
         </div>
@@ -728,7 +731,7 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
             type="text"
             value={sellerData.bankAccountName}
             onChange={(e) => updateSellerData('bankAccountName', e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
             placeholder="Enter account holder name"
           />
         </div>
@@ -742,7 +745,7 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
             maxLength={18}
             value={sellerData.accountNumber}
             onChange={(e) => updateSellerData('accountNumber', e.target.value.replace(/\D/g, ''))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
             placeholder="Enter account number"
           />
         </div>
@@ -757,7 +760,7 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
               maxLength={11}
               value={sellerData.ifscCode}
               onChange={(e) => updateSellerData('ifscCode', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
               placeholder="Enter 11-char IFSC code"
             />
           </div>
@@ -769,7 +772,7 @@ const BankDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep, loa
               type="text"
               value={sellerData.upiId}
               onChange={(e) => updateSellerData('upiId', e.target.value.replace(/[^a-zA-Z0-9.\-@]/g, '').toLowerCase())}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
               placeholder="e.g. name@bank"
             />
           </div>
@@ -827,7 +830,7 @@ const SupplierDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep 
             type="text"
             value={sellerData.supplierName}
             onChange={(e) => updateSellerData('supplierName', e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
             placeholder="Enter supplier name"
           />
         </div>
@@ -839,7 +842,7 @@ const SupplierDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep 
           <select
             value={sellerData.businessType}
             onChange={(e) => updateSellerData('businessType', e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
           >
             <option value="">Select Business Type</option>
             <option value="proprietorship">Proprietorship</option>
@@ -857,7 +860,7 @@ const SupplierDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep 
           <select
             value={sellerData.productCategory}
             onChange={(e) => updateSellerData('productCategory', e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
           >
             <option value="">Select Category</option>
             <option value="electronics">Electronics</option>
@@ -879,7 +882,7 @@ const SupplierDetailsStep = ({ sellerData, updateSellerData, nextStep, prevStep 
             type="email"
             value={sellerData.contactEmail}
             onChange={(e) => updateSellerData('contactEmail', e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7B4DDB] focus:border-[#7B4DDB]"
             placeholder="Enter contact email"
           />
         </div>

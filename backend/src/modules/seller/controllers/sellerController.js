@@ -15,7 +15,7 @@ const getDashboardData = async (req, res) => {
         const { uid } = req.params;
         const cacheKey = `sellerDash_${uid}`;
         const cached = cache.get(cacheKey);
-        if (cached) return res.status(200).json({ success: true, dashboard: cached });
+        if (cached) return res.status(200).json({ success: true, ...cached });
 
         const [sellerSnap, userSnap, productsSnap, allOrdersSnap] = await Promise.all([
             db.collection("sellers").doc(uid).get(),
@@ -56,18 +56,24 @@ const getDashboardData = async (req, res) => {
             }
         });
 
-        const dashboard = {
-            shopName: sellerData.shopName,
-            totalSales,
-            productsCount: products.length,
-            newOrdersCount,
-            pendingOrdersCount,
-            recentOrders: sellerOrders.slice(0, 5),
-            products: products.slice(0, 10)
+        const responseData = {
+            profile: {
+                ...sellerData,
+                name: userData?.fullName || sellerData.fullName || "Seller",
+                status: sellerData.sellerStatus // Standardize status key for frontend
+            },
+            stats: {
+                totalSales,
+                totalProducts: products.length,
+                newOrders: newOrdersCount,
+                pendingOrders: pendingOrdersCount
+            },
+            products: products,
+            orders: sellerOrders
         };
 
-        cache.set(cacheKey, dashboard, SELLER_DASH_TTL);
-        return res.status(200).json({ success: true, dashboard });
+        cache.set(cacheKey, responseData, SELLER_DASH_TTL);
+        return res.status(200).json({ success: true, ...responseData });
     } catch (error) {
         console.error("[SellerDashboard] ERROR:", error);
         return res.status(500).json({ success: false, message: "Failed to fetch dashboard data" });
