@@ -240,14 +240,19 @@ const downloadInvoice = async (req, res) => {
  */
 const getShippingLabel = async (req, res) => {
     try {
-        const { orderId } = req.params;
-        const orderDoc = await db.collection("orders").doc(orderId).get();
+        let { orderId } = req.params;
+        let orderDoc = await db.collection("orders").doc(orderId).get();
+        let orderData;
 
         if (!orderDoc.exists) {
-            return res.status(404).json({ success: false, message: "Order not found" });
+            const query = await db.collection("orders").where("orderId", "==", orderId).limit(1).get();
+            if (query.empty) return res.status(404).json({ success: false, message: "Order not found" });
+            orderDoc = query.docs[0];
+            orderId = orderDoc.id; // Assign Firebase ID
+            orderData = orderDoc.data();
+        } else {
+            orderData = orderDoc.data();
         }
-
-        const orderData = orderDoc.data();
 
         if (!orderData.shipmentId) {
             return res.status(400).json({

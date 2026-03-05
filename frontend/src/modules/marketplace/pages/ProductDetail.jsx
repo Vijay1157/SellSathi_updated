@@ -111,10 +111,175 @@ export default function ProductDetail() {
     const nextImage = () => setActiveImageIndex((prev) => (prev + 1) % images.length);
     const prevImage = () => setActiveImageIndex((prev) => (prev - 1 + images.length) % images.length);
 
-    // Reset active image index when product changes
-    useEffect(() => {
-        setActiveImageIndex(0);
-    }, [product?.id]);
+    const setupSellerListener = async (sellerId) => {
+        if (!sellerId || sellerId === "system_generated" || sellerId === "official") {
+            setSeller(null);
+            return;
+        }
+
+        // Primary: Fetch seller via public backend API (no auth needed, avoids Firestore quota)
+        try {
+            const response = await fetch(`${API_BASE}/seller/${sellerId}/public-profile`);
+            const data = await response.json();
+
+            if (data.success && data.seller) {
+                const s = data.seller;
+                setSeller({
+                    name: s.name || "Verified Seller",
+                    shopName: s.shopName || "SellSathi Partner",
+                    companyName: s.shopName || "Registered Hub",
+                    city: s.city || "India",
+                    category: s.category || "General",
+                    joinedAt: s.joinedAt ? new Date(s.joinedAt) : null
+                });
+                return;
+            }
+        } catch (apiErr) {
+            console.log("API seller fetch failed, trying Firestore:", apiErr.message);
+        }
+
+        // Fallback: Firestore direct — use one-time getDoc (NOT onSnapshot).
+        // Seller info is static; a real-time listener wastes quota on reconnects
+        // and fires a read on every doc mutation in the background.
+        try {
+            const sSnap = await getDoc(doc(db, "sellers", sellerId));
+            if (sSnap.exists()) {
+                const sData = sSnap.data();
+                if (sData.sellerStatus !== 'APPROVED') { setSeller(null); return; }
+
+                const uSnap = await getDoc(doc(db, "users", sellerId));
+                const uData = uSnap.exists() ? uSnap.data() : {};
+                let city = "India";
+                if (sData.address) {
+                    const parts = sData.address.split(',').map(p => p.trim());
+                    const vtcPart = parts.find(p => p.startsWith('VTC:'));
+                    if (vtcPart) city = vtcPart.replace('VTC:', '').trim();
+                    else if (parts.length >= 2) city = parts[1];
+                    else city = parts[0];
+                }
+                setSeller({
+                    name: uData.fullName || sData.extractedName || "Verified Seller",
+                    shopName: sData.shopName || "SellSathi Partner",
+                    companyName: sData.shopName || "Registered Hub",
+                    city, category: sData.category || "General",
+                    joinedAt: sData.approvedAt ?
+                        (sData.approvedAt.toDate ? sData.approvedAt.toDate() : new Date(sData.approvedAt._seconds * 1000)) :
+                        (sData.appliedAt ? (sData.appliedAt.toDate ? sData.appliedAt.toDate() : new Date(sData.appliedAt._seconds * 1000)) : null)
+                });
+            } else { setSeller(null); }
+        } catch (err) {
+            console.error("All seller fetch methods failed:", err);
+            setSeller(null);
+        }
+    };
+
+    const fetchProduct = async () => {
+        try {
+            const docRef = doc(db, "products", id);
+            const docSnap = await getDoc(docRef);
+            let data = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+
+            const mock = deals[id] || (id.includes('fashion') ? deals["fashion-1"] : (id.includes('deal') ? deals["deal-1"] : deals["generic"]));
+            if (mock) {
+                data = {
+                    ...mock,
+                    ...data,
+                    colors: (data?.colors && data.colors.length > 0) ? data.colors : mock.colors,
+                    materials: (data?.materials && data.materials.length > 0) ? data.materials : mock.materials,
+                    types: (data?.types && data.types.length > 0) ? data.types : mock.types,
+                    specifications: (data?.specifications && Object.keys(data.specifications).length > 0) ? data.specifications : mock.specifications,
+                    description: data?.description || mock.description || ("Premium " + (data?.name || mock.name || "Product") + " with cutting-edge features.")
+                };
+            }
+
+            if (data) {
+                data.id = data.id || id;
+                // Normalise: seller products store `title` not `name`
+                if (!data.name && data.title) data.name = data.title;
+                setProduct(data);
+                if (data.colors && data.colors.length > 0) setSelectedColor(data.colors[0]);
+                if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[1] || data.sizes[0]);
+                if (data.storage && data.storage.length > 0) setSelectedStorage(data.storage[0]);
+                if (data.memory && data.memory.length > 0) setSelectedMemory(data.memory[0]);
+                updateRecentlyViewed(data);
+                setupSellerListener(data.sellerId);
+            }
+            setLoading(false);
+        } catch (err) {
+            console.error(err);
+            setLoading(false);
+        }
+    };
+
+    const setupReviewsListener = () => {
+        const loadReviews = async () => {
+            try {
+                const { reviews, stats } = await fetchProductReviews(id);
+                setReviews(reviews);
+                setReviewStats(stats);
+            } catch (err) {
+                console.error("Failed to load reviews:", err);
+            }
+        };
+
+        const checkEligibility = async (retryCount = 0) => {
+            let currentUid = auth.currentUser?.uid;
+
+            if (!currentUid) {
+                try {
+                    const localUser = JSON.parse(localStorage.getItem('user'));
+                    currentUid = localUser?.uid;
+                } catch (e) { }
+            }
+
+            if (!currentUid) {
+                // If no user yet, retry in 1s (Firebase auth might still be initializing)
+                if (retryCount < 3) {
+                    setTimeout(() => checkEligibility(retryCount + 1), 1000);
+                }
+                return;
+            }
+
+            try {
+                const res = await authFetch(`/orders/${currentUid}/reviewable-orders`);
+                if (!res.ok) throw new Error('Failed to fetch eligibility');
+
+                const data = await res.json();
+                if (data.success && data.orders) {
+                    // Match by ID or ProductID, trimmed and case-insensitive
+                    const order = data.orders.find(o =>
+                        String(o.productId).trim().toLowerCase() === String(id).trim().toLowerCase()
+                    );
+
+                    if (order) {
+                        setIsEligibleForReview(true);
+                        setEligibleOrder(order);
+                        return; // Success
+                    }
+                }
+                setIsEligibleForReview(false);
+                setEligibleOrder(null);
+            } catch (err) {
+                console.error("Eligibility check error:", err);
+                // Silently ignore, but maybe retry once
+                if (retryCount < 1) {
+                    setTimeout(() => checkEligibility(retryCount + 1), 2000);
+                }
+            }
+        };
+
+        loadReviews();
+        checkEligibility();
+
+        const handleUserChange = () => checkEligibility();
+        window.addEventListener('userDataChanged', handleUserChange);
+        window.addEventListener('reviewsUpdate', loadReviews);
+
+        return () => {
+            window.removeEventListener('reviewsUpdate', loadReviews);
+            window.removeEventListener('userDataChanged', handleUserChange);
+        };
+    };
 
     useEffect(() => {
         const setupSellerListener = async (sellerId) => {

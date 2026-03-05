@@ -289,7 +289,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
                 password: formData.password,
                 isTest: isTestNumber,
                 otp: isTestNumber ? otp : undefined
-            } : (isTestNumber ? { phone: phoneNumber, otp } : { idToken });
+            } : (isTestNumber ? { phone: phoneNumber, otp, isTest: true } : { idToken });
 
             const response = await authFetch(endpoint, {
                 method: 'POST',
@@ -401,7 +401,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }) {
             }
         } catch (err) {
             console.error('Google Sign-In Error:', err);
-            
+
             // Handle specific error codes
             if (err.code === 'auth/popup-closed-by-user') {
                 setError('Authentication cancelled. Please try again.');
