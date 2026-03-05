@@ -47,3 +47,6 @@ back/invoices/*.pdf
 *.temp
 CLEANUP_SUMMARY.md
 *.md
+
+# Test folder
+test/
