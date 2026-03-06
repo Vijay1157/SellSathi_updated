@@ -30,8 +30,8 @@ const submitReview = async (req, res) => {
 
         const reviewRef = await db.collection("reviews").add(reviewData);
 
-        // Invalidate review cache for this product
-        cache.invalidate(`reviews_${productId}`);
+        // Invalidate review cache for this product and admin cache
+        cache.invalidate(`reviews_${productId}`, 'adminAllReviews');
 
         return res.status(200).json({ success: true, message: "Review submitted", reviewId: reviewRef.id });
     } catch (error) {

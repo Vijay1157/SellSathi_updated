@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth, db } from '@/modules/shared/config/firebase';
-import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
+import { auth } from '@/modules/shared/config/firebase';
+import { authFetch } from '@/modules/shared/utils/api';
 import {
     ShoppingBag,
     Heart,
@@ -26,7 +26,6 @@ import {
     Star
 } from 'lucide-react';
 import { listenToWishlist, removeFromWishlist as removeFromWishlistAPI } from '@/modules/shared/utils/wishlistUtils';
-import { authFetch } from '@/modules/shared/utils/api';
 import ReviewModal from '@/modules/shared/components/common/ReviewModal';
 import { fetchWithCache } from '@/modules/shared/utils/firestoreCache';
 
@@ -114,46 +113,22 @@ export default function ConsumerDashboard() {
         let wishlistUnsubscribe = null;
         let mounted = true;
 
-        const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+            const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
             if (!mounted) return;
 
             if (currentUser) {
                 setUser(currentUser);
 
-                // Fetch real user name from Firestore (not Firebase Auth displayName which can be stale)
-                try {
-                    const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data();
-                        setUserName(userData.name || userData.fullName || currentUser.displayName || 'User');
-                        setUserPhoto(userData.photoURL || currentUser.photoURL || null);
-                        
-                        // Initialize profile data
-                        setProfileData({
-                            displayName: userData.name || userData.fullName || currentUser.displayName || '',
-                            email: userData.email || currentUser.email || '',
-                            phone: userData.phone || userData.phoneNumber || ''
-                        });
-                    } else {
-                        // Fallback: check localStorage
-                        const localUser = JSON.parse(localStorage.getItem('user') || '{}');
-                        setUserName(localUser.fullName || currentUser.displayName || 'User');
-                        setProfileData({
-                            displayName: localUser.fullName || currentUser.displayName || '',
-                            email: localUser.email || currentUser.email || '',
-                            phone: localUser.phone || ''
-                        });
-                    }
-                } catch (e) {
-                    // Error fetching user name from Firestore
-                    const localUser = JSON.parse(localStorage.getItem('user') || '{}');
-                    setUserName(localUser.fullName || currentUser.displayName || 'User');
-                    setProfileData({
-                        displayName: localUser.fullName || currentUser.displayName || '',
-                        email: localUser.email || currentUser.email || '',
-                        phone: localUser.phone || ''
-                    });
-                }
+                // Read user name from localStorage first (stored at login — zero Firestore reads)
+                const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+                const name = localUser.fullName || localUser.name || currentUser.displayName || 'User';
+                setUserName(name);
+                setUserPhoto(localUser.photoURL || currentUser.photoURL || null);
+                setProfileData({
+                    displayName: name,
+                    email: localUser.email || currentUser.email || '',
+                    phone: localUser.phone || localUser.phoneNumber || ''
+                });
 
                 // Fetch data in parallel with timeout
                 try {
@@ -164,7 +139,7 @@ export default function ConsumerDashboard() {
                             fetchReviewableOrders(currentUser.uid)
                         ]),
                         new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('Timeout')), 5000)
+                            setTimeout(() => reject(new Error('Timeout')), 8000)
                         )
                     ]);
                 } catch (error) {
@@ -173,14 +148,10 @@ export default function ConsumerDashboard() {
 
                 // Use wishlist listener
                 wishlistUnsubscribe = listenToWishlist((items) => {
-                    if (mounted) {
-                        setWishlist(items);
-                    }
+                    if (mounted) setWishlist(items);
                 });
 
-                if (mounted) {
-                    setLoading(false);
-                }
+                if (mounted) setLoading(false);
             } else {
                 navigate('/');
             }
@@ -197,45 +168,21 @@ export default function ConsumerDashboard() {
 
     const fetchOrders = async (userId) => {
         try {
-            const ordersRef = collection(db, 'orders');
-            // Try both 'userId' and 'uid' fields
-            const q1 = query(ordersRef, where('userId', '==', userId));
-            const q2 = query(ordersRef, where('uid', '==', userId));
+            // Use backend API — which reads from Firestore server-side (no direct client SDK reads)
+            const response = await authFetch(`/orders/user/${userId}`);
+            if (!response.ok) throw new Error('Orders API failed');
+            const data = await response.json();
 
-            let ordersData = [];
-
-            try {
-                const querySnapshot1 = await getDocs(q1);
-                querySnapshot1.forEach((doc) => {
-                    ordersData.push({ id: doc.id, ...doc.data() });
-                });
-            } catch (e) {
-                // Query with userId failed
-            }
-
-            if (ordersData.length === 0) {
-                try {
-                    const querySnapshot2 = await getDocs(q2);
-                    querySnapshot2.forEach((doc) => {
-                        ordersData.push({ id: doc.id, ...doc.data() });
-                    });
-                } catch (e) {
-                    // Query with uid also failed
-                }
-            }
-
+            const ordersData = data.success ? (data.orders || []) : [];
             setOrders(ordersData);
 
             const total = ordersData.length;
             const pending = ordersData.filter(o => o.status === 'Pending' || o.status === 'Processing').length;
             const delivered = ordersData.filter(o => o.status === 'Delivered').length;
             const totalSpent = ordersData.reduce((sum, o) => sum + (o.total || 0), 0);
-
             setStats({ total, pending, delivered, totalSpent });
 
-            if (ordersData.length > 0) {
-                setSelectedOrder(ordersData[0]);
-            }
+            if (ordersData.length > 0) setSelectedOrder(ordersData[0]);
         } catch (error) {
             console.error('Error fetching orders:', error);
         }
@@ -256,13 +203,11 @@ export default function ConsumerDashboard() {
 
     const fetchAddresses = async (userId) => {
         try {
-            const userDoc = await getDoc(doc(db, 'users', userId));
-            if (userDoc.exists()) {
-                const userData = userDoc.data();
-                setAddresses(userData.addresses || []);
-            } else {
-                setAddresses([]);
-            }
+            // Use backend consumer API (cached 2 min) instead of direct Firestore read
+            const response = await authFetch(`/consumer/${userId}/addresses`);
+            if (!response.ok) throw new Error('Addresses API failed');
+            const data = await response.json();
+            setAddresses(data.success ? (data.addresses || []) : []);
         } catch (error) {
             console.error('Error fetching addresses:', error);
             setAddresses([]);

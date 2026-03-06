@@ -349,50 +349,48 @@ export default function ProductDetail() {
 
         const fetchProduct = async () => {
             try {
-                const docRef = doc(db, "products", id);
-                const docSnap = await getDoc(docRef);
-                
-                if (!docSnap.exists()) {
-                    setProduct(null);
-                    setLoading(false);
-                    return;
+                let data = null;
+
+                // Primary: fetch via backend API (avoids direct Firestore client SDK read)
+                try {
+                    const apiRes = await fetch(`${API_BASE}/products/${id}`);
+                    if (apiRes.ok) {
+                        const apiData = await apiRes.json();
+                        if (apiData.success && apiData.product) {
+                            data = { ...apiData.product, id: apiData.product.id || id };
+                        }
+                    }
+                } catch (apiErr) {
+                    console.warn('[ProductDetail] Backend API failed, falling back to Firestore:', apiErr.message);
                 }
 
-                let data = { id: docSnap.id, ...docSnap.data() };
+                // Fallback: direct Firestore read if API fails
+                if (!data) {
+                    const docSnap = await getDoc(doc(db, 'products', id));
+                    if (!docSnap.exists()) {
+                        setProduct(null);
+                        setLoading(false);
+                        return;
+                    }
+                    data = { id: docSnap.id, ...docSnap.data() };
+                }
 
                 // Normalize: seller products store `title` not `name`
                 if (!data.name && data.title) data.name = data.title;
-                
-                // Ensure description exists
-                if (!data.description) {
-                    data.description = `Premium ${data.name || "Product"} with cutting-edge features.`;
-                }
+                if (!data.description) data.description = `Premium ${data.name || 'Product'} with cutting-edge features.`;
 
                 setProduct(data);
-                
-                // Initialize variant selections
-                if (data.colors && data.colors.length > 0) {
-                    setSelectedColor(data.colors[0]);
-                }
-                if (data.sizes && data.sizes.length > 0) {
-                    setSelectedSize(data.sizes[1] || data.sizes[0]);
-                }
-                if (data.storage && data.storage.length > 0) {
-                    setSelectedStorage(data.storage[0]);
-                }
-                if (data.memory && data.memory.length > 0) {
-                    setSelectedMemory(data.memory[0]);
-                }
-                
+                if (data.colors && data.colors.length > 0) setSelectedColor(data.colors[0]);
+                if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[1] || data.sizes[0]);
+                if (data.storage && data.storage.length > 0) setSelectedStorage(data.storage[0]);
+                if (data.memory && data.memory.length > 0) setSelectedMemory(data.memory[0]);
+
                 updateRecentlyViewed(data);
                 setupSellerListener(data.sellerId);
-                
-                // Load dynamic recommendations
                 loadDynamicRecommendations(data);
-                
                 setLoading(false);
             } catch (err) {
-                console.error("Error fetching product:", err);
+                console.error('Error fetching product:', err);
                 setProduct(null);
                 setLoading(false);
             }

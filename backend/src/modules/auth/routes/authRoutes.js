@@ -7,6 +7,7 @@ const { verifyAuth } = require('../../../middleware/auth');
 const upload = require('../../../middleware/upload');
 
 router.post('/login', authController.login);
+router.post('/google-login', authController.login);   // Google OAuth uses same login flow
 router.post('/test-login', authController.testLogin);
 router.post('/register', authController.register);
 router.post('/apply-seller', verifyAuth, authController.applySeller);

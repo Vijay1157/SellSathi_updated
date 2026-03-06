@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Search, LayoutGrid, List, SlidersHorizontal, ShoppingCart, Heart, Eye } from 'lucide-react';
-import { collection, getDocs, query, limit } from 'firebase/firestore';
-import { db, auth } from '@/modules/shared/config/firebase';
+import { auth } from '@/modules/shared/config/firebase';
+import { API_BASE } from '@/modules/shared/utils/api';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
 import ReviewModal from '@/modules/shared/components/common/ReviewModal';
@@ -47,27 +47,38 @@ export default function ProductListing() {
     useEffect(() => {
         const fetchProducts = async () => {
             setLoading(true);
-
             try {
-                const q = query(collection(db, "products"), limit(50));
-                const snap = await getDocs(q);
-                let data = snap.docs.map(doc => {
-                    const d = { id: doc.id, ...doc.data() };
-                    // Seller products store `title` instead of `name` — normalize here
-                    if (!d.name && d.title) d.name = d.title;
-                    return d;
+                // Primary: use backend API (no client-side Firestore reads)
+                const res = await fetch(`${API_BASE}/products?limit=100`);
+                if (!res.ok) throw new Error('Products API failed');
+                const apiData = await res.json();
+                let data = (apiData.products || []).map(p => {
+                    if (!p.name && p.title) p.name = p.title;
+                    return p;
                 });
-
                 setProducts(data);
                 setLoading(false);
-
-                // Fetch reviews for all loaded products
                 fetchReviewsForProducts(data);
             } catch (err) {
-                console.error("Fetch Products Error:", err);
-                // Show empty state on error
-                setProducts([]);
-                setLoading(false);
+                console.warn('[ProductListing] API failed, falling back to Firestore:', err.message);
+                // Fallback: direct Firestore read
+                try {
+                    const { collection: col, getDocs: gd, query: q, limit: lim } = await import('firebase/firestore');
+                    const { db: firestoreDb } = await import('@/modules/shared/config/firebase');
+                    const snap = await gd(q(col(firestoreDb, 'products'), lim(50)));
+                    let data = snap.docs.map(doc => {
+                        const d = { id: doc.id, ...doc.data() };
+                        if (!d.name && d.title) d.name = d.title;
+                        return d;
+                    });
+                    setProducts(data);
+                    setLoading(false);
+                    fetchReviewsForProducts(data);
+                } catch (fbErr) {
+                    console.error('Both API and Firestore failed:', fbErr);
+                    setProducts([]);
+                    setLoading(false);
+                }
             }
         };
         fetchProducts();

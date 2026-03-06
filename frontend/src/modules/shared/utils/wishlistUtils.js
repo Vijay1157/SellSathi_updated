@@ -133,16 +133,13 @@ export const listenToWishlist = (callback) => {
     // Initial load
     handleUpdate();
 
-    // Listen for updates
+    // Listen for explicit updates only (no auth.onAuthStateChanged — that fires on every page load
+    // and causes a fresh Firestore/API read even when the wishlist hasn't changed)
     window.addEventListener('wishlistUpdated', handleUpdate);
     window.addEventListener('userDataChanged', handleUpdate);
-
-    // Listen for Firebase Auth changes too
-    const unsubscribeAuth = auth.onAuthStateChanged(handleUpdate);
 
     return () => {
         window.removeEventListener('wishlistUpdated', handleUpdate);
         window.removeEventListener('userDataChanged', handleUpdate);
-        unsubscribeAuth();
     };
 };

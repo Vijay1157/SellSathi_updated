@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Heart, Eye, ArrowRight, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
-import { collection, getDocs, limit, query } from 'firebase/firestore';
-import { db, auth } from '@/modules/shared/config/firebase';
+import { auth } from '@/modules/shared/config/firebase';
+import { API_BASE } from '@/modules/shared/utils/api';
 import { addToCart } from '@/modules/shared/utils/cartUtils';
 import { addToWishlist, removeFromWishlist, listenToWishlist } from '@/modules/shared/utils/wishlistUtils';
 import QuickViewModal from '@/modules/shared/components/common/QuickViewModal';
@@ -584,17 +584,16 @@ export default function Home() {
                 const allProducts = await fetchWithCache(
                     'home_products',
                     async () => {
-                        const productsCol = collection(db, "products");
-                        const qAll = query(productsCol, limit(50));
-                        const snapAll = await getDocs(qAll);
-                        return snapAll.docs.map(doc => {
-                            const d = { id: doc.id, ...doc.data() };
-                            // Seller products store `title` instead of `name` — normalize here
-                            if (!d.name && d.title) d.name = d.title;
-                            return d;
+                        // Use backend API (avoids direct client-side Firestore reads)
+                        const res = await fetch(`${API_BASE}/products?limit=100`);
+                        if (!res.ok) throw new Error('Products API failed');
+                        const apiData = await res.json();
+                        return (apiData.products || []).map(p => {
+                            if (!p.name && p.title) p.name = p.title;
+                            return p;
                         });
                     },
-                    5 * 60 * 1000 // 5 minutes cache
+                    5 * 60 * 1000 // 5 minutes localStorage cache
                 );
 
                 // If no products in database, show empty state

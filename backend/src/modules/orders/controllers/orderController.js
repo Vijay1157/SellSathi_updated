@@ -38,7 +38,7 @@ const placeOrder = async (req, res) => {
         }
 
         // Invalidate user's order cache
-        cache.invalidate(`userOrders_${uid}`);
+        cache.invalidate(`userOrders_${uid}`, 'adminAllOrders');
         cache.invalidatePrefix('adminStats');
 
         return res.status(200).json({ success: true, orderId, message: "Order placed successfully" });
@@ -141,7 +141,7 @@ const cancelOrder = async (req, res) => {
         });
 
         // Invalidate caches
-        cache.invalidate(`orders_${uid}`);
+        cache.invalidate(`orders_${uid}`, 'adminAllOrders');
         if (orderData.sellerId) {
             cache.invalidate(`sellerDash_${orderData.sellerId}`);
         }

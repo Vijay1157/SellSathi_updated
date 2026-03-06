@@ -36,27 +36,24 @@ export default function AdminDashboard() {
     const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
     const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
 
-    // Fetch all data on component mount
+    // Track which tabs have already been loaded
+    const [loadedTabs, setLoadedTabs] = useState(new Set());
+
+    // Fetch only stats on mount (1 request instead of 7)
     useEffect(() => {
-        fetchAllData();
+        fetchStats();
     }, []);
 
-    // Auto-refresh disabled to prevent interference with modals
-    // useEffect(() => {
-    //     const autoRefreshInterval = setInterval(() => {
-    //         console.log('[AUTO-REFRESH] Refreshing admin dashboard data...');
-    //         fetchAllData();
-    //     }, 30 * 60 * 1000); // 30 minutes in milliseconds
-
-    //     // Cleanup interval on component unmount
-    //     return () => {
-    //         clearInterval(autoRefreshInterval);
-    //         console.log('[AUTO-REFRESH] Cleanup: Stopped auto-refresh');
-    //     };
-    // }, []);
+    // Lazy-load tab data when the active tab changes
+    useEffect(() => {
+        if (activeTab === 'home') return; // stats already loaded
+        if (!loadedTabs.has(activeTab)) {
+            fetchTabData(activeTab);
+        }
+    }, [activeTab]);
 
     // Helper: fetch with a timeout so a dead endpoint never hangs forever
-    const safeFetch = (path, opts = {}, timeoutMs = 10000) => {
+    const safeFetch = (path, opts = {}, timeoutMs = 15000) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         return authFetch(path, { ...opts, signal: controller.signal })
@@ -64,161 +61,105 @@ export default function AdminDashboard() {
             .catch(e => { clearTimeout(timer); throw e; });
     };
 
-    const fetchAllData = async () => {
-        setLoading(true);
-        setError('');
-
+    // Fetch only stats (called on mount and after every action to refresh home card counts)
+    const fetchStats = async () => {
         try {
-            // Run all requests in parallel — one failure won't block others
-            const [
-                statsResult,
-                sellersResult,
-                allSellersResult,
-                productsResult,
-                ordersResult,
-                reviewsResult,
-                analyticsResult,
-            ] = await Promise.allSettled([
-                safeFetch('/admin/stats'),
-                safeFetch('/admin/sellers'),
-                safeFetch('/admin/all-sellers'),
-                safeFetch('/admin/products'),
-                safeFetch('/admin/orders'),
-                safeFetch('/admin/reviews'),
-                safeFetch('/admin/seller-analytics'),
-            ]);
-
-            // ── Stats ── (single source of truth: sellers collection)
-            if (statsResult.status === 'fulfilled' && statsResult.value.ok) {
-                const d = await statsResult.value.json();
+            const res = await safeFetch('/admin/stats');
+            if (res.ok) {
+                const d = await res.json();
                 if (d.success) {
                     setStats(prev => ({
                         ...prev,
                         ...d.stats,
-                        allSellers: d.stats.totalSellers,  // from sellers collection
+                        allSellers: d.stats.totalSellers,
                         ordersToDeliver: d.stats.ordersToDeliver || prev.ordersToDeliver
                     }));
                 }
-            } else {
-                console.warn('Stats fetch failed:', statsResult.reason || statsResult.value?.status);
             }
-
-            // ── Pending sellers ──
-            let pendingSellersList = [];
-            if (sellersResult.status === 'fulfilled' && sellersResult.value.ok) {
-                const d = await sellersResult.value.json();
-                console.log('[DEBUG] Pending sellers response:', d.success, 'count:', d.sellers?.length);
-                if (d.success) { 
-                    console.log('[DEBUG] Pending sellers data:', d.sellers);
-                    setSellers(d.sellers); 
-                    pendingSellersList = d.sellers; 
-                }
-            } else {
-                console.warn('Pending sellers fetch failed:', sellersResult.reason);
-            }
-
-            // ── All sellers (same sellers collection as stats — always consistent) ──
-            let updatedSellers = [];
-            if (allSellersResult.status === 'fulfilled' && allSellersResult.value.ok) {
-                const d = await allSellersResult.value.json();
-                console.log('[DEBUG] all-sellers response:', d.success, 'count:', d.sellers?.length);
-                if (d.success) {
-                    updatedSellers = d.sellers;
-                    setAllSellers(d.sellers);
-
-                    // Update selected invoice seller if it's open
-                    if (selectedInvoiceSeller) {
-                        const updatedSeller = d.sellers.find(s => s.uid === selectedInvoiceSeller.uid);
-                        if (updatedSeller) {
-                            console.log('[DEBUG] Updating selected invoice seller:', updatedSeller.shopName, 'Products:', updatedSeller.financials?.totalProducts);
-                            setSelectedInvoiceSeller(updatedSeller);
-                        }
-                    }
-                }
-            } else {
-                const failInfo = allSellersResult.status === 'fulfilled'
-                    ? `HTTP ${allSellersResult.value.status}: ${await allSellersResult.value.text().catch(() => 'no body')}`
-                    : allSellersResult.reason?.message || 'unknown';
-                console.warn('[DEBUG] All sellers fetch FAILED:', failInfo);
-                setAllSellers(pendingSellersList);
-            }
-
-            // ── Products ──
-            if (productsResult.status === 'fulfilled' && productsResult.value.ok) {
-                const d = await productsResult.value.json();
-                console.log('[DEBUG] Products response:', d.success, 'count:', d.products?.length);
-                if (d.success) {
-                    setProducts(d.products);
-                    if (d.products.length > 0) {
-                        console.log('[DEBUG] Sample products:', d.products.slice(0, 3).map(p => ({ id: p.id, title: p.title, date: p.date })));
-                    }
-                }
-            } else {
-                console.warn('Products fetch failed:', productsResult.reason?.message || productsResult.value?.status);
-            }
-
-            // ── Orders ──
-            if (ordersResult.status === 'fulfilled' && ordersResult.value.ok) {
-                const d = await ordersResult.value.json();
-                if (d.success) {
-                    setOrders(d.orders);
-                    const toDeliver = d.orders.filter(o =>
-                        o.status === 'Processing' || o.status === 'Shipped'
-                    ).length;
-                    setStats(prev => ({ ...prev, ordersToDeliver: toDeliver }));
-                }
-            } else {
-                console.warn('Orders fetch failed:', ordersResult.reason);
-            }
-
-            // ── Reviews (optional — graceful failure) ──
-            if (reviewsResult.status === 'fulfilled' && reviewsResult.value.ok) {
-                const d = await reviewsResult.value.json();
-                if (d.success) {
-                    setReviews(d.reviews);
-                    setStats(prev => ({ ...prev, totalFeedback: d.reviews.length }));
-                }
-            } else {
-                setReviews([]);
-                setStats(prev => ({ ...prev, totalFeedback: 0 }));
-            }
-
-            // ── Analytics ──
-            if (analyticsResult && analyticsResult.status === 'fulfilled' && analyticsResult.value.ok) {
-                const d = await analyticsResult.value.json();
-                console.log('[DEBUG] analytics response:', d.success, 'count:', d.analytics?.length);
-                console.log('[DEBUG] analytics data:', d.analytics);
-                if (d.success && d.analytics) {
-                    setAnalytics(d.analytics);
-                    console.log('[DEBUG] Analytics state updated with', d.analytics.length, 'sellers');
-                    
-                    // Update selected analytics seller if it's open
-                    if (selectedAnalyticsSeller) {
-                        const updatedAnalyticsSeller = d.analytics.find(s => s.uid === selectedAnalyticsSeller.uid);
-                        if (updatedAnalyticsSeller) {
-                            console.log('[DEBUG] Updating selected analytics seller with fresh data:', updatedAnalyticsSeller.shopName);
-                            setSelectedAnalyticsSeller(updatedAnalyticsSeller);
-                        }
-                    }
-                } else {
-                    console.warn('[DEBUG] Analytics data invalid or missing');
-                }
-            } else {
-                const failInfo = analyticsResult?.status === 'fulfilled'
-                    ? `HTTP ${analyticsResult.value.status}: ${await analyticsResult.value.text().catch(() => 'no body')}`
-                    : analyticsResult?.reason?.message || 'unknown';
-                console.warn('[DEBUG] Analytics fetch FAILED:', failInfo);
-            }
-
         } catch (err) {
-            console.error('Unexpected error in fetchAllData:', err);
-            setError('Could not connect to backend. Make sure the server is running on port 5000.');
+            console.warn('[fetchStats] failed:', err.message);
+        }
+    };
+
+    // Fetch data for a specific tab (called lazily on first tab visit)
+    const fetchTabData = async (tab, force = false) => {
+        if (!force && loadedTabs.has(tab)) return;
+        setLoading(true);
+        setError('');
+        try {
+            if (tab === 'sellers') {
+                const [sellersRes, allSellersRes] = await Promise.allSettled([
+                    safeFetch('/admin/sellers'),
+                    safeFetch('/admin/all-sellers'),
+                ]);
+                if (sellersRes.status === 'fulfilled' && sellersRes.value.ok) {
+                    const d = await sellersRes.value.json();
+                    if (d.success) setSellers(d.sellers);
+                }
+                if (allSellersRes.status === 'fulfilled' && allSellersRes.value.ok) {
+                    const d = await allSellersRes.value.json();
+                    if (d.success) {
+                        setAllSellers(d.sellers);
+                        if (selectedInvoiceSeller) {
+                            const updated = d.sellers.find(s => s.uid === selectedInvoiceSeller.uid);
+                            if (updated) setSelectedInvoiceSeller(updated);
+                        }
+                    }
+                }
+            } else if (tab === 'products') {
+                const res = await safeFetch('/admin/products');
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d.success) setProducts(d.products);
+                }
+            } else if (tab === 'orders') {
+                const res = await safeFetch('/admin/orders');
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d.success) {
+                        setOrders(d.orders);
+                        const toDeliver = d.orders.filter(o => o.status === 'Processing' || o.status === 'Shipped').length;
+                        setStats(prev => ({ ...prev, ordersToDeliver: toDeliver }));
+                    }
+                }
+            } else if (tab === 'feedback') {
+                const res = await safeFetch('/admin/reviews');
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d.success) {
+                        setReviews(d.reviews);
+                        setStats(prev => ({ ...prev, totalFeedback: d.reviews.length }));
+                    }
+                }
+            } else if (tab === 'payouts' || tab === 'invoices') {
+                const res = await safeFetch('/admin/seller-analytics');
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d.success && d.analytics) {
+                        setAnalytics(d.analytics);
+                        if (selectedAnalyticsSeller) {
+                            const updated = d.analytics.find(s => s.uid === selectedAnalyticsSeller.uid);
+                            if (updated) setSelectedAnalyticsSeller(updated);
+                        }
+                    }
+                }
+            }
+            setLoadedTabs(prev => new Set([...prev, tab]));
+        } catch (err) {
+            console.error(`[fetchTabData:${tab}] error:`, err);
+            setError('Failed to load data. Please try refreshing.');
         } finally {
             setLoading(false);
         }
     };
 
-
+    // Full refresh: re-fetch stats + current tab data (used by Refresh button & after actions)
+    const fetchAllData = async () => {
+        await Promise.all([
+            fetchStats(),
+            activeTab !== 'home' ? fetchTabData(activeTab, true) : Promise.resolve()
+        ]);
+    };
 
 
     const handleApproveSeller = async (uid) => {

@@ -28,7 +28,6 @@
     "pdfkit": "^0.17.2",
     "raw-body": "^3.0.2",
     "razorpay": "^2.9.6",
-    "recharts": "^3.7.0",
-    "redis": "^5.11.0"
+    "recharts": "^3.7.0"
   }
 }

@@ -154,9 +154,8 @@ const getPendingSellers = async (req, res) => {
  */
 const getAllSellers = async (req, res) => {
     try {
-        // Don't use cache for now to avoid format issues
-        // const cached = cache.get('allSellers');
-        // if (cached) return res.status(200).json({ success: true, sellers: cached });
+        const cached = cache.get('allSellers');
+        if (cached) return res.status(200).json({ success: true, sellers: cached.sellers, categorized: cached.categorized });
 
         const [sellersSnap, ordersSnap] = await Promise.all([
             db.collection("sellers").get(),
@@ -279,7 +278,7 @@ const getAllSellers = async (req, res) => {
 
         // Return both old format (sellers array) and new format (categorized)
         // This maintains backward compatibility with frontend
-        cache.set('allSellers', sellers);
+        cache.set('allSellers', { sellers, categorized: { approved: approvedSellers, pending: pendingSellers, rejected: rejectedSellers, blocked: blockedSellers } });
         return res.status(200).json({ 
             success: true, 
             sellers: sellers, // Old format for backward compatibility
@@ -713,8 +712,18 @@ const getAllProducts = async (req, res) => {
 /**
  * Get all orders for admin management.
  */
+const ADMIN_ORDERS_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+const ADMIN_REVIEWS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const ADMIN_ANALYTICS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Get all orders for admin management.
+ */
 const getAllOrders = async (req, res) => {
     try {
+        const cached = cache.get('adminAllOrders');
+        if (cached) return res.status(200).json({ success: true, orders: cached.orders, count: cached.orders.length });
+
         const ordersSnap = await db.collection("orders").get();
         
         console.log(`[GetAllOrders] Total orders in database: ${ordersSnap.docs.length}`);
@@ -785,6 +794,7 @@ const getAllOrders = async (req, res) => {
 
         console.log(`[GetAllOrders] Returning ${orders.length} orders, sorted by newest first`);
 
+        cache.set('adminAllOrders', { orders }, ADMIN_ORDERS_CACHE_TTL);
         return res.status(200).json({ 
             success: true, 
             orders: orders,
@@ -803,6 +813,9 @@ const getAllOrders = async (req, res) => {
  */
 const getAllReviews = async (req, res) => {
     try {
+        const cached = cache.get('adminAllReviews');
+        if (cached) return res.status(200).json({ success: true, reviews: cached.reviews, count: cached.reviews.length });
+
         const reviewsSnap = await db.collection("reviews").get();
         
         console.log(`[GetAllReviews] Total reviews in database: ${reviewsSnap.docs.length}`);
@@ -901,6 +914,7 @@ const getAllReviews = async (req, res) => {
 
         console.log(`[GetAllReviews] Returning ${reviews.length} reviews (skipped ${skippedReviews} reviews for non-existent products)`);
 
+        cache.set('adminAllReviews', { reviews }, ADMIN_REVIEWS_CACHE_TTL);
         return res.status(200).json({
             success: true,
             reviews: reviews,
@@ -919,11 +933,27 @@ const getAllReviews = async (req, res) => {
  */
 const getSellerAnalytics = async (req, res) => {
     try {
+        const cached = cache.get('adminSellerAnalytics');
+        if (cached) return res.status(200).json({ success: true, analytics: cached });
+
         const sellersSnap = await db.collection("sellers").where("sellerStatus", "==", "APPROVED").get();
 
-        // Fetch all orders once
-        const allOrdersSnap = await db.collection("orders").get();
+        // Fetch orders and products ONCE for all sellers (fixes N+1 problem)
+        const [allOrdersSnap, allProductsSnap] = await Promise.all([
+            db.collection("orders").get(),
+            db.collection("products").get()
+        ]);
         const allOrders = allOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Group products by sellerId in memory — no more per-seller DB queries
+        const productsBySeller = {};
+        allProductsSnap.forEach(doc => {
+            const p = doc.data();
+            const sid = p.sellerId;
+            if (!sid) return;
+            if (!productsBySeller[sid]) productsBySeller[sid] = [];
+            productsBySeller[sid].push({ id: doc.id, ...p });
+        });
 
         // Build seller email map
         const sellerUids = sellersSnap.docs.map(d => d.id);
@@ -945,7 +975,10 @@ const getSellerAnalytics = async (req, res) => {
             const sellerData = doc.data();
             const uid = doc.id;
 
-            const productsSnap = await db.collection("products").where("sellerId", "==", uid).get();
+            // Use pre-fetched products grouped by seller (no DB call here)
+            const sellerProducts = productsBySeller[uid] || [];
+            // Fake a "snap-like" interface for compatibility with code below
+            const productsSnap = { size: sellerProducts.length, forEach: (cb) => sellerProducts.forEach(p => cb({ id: p.id, data: () => p })) };
             let totalProducts = 0;
             let totalStockLeft = 0;
             let totalProductValue = 0;
@@ -1067,6 +1100,7 @@ const getSellerAnalytics = async (req, res) => {
         // Sort sellers by timestamp descending (newest first)
         sellers.sort((a, b) => b.timestamp - a.timestamp);
 
+        cache.set('adminSellerAnalytics', sellers, ADMIN_ANALYTICS_CACHE_TTL);
         return res.status(200).json({ success: true, analytics: sellers });
     } catch (error) {
         console.error("[GetSellerAnalytics] ERROR:", error);
@@ -1160,6 +1194,10 @@ const deleteReview = async (req, res) => {
                 // Don't fail the request if rating update fails
             }
         }
+
+        // Invalidate admin reviews cache so admin panel reflects deletion
+        cache.invalidate('adminAllReviews');
+        if (productId) cache.invalidate(`reviews_${productId}`);
 
         return res.status(200).json({ 
             success: true, 

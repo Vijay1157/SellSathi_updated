@@ -1,5 +1,8 @@
 'use strict';
 const { db } = require('../../../config/firebase');
+const cache = require('../../../utils/cache');
+
+const CONSUMER_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 /**
  * Get user cart.
@@ -7,9 +10,15 @@ const { db } = require('../../../config/firebase');
 const getCart = async (req, res) => {
     try {
         const { uid } = req.params;
+        const cacheKey = `cart_${uid}`;
+        const cached = cache.get(cacheKey);
+        if (cached !== null) return res.json({ success: true, cart: cached });
+
         const userDoc = await db.collection('users').doc(uid).get();
         if (!userDoc.exists) return res.status(404).json({ success: false, message: "User not found" });
-        return res.json({ success: true, cart: userDoc.data().cart || [] });
+        const cart = userDoc.data().cart || [];
+        cache.set(cacheKey, cart, CONSUMER_CACHE_TTL);
+        return res.json({ success: true, cart });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to fetch cart" });
     }
@@ -28,6 +37,7 @@ const updateCart = async (req, res) => {
         if (cart) {
             // Overwrite entire cart
             await userRef.update({ cart });
+            cache.invalidate(`cart_${uid}`);
         } else if (action) {
             const userDoc = await userRef.get();
             let currentCart = userDoc.data()?.cart || [];
@@ -46,6 +56,7 @@ const updateCart = async (req, res) => {
             }
 
             await userRef.update({ cart: currentCart });
+            cache.invalidate(`cart_${uid}`);
         }
 
         return res.json({ success: true, message: "Cart updated" });
@@ -60,8 +71,14 @@ const updateCart = async (req, res) => {
 const getAddresses = async (req, res) => {
     try {
         const { uid } = req.params;
+        const cacheKey = `addresses_${uid}`;
+        const cached = cache.get(cacheKey);
+        if (cached !== null) return res.json({ success: true, addresses: cached });
+
         const doc = await db.collection('users').doc(uid).get();
-        return res.json({ success: true, addresses: doc.data()?.addresses || [] });
+        const addresses = doc.data()?.addresses || [];
+        cache.set(cacheKey, addresses, CONSUMER_CACHE_TTL);
+        return res.json({ success: true, addresses });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to fetch addresses" });
     }
@@ -85,6 +102,7 @@ const saveAddress = async (req, res) => {
         else addresses.push({ ...address, id: Date.now() });
 
         await userRef.update({ addresses });
+        cache.invalidate(`addresses_${uid}`);
         return res.json({ success: true, message: "Address saved" });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Failed to save address" });
